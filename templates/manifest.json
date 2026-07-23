@@ -1,9 +1,10 @@
 {
   "schema_version": 1,
-  "project": "replace-project-name",
+  "project": "uitok-palworld-panel",
   "patch_version": "0.1.0",
+  "patch_type": "source-build",
   "upstream": {
-    "repository": "owner/repository",
+    "repository": "uitok/palworld-panel",
     "version": "v0.0.0",
     "commit": "0000000000000000000000000000000000000000"
   },
@@ -11,13 +12,11 @@
     "linux-amd64"
   ],
   "files": {
-    "bin/example": {
+    "bin/palpanel": {
       "original_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
       "patched_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
     }
   },
-  "features": [
-    "replace-feature-name"
-  ],
+  "features": [],
   "notes": "Replace all placeholder values before release."
 }

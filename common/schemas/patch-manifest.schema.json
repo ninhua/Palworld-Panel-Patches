@@ -8,6 +8,7 @@
     "schema_version",
     "project",
     "patch_version",
+    "patch_type",
     "upstream",
     "platforms",
     "files",
@@ -18,12 +19,21 @@
       "const": 1
     },
     "project": {
-      "type": "string",
-      "minLength": 1
+      "enum": [
+        "uitok-palworld-panel",
+        "host-wine-aio"
+      ]
     },
     "patch_version": {
       "type": "string",
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$"
+    },
+    "patch_type": {
+      "enum": [
+        "source-build",
+        "compiled-overlay",
+        "runtime-compatibility"
+      ]
     },
     "upstream": {
       "type": "object",
@@ -36,7 +46,7 @@
       "properties": {
         "repository": {
           "type": "string",
-          "pattern": "^[^/]+/[^/]+$"
+          "pattern": "^[^/\\s]+/[^/\\s]+$"
         },
         "version": {
           "type": "string",
@@ -87,7 +97,7 @@
       "uniqueItems": true,
       "items": {
         "type": "string",
-        "minLength": 1
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
       }
     },
     "notes": {

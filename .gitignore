@@ -1,6 +1,6 @@
 # Build output
 dist/
-build/
+build-output/
 *.tar.gz
 *.zip
 SHA256SUMS
@@ -18,6 +18,13 @@ tmp/
 .DS_Store
 Thumbs.db
 
-# Local test data
+# Local secrets and data
 fixtures/private/
 .env
+*.sav
+*.json.private
+
+# Python
+__pycache__/
+*.pyc
+.venv/

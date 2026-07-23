@@ -11,20 +11,19 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate shell and JSON
-        run: bash common/scripts/validate-repository.sh
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
 
-      - name: Verify executable scripts
-        run: |
-          failed=0
-          while IFS= read -r -d '' file; do
-            if [[ ! -x "$file" ]]; then
-              echo "Script is not executable: $file"
-              failed=1
-            fi
-          done < <(find common projects ports -type f -name '*.sh' -print0)
-          exit "$failed"
+      - name: Install validation dependencies
+        run: python3 -m pip install -r requirements-ci.txt
+
+      - name: Validate repository
+        run: bash common/scripts/validate-repository.sh
