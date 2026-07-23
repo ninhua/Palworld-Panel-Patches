@@ -1,0 +1,23 @@
+# Build output
+dist/
+build/
+*.tar.gz
+*.zip
+SHA256SUMS
+
+# Temporary files
+*.tmp
+*.part
+*.bak
+.cache/
+tmp/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local test data
+fixtures/private/
+.env

@@ -1,0 +1,10 @@
+name: host-wine-aio
+role: runtime-integration
+runtime: bash-wine
+patch_type: runtime-compatibility
+
+compatibility:
+  exact_panel_version: true
+  verify_original_sha256: true
+  allow_panel_downgrade: false
+  patch_failure_blocks_original_panel: false

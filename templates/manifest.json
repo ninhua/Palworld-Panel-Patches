@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "project": "replace-project-name",
+  "patch_version": "0.1.0",
+  "upstream": {
+    "repository": "owner/repository",
+    "version": "v0.0.0",
+    "commit": "0000000000000000000000000000000000000000"
+  },
+  "platforms": [
+    "linux-amd64"
+  ],
+  "files": {
+    "bin/example": {
+      "original_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "patched_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
+  "features": [
+    "replace-feature-name"
+  ],
+  "notes": "Replace all placeholder values before release."
+}

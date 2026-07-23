@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "feature_id": "replace-feature-id",
+  "source": {
+    "repository": "Jiaayu/palworld-panel",
+    "commit": "0000000000000000000000000000000000000000",
+    "paths": []
+  },
+  "target": {
+    "project": "uitok-palworld-panel",
+    "implementation": "not-decided"
+  },
+  "status": "planned",
+  "license_review": {
+    "completed": false,
+    "notes": "Complete license review before copying or adapting source code."
+  }
+}

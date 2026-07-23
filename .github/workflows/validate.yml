@@ -1,0 +1,30 @@
+name: Validate repository
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate shell and JSON
+        run: bash common/scripts/validate-repository.sh
+
+      - name: Verify executable scripts
+        run: |
+          failed=0
+          while IFS= read -r -d '' file; do
+            if [[ ! -x "$file" ]]; then
+              echo "Script is not executable: $file"
+              failed=1
+            fi
+          done < <(find common projects ports -type f -name '*.sh' -print0)
+          exit "$failed"

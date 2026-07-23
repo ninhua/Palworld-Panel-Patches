@@ -1,0 +1,32 @@
+source:
+  repository: Jiaayu/palworld-panel
+  pinned_commit: ""
+  role: feature-reference
+
+target:
+  project: uitok-palworld-panel
+
+features:
+  - id: player-summary
+    status: planned
+    implementation: not-decided
+    source_paths: []
+    target_paths: []
+
+  - id: base-management
+    status: planned
+    implementation: not-decided
+    source_paths: []
+    target_paths: []
+
+  - id: worker-status
+    status: planned
+    implementation: not-decided
+    source_paths: []
+    target_paths: []
+
+  - id: feed-box-summary
+    status: planned
+    implementation: not-decided
+    source_paths: []
+    target_paths: []
