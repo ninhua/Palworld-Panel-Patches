@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-骨架版本：`v0.2.1`
+骨架版本：`v0.2.4`
 
 用于维护 Palworld 面板源码补丁、Jiaayu 功能移植记录，以及 Host Wine AIO 兼容接入代码。
 
@@ -24,6 +24,16 @@ projects/host-wine-aio/
 ```
 
 `Jiaayu/palworld-panel` 当前不是独立发布目标，因此不放在 `projects/` 下。
+
+## 当前兼容开发目标
+
+```text
+实际源码：uitok/palworld-panel v1.2.1
+临时目标：v1.2.2 compatibility proxy
+目录：projects/uitok-palworld-panel/patches/v1.2.2-compat-v1.2.1/
+```
+
+该目录仅用于临时开发验证，不能发布为精确 v1.2.2 补丁。
 
 ## 目录
 
@@ -54,6 +64,7 @@ Palworld-Panel-Patches/
 - Jiaayu 目录只记录移植来源、功能映射和许可证审查。
 - 安装必须经过 staging、校验、原子替换和回滚。
 - 补丁失败默认不阻断原版面板启动。
+- 临时源码别名必须明确标记为 `source-alias`。
 
 ## 开发分支
 
@@ -64,28 +75,9 @@ fix/host-wine-<issue>
 chore/<scope>
 ```
 
-## 补丁目录
-
-```text
-projects/uitok-palworld-panel/patches/<upstream-version>/
-├── manifest.json
-├── source/
-├── overlay/
-├── build/
-└── tests/
-```
-
 ## 本地验证
 
 ```bash
 python3 -m pip install -r requirements-ci.txt
 bash common/scripts/validate-repository.sh
-```
-
-## 发布命名
-
-```text
-uitok-v1.2.1-p0.1.0
-uitok-v1.2.2-p0.1.0
-host-wine-aio-v1.0.40
 ```

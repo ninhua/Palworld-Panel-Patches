@@ -1,30 +1,26 @@
-# Upgrade v0.2.2 → v0.2.3
+# Upgrade v0.2.3 → v0.2.4
 
 覆盖仓库根目录：
 
 ```bash
-cp -a Palworld-Panel-Patches-upgrade-v0.2.2-to-v0.2.3/. /path/to/Palworld-Panel-Patches/
+cp -a Palworld-Panel-Patches-upgrade-v0.2.3-to-v0.2.4/. /path/to/Palworld-Panel-Patches/
 cd /path/to/Palworld-Panel-Patches
 
-git add .
-git commit -m "fix: migrate actions to Node 24"
+git add VERSION README.md CHANGELOG.md
+git commit -m "fix: synchronize scaffold version metadata"
 git push origin main
 ```
 
-关键 Action 版本：
-
-```yaml
-uses: actions/checkout@v6
-uses: actions/setup-python@v6
-```
-
-这两个版本原生使用 Node.js 24。
-
-## 临时版本映射
-
-开发时可以使用 v1.2.1 源码测试 v1.2.2，但不能把 `upstream.version`
-写成 v1.2.2。请使用新增目录：
+本次修复对应错误：
 
 ```text
-projects/uitok-palworld-panel/patches/v1.2.2-compat-v1.2.1/
+[ERROR] README.md 中的骨架版本与 VERSION 不一致
+```
+
+升级后应满足：
+
+```text
+VERSION: 0.2.4
+README.md: 骨架版本：`v0.2.4`
+CHANGELOG.md: ## v0.2.4
 ```
