@@ -1,25 +1,28 @@
 # Changelog
 
+## v0.3.0
+
+### Added
+
+- 新增 `Probe uitok dev source` 手动工作流。
+- 自动检出 `uitok/palworld-panel` 的 `dev` 分支和递归子模块。
+- 自动记录完整 commit、父提交、提交时间和工作区状态。
+- 自动扫描 Go、前端、路由、API、嵌入资源和构建入口。
+- 自动尝试 `go list`、Go 测试和可能的 Makefile 构建目标。
+- 自动生成确定性源码快照及 SHA-256。
+- 使用 `actions/upload-artifact@v7` 上传源码快照和分析报告。
+- 新增 `dev` 源码基线说明，兼容目标保持为 v1.2.2。
+
+### Changed
+
+- 不再把 v1.2.1 当作长期源码代理。
+- 后续补丁以 `dev` 的精确 commit 为源码基线。
+- 只有取得真实源码结构后才生成 `0001-add-patch-info-api.patch`。
+
 ## v0.2.4
 
-### Fixed
-
-- 修复根目录 `README.md` 的骨架版本未随 `VERSION` 更新。
-- 增加当前 v1.2.1 → v1.2.2 临时兼容开发目标说明。
-- 保持 Node.js 24 Actions 和 pip 缓存修复不变。
+- 修复 README、VERSION 和 CHANGELOG 的版本同步。
 
 ## v0.2.3
 
-- 将 `actions/checkout` 升级为 `v6`。
-- 将 `actions/setup-python` 升级为 `v6`。
-- 增加临时源码版本别名机制。
-- 增加 `v1.2.2-compat-v1.2.1` 开发目录。
-
-## v0.2.2
-
-- 修复 pip 缓存依赖文件探测。
-- 建立本地保留 v1.2.2 的来源锁定模板。
-
-## v0.2.1
-
-- 增加 JSON Schema、YAML、版本、LF 换行和可执行权限校验。
+- Actions 迁移到 Node.js 24。
