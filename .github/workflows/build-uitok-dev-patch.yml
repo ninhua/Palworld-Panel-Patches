@@ -1,0 +1,69 @@
+name: Build uitok dev patch
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout patch repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Checkout locked upstream source
+        uses: actions/checkout@v6
+        with:
+          repository: uitok/palworld-panel
+          ref: 5e3c0bce9d33091b3261f82b3e4da062fc35a8a1
+          path: .work/upstream
+          fetch-depth: 1
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25.12"
+          cache-dependency-path: .work/upstream/backend/go.sum
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: .work/upstream/frontend/package-lock.json
+
+      - name: Build and test patch
+        run: |
+          bash projects/uitok-palworld-panel/patches/dev-v1.2.2/build/build.sh \
+            .work/upstream \
+            .work/output
+
+      - name: Write build summary
+        shell: bash
+        run: |
+          {
+            echo "## uitok dev patch build"
+            echo
+            echo '```json'
+            cat .work/output/release/build-metadata.json
+            echo '```'
+            echo
+            echo "Artifact includes binary package, complete source package, manifest, checksums, and smoke-test log."
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload patch build
+        uses: actions/upload-artifact@v7
+        with:
+          name: uitok-dev-v1.2.2-patch-0.1.0-dev.1-5e3c0bce9d33
+          path: .work/output/release/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

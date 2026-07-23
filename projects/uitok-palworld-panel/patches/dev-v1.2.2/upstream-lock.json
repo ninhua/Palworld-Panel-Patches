@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "project": "uitok-palworld-panel",
+  "repository": "uitok/palworld-panel",
+  "source_ref": "dev",
+  "source_commit": "5e3c0bce9d33091b3261f82b3e4da062fc35a8a1",
+  "source_commit_date": "2026-07-23T17:13:44+08:00",
+  "target_version": "v1.2.2",
+  "compatibility_status": "unverified",
+  "source_archive": {
+    "filename": "uitok-palworld-panel-dev-5e3c0bce9d33-source.tar.gz",
+    "sha256": "e41151c620cc764564df15cafc4b65ecacfa1edc4b424df1ab299d030463a977"
+  },
+  "probe_artifact": "uitok-dev-probe-5e3c0bce9d33",
+  "notes": "Source locked from the dev branch probe. Compatibility target v1.2.2 remains unverified."
+}

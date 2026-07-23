@@ -1,41 +1,26 @@
-# Upgrade v0.2.4 → v0.3.0
+# Upgrade v0.3.0 → v0.4.0
 
-覆盖到仓库根目录：
+覆盖仓库根目录：
 
 ```bash
-cp -a Palworld-Panel-Patches-upgrade-v0.2.4-to-v0.3.0/. /path/to/Palworld-Panel-Patches/
+cp -a Palworld-Panel-Patches-upgrade-v0.3.0-to-v0.4.0/. /path/to/Palworld-Panel-Patches/
 cd /path/to/Palworld-Panel-Patches
 
 git add .
-git commit -m "feat: add uitok dev source probe"
+git commit -m "feat: add first uitok dev patch"
 git push origin main
 ```
 
-随后进入 GitHub 仓库：
+验证通过后运行：
 
 ```text
 Actions
-→ Probe uitok dev source
+→ Build uitok dev patch
 → Run workflow
-→ upstream_ref 保持 dev
 ```
 
-运行结束后下载：
+成功后下载 Artifact：
 
 ```text
-uitok-dev-probe-<commit前12位>.zip
+uitok-dev-v1.2.2-patch-0.1.0-dev.1-5e3c0bce9d33
 ```
-
-Artifact 中包含：
-
-- `uitok-palworld-panel-dev-<sha>-source.tar.gz`
-- `upstream-lock.generated.json`
-- `routing-candidates.txt`
-- `api-candidates.txt`
-- `entry-candidates.txt`
-- `static-embed-candidates.txt`
-- `auth-candidates.txt`
-- `go-list.txt`
-- `go-test.txt`
-- `tree.txt`
-- `SHA256SUMS`

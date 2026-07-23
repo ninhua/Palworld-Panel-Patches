@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-骨架版本：`v0.3.0`
+骨架版本：`v0.4.0`
 
 用于维护 Palworld 面板源码补丁、Jiaayu 功能移植记录，以及 Host Wine AIO 兼容接入代码。
 
@@ -9,41 +9,65 @@
 ```text
 源码仓库：uitok/palworld-panel
 源码分支：dev
-兼容目标：面板 v1.2.2
-开发阶段：上游源码锁定与构建探测
+源码提交：5e3c0bce9d33091b3261f82b3e4da062fc35a8a1
+兼容目标：v1.2.2
+补丁版本：0.1.0-dev.1
+首个功能：patch-info-api
 ```
 
-`dev` 是开发源码基线；兼容版本 `v1.2.2` 是运行目标。两者分别记录，不能把分支名称、源码 commit 和运行版本混为一项。
-
-## 项目定位
+## 当前真实补丁
 
 ```text
-uitok/palworld-panel
-    ↓
-projects/uitok-palworld-panel/
-    实际补丁目标，产出补丁版 palpanel
-
-Jiaayu/palworld-panel
-    ↓
-ports/jiaayu-features/
-    功能参考来源、移植分析和映射记录
-
-你的 Linux/Wine 启动脚本
-    ↓
-projects/host-wine-aio/
-    补丁检测、安装、回滚和运行环境接入
+projects/uitok-palworld-panel/patches/dev-v1.2.2/
+├── upstream-lock.json
+├── manifest.template.json
+├── source/
+│   ├── 0001-add-patch-info-api.patch
+│   └── SHA256SUMS
+├── build/
+│   ├── build.sh
+│   └── build-palpanel.sh
+├── tests/
+│   └── smoke.sh
+├── LICENSE
+└── LICENSE-NOTICE.md
 ```
 
-## 开发流程
+补丁新增公开接口：
 
-1. 运行 GitHub Actions：`Probe uitok dev source`。
-2. 固定 `dev` 当前完整 commit。
-3. 下载动作生成的源码快照与分析报告。
-4. 根据真实路由和构建入口制作 `patch-info-api` 补丁。
-5. 构建原版与补丁版，记录两个 SHA-256。
-6. 再接入 Host Wine AIO。
+```http
+GET /api/patch/info
+```
 
-## 本地验证
+该接口返回上游仓库、源码分支、源码 commit、兼容目标、补丁版本、功能列表和构建信息。
+
+## 构建
+
+在 GitHub 仓库中运行：
+
+```text
+Actions
+→ Build uitok dev patch
+→ Run workflow
+```
+
+成功后下载：
+
+```text
+uitok-dev-v1.2.2-patch-0.1.0-dev.1-5e3c0bce9d33
+```
+
+Artifact 包含：
+
+- 原版和补丁版二进制 SHA-256；
+- 可安装 overlay；
+- 最终 `manifest.json`；
+- 对应源码 patch；
+- 完整补丁后源码归档；
+- GPL-3.0 许可证；
+- API 冒烟测试结果。
+
+## 本地仓库验证
 
 ```bash
 python3 -m pip install -r requirements-ci.txt

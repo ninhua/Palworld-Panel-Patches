@@ -1,6 +1,7 @@
 # Build output
 dist/
 build-output/
+.work/
 *.tar.gz
 *.zip
 SHA256SUMS
