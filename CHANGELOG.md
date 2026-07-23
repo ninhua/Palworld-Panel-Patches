@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.5.1
+
+### Fixed
+
+- 修复 `base_custom_names_test.go` 调用不存在的 `newQueryContext`，导致 `palpanel/internal/api` 测试无法编译。
+- 改为使用上游实际 Gin 测试方式：`gin.CreateTestContext`、`httptest.NewRecorder` 和 GET 请求查询参数。
+- 更新 `0002-add-base-custom-names.patch` 及 `source/SHA256SUMS`。
+
+### Validation
+
+- `git diff --check` 通过。
+- 两个补丁可按顺序应用到锁定上游源码。
+- 仓库结构、YAML、Shell 和补丁 SHA 校验通过。
+- 完整 Go 1.25.12 测试仍由 GitHub Actions 执行。
+
 ## v0.5.0
 
 ### Added

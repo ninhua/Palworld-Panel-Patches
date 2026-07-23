@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.5.0`
+仓库版本：`v0.5.1`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。

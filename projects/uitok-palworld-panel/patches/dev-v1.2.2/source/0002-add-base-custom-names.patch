@@ -175,10 +175,10 @@ index 0000000..6474350
 +}
 diff --git a/backend/internal/api/base_custom_names_test.go b/backend/internal/api/base_custom_names_test.go
 new file mode 100644
-index 0000000..729a020
+index 0000000..0543917
 --- /dev/null
 +++ b/backend/internal/api/base_custom_names_test.go
-@@ -0,0 +1,121 @@
+@@ -0,0 +1,124 @@
 +package api
 +
 +import (
@@ -204,7 +204,10 @@ index 0000000..729a020
 +		t.Fatalf("custom base name metadata = %#v", view)
 +	}
 +
-+	context := newQueryContext("/api/bases?q=北境")
++	gin.SetMode(gin.TestMode)
++	recorder := httptest.NewRecorder()
++	context, _ := gin.CreateTestContext(recorder)
++	context.Request = httptest.NewRequest(http.MethodGet, "/api/bases?q=北境", nil)
 +	got := filterBases([]saveindex.Base{base}, map[string]string{base.ID: "北境制造中心"}, context)
 +	if len(got) != 1 || got[0].ID != base.ID {
 +		t.Fatalf("custom base name should be searchable: %#v", got)

@@ -1,9 +1,11 @@
-# Upgrade v0.4.2 → v0.5.0
+# Upgrade v0.5.0 → v0.5.1
+
+本修订只修复 `0002-add-base-custom-names.patch` 中的 Go 测试编译错误，不改变补丁版本和 Release 标签。
 
 覆盖仓库：
 
 ```bash
-cp -a Palworld-Panel-Patches-upgrade-v0.4.2-to-v0.5.0/. /path/to/Palworld-Panel-Patches/
+cp -a Palworld-Panel-Patches-upgrade-v0.5.0-to-v0.5.1/. /path/to/Palworld-Panel-Patches/
 cd /path/to/Palworld-Panel-Patches
 ```
 
@@ -17,28 +19,24 @@ bash common/scripts/validate-repository.sh
 提交：
 
 ```bash
-git add .
-git commit -m "feat: add persistent base custom names"
+git add VERSION README.md CHANGELOG.md UPGRADE.md \
+  projects/uitok-palworld-panel/patches/dev-v1.2.2/source/0002-add-base-custom-names.patch \
+  projects/uitok-palworld-panel/patches/dev-v1.2.2/source/SHA256SUMS
+git commit -m "fix: use Gin context in base custom name test"
 git push origin main
 ```
 
-构建：
+然后重新运行：
 
 ```text
 Actions → Build uitok dev patch → Run workflow
 ```
 
-发布：
+预期补丁版本和标签仍为：
 
 ```text
-Actions → Release uitok dev patch → Run workflow
-```
-
-新标签：
-
-```text
+0.2.0-dev.1
 uitok-dev-v1.2.2-p0.2.0-dev.1
 ```
 
-此版本不会修改或替换旧的 `0.1.0-dev.1` Release。
-一键部署脚本应在新 Release 资产实际存在并验证后，再由其维护流程更新固定标签和期望字段。
+失败的构建没有发布 Release，因此无需增加补丁版本号。
