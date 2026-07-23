@@ -160,9 +160,12 @@ Behavior:
 0007-add-guild-detail-browser.patch
 0008-add-base-worker-browser.patch
 0009-add-base-feed-box-summary.patch
+0010-fix-missing-base-worker-handler.patch
 ```
 
 All patches are applied in lexical order and verified against `source/SHA256SUMS` before build.
+
+`0010` is a corrective source patch that restores the base-worker handler and its tests omitted from the generated `0008` patch. It does not change patch version or feature identifiers.
 
 ## Build scope
 

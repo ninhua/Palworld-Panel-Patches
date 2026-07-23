@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.10.1
+
+### Fixed
+
+- 修复 `0008-add-base-worker-browser.patch` 漏打新文件的问题。
+- 正式加入 `backend/internal/api/base_workers.go` 与 `base_workers_test.go`，解决 Release 构建中的 `s.getSaveBaseWorkers undefined`。
+- 新增补丁路由处理器静态契约校验：补丁新增路由引用的 `Server` 方法必须在补丁链中存在定义。
+- 功能补丁版本保持 `0.7.0-dev.1`，features、Release tag、资产命名和启动脚本接入规则均不变化。
+
+### Validation
+
+- 在仅应用仓库实际 `0001–0009` 的干净源码上复现缺失处理器。
+- 应用 `0010-fix-missing-base-worker-handler.patch` 后，路由和实现静态契约通过。
+
 ## v0.10.0
 
 ### Added

@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.10.0`
+仓库版本：`v0.10.1`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -141,6 +141,7 @@ projects/uitok-palworld-panel/patches/dev-v1.2.2/
 │   ├── 0007-add-guild-detail-browser.patch
 │   ├── 0008-add-base-worker-browser.patch
 │   ├── 0009-add-base-feed-box-summary.patch
+│   ├── 0010-fix-missing-base-worker-handler.patch
 │   └── SHA256SUMS
 ├── build/
 │   ├── build.sh

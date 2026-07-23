@@ -92,6 +92,43 @@ def validate_executable_scripts() -> None:
         if not os.access(path, os.X_OK):
             fail(f"Shell 脚本缺少可执行权限：{path}")
 
+
+def validate_patch_route_handlers() -> None:
+    patch_base = ROOT / "projects" / "uitok-palworld-panel" / "patches"
+    if not patch_base.exists():
+        return
+
+    for source_dir in patch_base.rglob("source"):
+        patch_files = sorted(source_dir.glob("*.patch"))
+        if not patch_files:
+            continue
+
+        added_lines: list[str] = []
+        for patch_file in patch_files:
+            for line in patch_file.read_text(encoding="utf-8").splitlines():
+                if line.startswith("+") and not line.startswith("+++"):
+                    added_lines.append(line[1:])
+
+        added_text = "\n".join(added_lines)
+        route_handlers = set(
+            re.findall(
+                r"api\.(?:GET|POST|PUT|PATCH|DELETE)\([^\n]*?s\.([A-Za-z_]\w*)\)",
+                added_text,
+            )
+        )
+        method_definitions = set(
+            re.findall(
+                r"func \(s \*?Server\) ([A-Za-z_]\w*)\s*\(",
+                added_text,
+            )
+        )
+        missing = sorted(route_handlers - method_definitions)
+        if missing:
+            fail(
+                f"补丁新增路由缺少 Server 处理器定义：{source_dir}: "
+                + ", ".join(missing)
+            )
+
 def validate_placeholders() -> None:
     # 模板目录允许占位值，正式补丁目录不允许。
     for path in (ROOT / "projects" / "uitok-palworld-panel" / "patches").rglob("manifest.json"):
@@ -107,6 +144,7 @@ def main() -> None:
     validate_version()
     validate_line_endings()
     validate_executable_scripts()
+    validate_patch_route_handlers()
     validate_placeholders()
     print("Repository validation passed.")
 

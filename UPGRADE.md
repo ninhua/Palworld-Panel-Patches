@@ -1,21 +1,32 @@
-# Upgrade v0.9.0 → v0.10.0
+# Upgrade v0.10.0 → v0.10.1
 
-本次新增独立顶级功能 `base-feed-box-summary`：基地页面可以查看饲料箱合并库存和按箱明细，统计饲料箱数、空箱数、占用格、物品种类与物品总量。全部数据只读，不修改 Palworld 存档。
+本次是构建修复，不新增功能，也不提升功能补丁版本。`0008-add-base-worker-browser.patch` 之前漏掉了两个新 Go 文件，导致 Release 编译报错：
+
+```text
+s.getSaveBaseWorkers undefined (type Server has no field or method getSaveBaseWorkers)
+```
+
+`v0.10.1` 新增 `0010-fix-missing-base-worker-handler.patch`，正式补入：
+
+```text
+backend/internal/api/base_workers.go
+backend/internal/api/base_workers_test.go
+```
 
 ## 覆盖升级
 
 ```bash
-cp -a Palworld-Panel-Patches-upgrade-v0.9.0-to-v0.10.0/. /path/to/Palworld-Panel-Patches/
+cp -a Palworld-Panel-Patches-upgrade-v0.10.0-to-v0.10.1/. /path/to/Palworld-Panel-Patches/
 cd /path/to/Palworld-Panel-Patches
 bash common/scripts/validate-repository.sh
 ```
 
-提交后先运行 Build，再运行 Release。
+提交后重新运行 Build；Build 通过后再运行 Release。
 
 ```text
 补丁版本：0.7.0-dev.1
 Release tag：uitok-dev-v1.2.2-p0.7.0-dev.1
-新增 feature：base-feed-box-summary
+features：不变
 ```
 
-部署脚本若已按当前 PalPanel 版本自动选择最高兼容 dev 补丁，并以 required-features 子集方式验收，则不需要修改下载或安装模块。只有需要强制要求 `base-feed-box-summary` 存在时，才将它加入启动脚本的必需 feature 列表。
+失败的 Release 没有创建不可变标签，因此无需修改功能补丁版本。启动脚本无需更新。
