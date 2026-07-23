@@ -10,14 +10,15 @@ target: v1.2.2
 compatibility: source-alias, verified=false
 ```
 
-## Patch 0.3.2-dev.1
+## Patch 0.4.0-dev.1
 
-This version contains three features:
+This version contains four features:
 
 ```text
 patch-info-api
 base-custom-names
 base-storage-browser
+player-notes
 ```
 
 ### Patch information
@@ -26,7 +27,7 @@ base-storage-browser
 GET /api/patch/info
 ```
 
-The response reports patch version `0.3.2-dev.1` and all feature identifiers.
+The response reports patch version `0.4.0-dev.1` and all feature identifiers.
 
 ### Persistent custom base names
 
@@ -72,6 +73,29 @@ Behavior:
 - Resolves both directly owned base containers and map-object containers linked through the base container list.
 - Does not mutate containers or save files.
 
+### Player notes and tags
+
+```http
+PUT /api/players/{id}/annotation
+Content-Type: application/json
+
+{"note":"负责建筑规划","tags":["建筑师","活跃"]}
+```
+
+```http
+DELETE /api/players/{id}/annotation
+```
+
+Behavior:
+
+- Requires `players:write` permission.
+- Stores notes and tags in the PalPanel SQLite KV table.
+- Isolates annotations by save-source ID.
+- Supports up to 500 Unicode characters in the note.
+- Supports up to 8 tags, each limited to 24 Unicode characters.
+- Adds note and tag search to the player list.
+- Does not modify player `.sav` files.
+
 ## Patch sequence
 
 ```text
@@ -80,6 +104,7 @@ Behavior:
 0003-add-base-storage-browser.patch
 0004-fix-base-storage-container-resolution.patch
 0005-enhance-base-storage-display.patch
+0006-add-player-notes.patch
 ```
 
 All patches are applied in lexical order and verified against `source/SHA256SUMS` before build.

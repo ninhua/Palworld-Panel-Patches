@@ -13,5 +13,5 @@
   },
   "probe_artifact": "uitok-dev-probe-5e3c0bce9d33",
   "notes": "Source locked from the dev branch probe. Patch adds metadata, base custom names, and a read-only base storage browser with base-linked container resolution, localized container names, and bundled item icons; compatibility target v1.2.2 remains unverified.",
-  "patch_version": "0.3.2-dev.1"
+  "patch_version": "0.4.0-dev.1"
 }

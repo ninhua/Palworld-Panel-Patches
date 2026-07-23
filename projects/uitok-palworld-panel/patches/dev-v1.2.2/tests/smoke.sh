@@ -102,7 +102,7 @@ assert payload["compatibility"] == {
 assert payload["patch"]["version"] == expected_patch_version
 assert payload["patch"]["repository"] == "ninhua/Palworld-Panel-Patches"
 features = payload["patch"].get("features", [])
-required_features = {"patch-info-api", "base-custom-names", "base-storage-browser"}
+required_features = {"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes"}
 assert required_features.issubset(set(features)), (required_features, features)
 assert payload["build"]["commit"] == expected_commit
 print(json.dumps(data, ensure_ascii=False, indent=2))

@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.6.3`
+仓库版本：`v0.7.0`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -12,7 +12,7 @@
 源码分支：dev
 源码提交：5e3c0bce9d33091b3261f82b3e4da062fc35a8a1
 兼容目标：v1.2.2
-补丁版本：0.3.2-dev.1
+补丁版本：0.4.0-dev.1
 兼容状态：source-alias / verified=false
 ```
 
@@ -22,6 +22,7 @@
 patch-info-api
 base-custom-names
 base-storage-browser
+player-notes
 ```
 
 `base-custom-names` 提供：
@@ -54,6 +55,23 @@ DELETE /api/bases/{id}/name
 - 调用只读 `GET /api/bases/{id}/storage`，并兼容通过基地 `containers` 关联的地图对象容器；
 - 不写入存档。
 
+`player-notes` 提供：
+
+- 在玩家详情中保存最多 500 字的管理备注；
+- 为玩家添加最多 8 个标签，每个标签最多 24 个字符；
+- 玩家列表显示标签，移动端卡片显示备注摘要；
+- 玩家搜索支持备注和标签；
+- 数据按存档源隔离并持久化在 PalPanel SQLite KV 中；
+- 写操作要求 `players:write` 权限；
+- 不修改 Palworld 玩家存档。
+
+API：
+
+```http
+PUT /api/players/{id}/annotation
+DELETE /api/players/{id}/annotation
+```
+
 ## 补丁结构
 
 ```text
@@ -66,6 +84,7 @@ projects/uitok-palworld-panel/patches/dev-v1.2.2/
 │   ├── 0003-add-base-storage-browser.patch
 │   ├── 0004-fix-base-storage-container-resolution.patch
 │   ├── 0005-enhance-base-storage-display.patch
+│   ├── 0006-add-player-notes.patch
 │   └── SHA256SUMS
 ├── build/
 │   ├── build.sh
@@ -90,7 +109,7 @@ Actions
 预期 Artifact：
 
 ```text
-uitok-dev-v1.2.2-patch-0.3.2-dev.1-5e3c0bce9d33
+uitok-dev-v1.2.2-patch-0.4.0-dev.1-5e3c0bce9d33
 ```
 
 Artifact 包含二进制安装包、完整对应源码、manifest、全部补丁、许可证、构建元数据、冒烟日志和 SHA-256。
@@ -106,7 +125,7 @@ Actions
 预期预发布标签：
 
 ```text
-uitok-dev-v1.2.2-p0.3.2-dev.1
+uitok-dev-v1.2.2-p0.4.0-dev.1
 ```
 
 Release 标签不可变；标签已存在时工作流应失败，不覆盖旧资产。

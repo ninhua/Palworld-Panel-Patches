@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "uitok-palworld-panel",
-  "patch_version": "0.3.2-dev.1",
+  "patch_version": "0.4.0-dev.1",
   "patch_type": "source-build",
   "upstream": {
     "repository": "uitok/palworld-panel",
@@ -26,7 +26,8 @@
   "features": [
     "patch-info-api",
     "base-custom-names",
-    "base-storage-browser"
+    "base-storage-browser",
+    "player-notes"
   ],
-  "notes": "Adds patch metadata, persistent save-source-scoped custom base names, and a read-only base storage browser with base-linked map-object container resolution, localized container names, and bundled item icons, without modifying Palworld save files."
+  "notes": "Adds patch metadata, persistent save-source-scoped custom base names, a read-only base storage browser with localized container names and bundled item icons, and save-source-scoped player notes and tags, without modifying Palworld save files."
 }

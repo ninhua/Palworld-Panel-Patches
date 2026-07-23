@@ -38,6 +38,21 @@ features:
       - frontend/src/types/index.ts
     notes: Uses the target project's read-only base storage endpoint, resolves map-object containers linked by the base record, enriches them with localized container names and bundled item icons, and adds an independent browser UI; no source code is copied from the reference repository and no save data is modified.
 
+  - id: player-notes
+    reference_label: 玩家备注与标签
+    status: implemented-independently
+    patch_version: 0.4.0-dev.1
+    implementation: behavior-reimplementation
+    source_paths: []
+    target_paths:
+      - backend/internal/api/player_annotations.go
+      - backend/internal/api/save_index.go
+      - backend/internal/api/routes.go
+      - frontend/src/api/players.ts
+      - frontend/src/pages/Players.tsx
+      - frontend/src/types/index.ts
+    notes: Stores save-source-scoped management notes and tags in PalPanel KV storage, supports search and permission-gated editing, copies no source code from the reference repository, and does not modify player save files.
+
   - id: player-summary
     status: planned
     implementation: not-decided

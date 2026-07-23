@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.7.0
+
+### Added
+
+- 新增独立实现的 `player-notes` 顶级功能。
+- 新增 `PUT /api/players/{id}/annotation` 与 `DELETE /api/players/{id}/annotation`。
+- 玩家详情增加管理备注编辑、标签编辑和清除操作。
+- 玩家列表显示标签，移动端卡片显示备注摘要。
+- 玩家搜索支持匹配备注和标签。
+- 备注最多 500 个 Unicode 字符；标签最多 8 个，每个最多 24 个字符。
+- 注释数据按存档源隔离并持久化在 PalPanel SQLite KV 中。
+- 写操作要求 `players:write` 权限。
+- 补丁版本升级为 `0.4.0-dev.1`，预发布标签为 `uitok-dev-v1.2.2-p0.4.0-dev.1`。
+
+### Safety
+
+- 不修改 `Level.sav`、玩家 `.sav` 或任何游戏世界数据。
+- 顶级 features 现在为 `patch-info-api`、`base-custom-names`、`base-storage-browser`、`player-notes`。
+
+### Validation
+
+- 新增备注标准化、长度限制、标签去重、存档源隔离、搜索和权限回归测试。
+- OpenAPI 与生成的 TypeScript 契约同步更新。
+
 ## v0.6.3
 
 ### Enhanced

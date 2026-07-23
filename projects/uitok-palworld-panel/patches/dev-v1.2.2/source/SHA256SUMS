@@ -3,3 +3,4 @@ b833181d2532c8b639bdff5731a8efea6d60de4a235e34ac0473b98cadbfca46  0001-add-patch
 8ca7db28caef22fd9aa623ab82735d50ccc6d69e8a4986719f791c78236cebbb  0003-add-base-storage-browser.patch
 967c39a288084433664f22b7cf68c02cd3052c78d3a42be965d5ea57c47ef75f  0004-fix-base-storage-container-resolution.patch
 10070b79885c8b0cf6c6aed7f2549703a5b923048702a3ff13ddb1dd5674cd64  0005-enhance-base-storage-display.patch
+57dc1d07e0ea93eae5eb85e6d2c871f27f609e384565772b9cd0b8dd8c6038be  0006-add-player-notes.patch
