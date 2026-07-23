@@ -1,3 +1,4 @@
 b833181d2532c8b639bdff5731a8efea6d60de4a235e34ac0473b98cadbfca46  0001-add-patch-info-api.patch
 4b7386af40482bfaab3644a8293f1dd60cd8b7ad06493d894ad6c495ac1daf89  0002-add-base-custom-names.patch
 8ca7db28caef22fd9aa623ab82735d50ccc6d69e8a4986719f791c78236cebbb  0003-add-base-storage-browser.patch
+967c39a288084433664f22b7cf68c02cd3052c78d3a42be965d5ea57c47ef75f  0004-fix-base-storage-container-resolution.patch

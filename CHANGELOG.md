@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.2
+
+- 修复基地仓库接口只接受 `owner_type=base`，导致实际由地图对象承载的基地箱子无法返回。
+- `GET /api/bases/{id}/storage` 现在同时解析基地记录中的 `containers` 关联，并保留旧的直接 owner 匹配。
+- 新增回归测试，覆盖 `map_object` 容器、直接基地容器和无关容器过滤。
+- 功能补丁版本升级为 `0.3.1-dev.1`，预发布标签为 `uitok-dev-v1.2.2-p0.3.1-dev.1`。
+
 ## v0.6.1
 
 ### Fixed

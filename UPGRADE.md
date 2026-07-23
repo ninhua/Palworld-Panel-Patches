@@ -1,29 +1,20 @@
-# Upgrade v0.6.0 → v0.6.1
+# Upgrade v0.6.1 → v0.6.2
 
-本修订只修复 Build/Release 的 `/api/patch/info` 冒烟断言。
+本次修复基地仓库接口返回空列表的问题。实际基地箱子常被存档索引标记为 `map_object`，并通过基地记录的 `containers` 数组关联；旧接口只检查 `owner_type == base`，因此遗漏这些容器。
 
-原错误要求功能数组精确等于两个旧功能，导致新增 `base-storage-browser` 后误判失败。修复后检查所需功能是否均存在，不依赖数组顺序，也允许未来增加其他功能。
-
-覆盖仓库：
+## 覆盖升级
 
 ```bash
-cp -a Palworld-Panel-Patches-upgrade-v0.6.0-to-v0.6.1/. /path/to/Palworld-Panel-Patches/
+cp -a Palworld-Panel-Patches-upgrade-v0.6.1-to-v0.6.2/. /path/to/Palworld-Panel-Patches/
 cd /path/to/Palworld-Panel-Patches
 bash common/scripts/validate-repository.sh
 ```
 
-提交：
-
-```bash
-git add .
-git commit -m "fix: accept storage feature in patch smoke test"
-git push origin main
-```
-
-重新运行：
+提交后先运行 Build，再运行 Release。
 
 ```text
-Actions → Build uitok dev patch → Run workflow
+补丁版本：0.3.1-dev.1
+Release tag：uitok-dev-v1.2.2-p0.3.1-dev.1
 ```
 
-Build 通过后再运行 Release。补丁版本仍为 `0.3.0-dev.1`。
+部署脚本需要把开发通道映射从 `0.3.0-dev.1` 更新到 `0.3.1-dev.1`，并重新读取新 Release 的安装包和二进制 SHA-256。

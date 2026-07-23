@@ -10,7 +10,7 @@ target: v1.2.2
 compatibility: source-alias, verified=false
 ```
 
-## Patch 0.3.0-dev.1
+## Patch 0.3.1-dev.1
 
 This version contains three features:
 
@@ -26,7 +26,7 @@ base-storage-browser
 GET /api/patch/info
 ```
 
-The response reports patch version `0.3.0-dev.1` and all feature identifiers.
+The response reports patch version `0.3.1-dev.1` and all feature identifiers.
 
 ### Persistent custom base names
 
@@ -67,6 +67,7 @@ Behavior:
 - Supports search by localized item name or internal item ID.
 - Groups occupied slots by container and shows slot, quantity, and durability when available.
 - Displays stale-index warnings and retry handling.
+- Resolves both directly owned base containers and map-object containers linked through the base container list.
 - Does not mutate containers or save files.
 
 ## Patch sequence
@@ -75,6 +76,7 @@ Behavior:
 0001-add-patch-info-api.patch
 0002-add-base-custom-names.patch
 0003-add-base-storage-browser.patch
+0004-fix-base-storage-container-resolution.patch
 ```
 
 All patches are applied in lexical order and verified against `source/SHA256SUMS` before build.
