@@ -1,8 +1,9 @@
 # Palworld Panel Patches
 
-骨架版本：`v0.4.2`
+仓库版本：`v0.5.0`
 
-用于维护 Palworld 面板源码补丁、Jiaayu 功能移植记录，以及 Host Wine AIO 兼容接入代码。
+用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
+一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
 
 ## 当前开发基线
 
@@ -11,11 +12,36 @@
 源码分支：dev
 源码提交：5e3c0bce9d33091b3261f82b3e4da062fc35a8a1
 兼容目标：v1.2.2
-补丁版本：0.1.0-dev.1
-首个功能：patch-info-api
+补丁版本：0.2.0-dev.1
+兼容状态：source-alias / verified=false
 ```
 
-## 当前真实补丁
+## 当前功能
+
+```text
+patch-info-api
+base-custom-names
+```
+
+`base-custom-names` 提供：
+
+- 基地列表与详情返回自定义名称元数据；
+- 按自定义名称搜索；
+- 基地页面编辑名称和恢复原名；
+- SQLite 持久化；
+- 按当前存档源隔离；
+- 不修改 Palworld `.sav` 文件。
+
+API：
+
+```http
+PUT /api/bases/{id}/name
+DELETE /api/bases/{id}/name
+```
+
+写操作要求 `server:control` 权限。
+
+## 补丁结构
 
 ```text
 projects/uitok-palworld-panel/patches/dev-v1.2.2/
@@ -23,27 +49,21 @@ projects/uitok-palworld-panel/patches/dev-v1.2.2/
 ├── manifest.template.json
 ├── source/
 │   ├── 0001-add-patch-info-api.patch
+│   ├── 0002-add-base-custom-names.patch
 │   └── SHA256SUMS
 ├── build/
 │   ├── build.sh
 │   └── build-palpanel.sh
 ├── tests/
-│   └── smoke.sh
+│   ├── smoke.sh
+│   └── test-relative-output-path.sh
 ├── LICENSE
 └── LICENSE-NOTICE.md
 ```
 
-补丁新增公开接口：
-
-```http
-GET /api/patch/info
-```
-
-该接口返回上游仓库、源码分支、源码 commit、兼容目标、补丁版本、功能列表和构建信息。
+构建脚本按文件名顺序应用全部 `source/*.patch`，并先校验 `source/SHA256SUMS`。
 
 ## 构建
-
-在 GitHub 仓库中运行：
 
 ```text
 Actions
@@ -51,33 +71,15 @@ Actions
 → Run workflow
 ```
 
-成功后下载：
+预期 Artifact：
 
 ```text
-uitok-dev-v1.2.2-patch-0.1.0-dev.1-5e3c0bce9d33
+uitok-dev-v1.2.2-patch-0.2.0-dev.1-5e3c0bce9d33
 ```
 
-Artifact 包含：
+Artifact 包含二进制安装包、完整对应源码、manifest、全部补丁、许可证、构建元数据、冒烟日志和 SHA-256。
 
-- 原版和补丁版二进制 SHA-256；
-- 可安装 overlay；
-- 最终 `manifest.json`；
-- 对应源码 patch；
-- 完整补丁后源码归档；
-- GPL-3.0 许可证；
-- API 冒烟测试结果。
-
-## 本地仓库验证
-
-```bash
-python3 -m pip install -r requirements-ci.txt
-bash common/scripts/validate-repository.sh
-```
-
-
-## 发布补丁
-
-在 GitHub 仓库中运行：
+## 发布
 
 ```text
 Actions
@@ -85,35 +87,19 @@ Actions
 → Run workflow
 ```
 
-工作流会重新执行完整构建和冒烟测试，然后创建或更新预发布：
+预期预发布标签：
 
 ```text
-uitok-dev-v1.2.2-p0.1.0-dev.1
+uitok-dev-v1.2.2-p0.2.0-dev.1
 ```
 
-Release 中的 `SHA256SUMS` 是 Host Wine AIO 下载补丁时的远程完整性依据。
+Release 标签不可变；标签已存在时工作流应失败，不覆盖旧资产。
 
-## Host Wine AIO
-
-已提供：
-
-```text
-projects/host-wine-aio/scripts/linux-palworld-oneclick-v1.0.40.sh
-```
-
-默认行为：
-
-- 对面板 `v1.2.1` 和 `v1.2.2` 启用当前开发补丁；
-- 下载固定预发布及其 `SHA256SUMS`；
-- 校验外层压缩包、内部 checksums、manifest 和补丁二进制；
-- 原子替换 `app/bin/palpanel`；
-- 保存原版二进制备份；
-- 记录功能补丁 SHA 和后续运行时 URL 补丁 SHA；
-- 下载或安装失败时默认继续使用原版；
-- 设置 `PALWORLD_LINUX_PANEL_PATCH_REQUIRED=1` 可改为强制补丁模式。
-
-本地测试可设置：
+## 验证
 
 ```bash
-PALWORLD_LINUX_PANEL_PATCH_FILE=/path/to/uitok-palworld-panel_dev-5e3c0bce9d33_target-v1.2.2_patch-0.1.0-dev.1_linux-amd64.tar.gz
+python3 -m pip install -r requirements-ci.txt
+bash common/scripts/validate-repository.sh
 ```
+
+完整 Go、前端和二进制冒烟测试在 GitHub Actions 的 Go 1.25.12 / Node 22 环境执行。

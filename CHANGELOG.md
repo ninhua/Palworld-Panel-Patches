@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.5.0
+
+### Added
+
+- 新增独立实现的 `base-custom-names` 功能。
+- 新增 `PUT /api/bases/{id}/name` 与 `DELETE /api/bases/{id}/name`。
+- 自定义名称持久化到 PalPanel SQLite KV，并按活动存档源隔离。
+- 基地列表、详情和搜索支持自定义名称，同时保留原始名称字段。
+- 基地前端页面增加编辑名称与恢复原名操作。
+- 新增后端持久化、隔离、校验和权限测试，以及前端 API 测试。
+- 补丁版本升级为 `0.2.0-dev.1`，功能列表增加 `base-custom-names`。
+- 构建脚本支持按顺序应用多个补丁并验证补丁 SHA-256。
+
+### Changed
+
+- 新预发布标签为 `uitok-dev-v1.2.2-p0.2.0-dev.1`。
+- Release 工作流不再覆盖已存在的同名标签。
+- 脚本集成代码不属于本次功能补丁交付范围。
+
+### Limitations
+
+- 仍基于固定 dev commit，兼容状态保持 `source-alias`、`verified=false`。
+- 本地环境缺少 Go 1.25.12 和完整依赖缓存，完整编译测试需由 GitHub Actions 执行。
+
 ## v0.4.2
 
 ### Added

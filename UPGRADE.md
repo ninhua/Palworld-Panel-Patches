@@ -1,50 +1,44 @@
-# Upgrade v0.4.1 → v0.4.2
+# Upgrade v0.4.2 → v0.5.0
 
 覆盖仓库：
 
 ```bash
-cp -a Palworld-Panel-Patches-upgrade-v0.4.1-to-v0.4.2/. /path/to/Palworld-Panel-Patches/
+cp -a Palworld-Panel-Patches-upgrade-v0.4.2-to-v0.5.0/. /path/to/Palworld-Panel-Patches/
 cd /path/to/Palworld-Panel-Patches
+```
 
+验证：
+
+```bash
+python3 -m pip install -r requirements-ci.txt
+bash common/scripts/validate-repository.sh
+```
+
+提交：
+
+```bash
 git add .
-git commit -m "feat: publish patch channel and host-wine integration"
+git commit -m "feat: add persistent base custom names"
 git push origin main
 ```
 
-先确认：
+构建：
 
 ```text
-Actions → Validate repository
-Repository validation passed.
-Relative output path regression test passed.
+Actions → Build uitok dev patch → Run workflow
 ```
 
-再发布固定预发布：
+发布：
 
 ```text
 Actions → Release uitok dev patch → Run workflow
 ```
 
-发布成功后应出现 Release：
+新标签：
 
 ```text
-uitok-dev-v1.2.2-p0.1.0-dev.1
+uitok-dev-v1.2.2-p0.2.0-dev.1
 ```
 
-最后将：
-
-```text
-projects/host-wine-aio/scripts/linux-palworld-oneclick-v1.0.40.sh
-```
-
-复制到：
-
-```text
-/home/container/linux-palworld-oneclick.sh
-```
-
-并赋权：
-
-```bash
-chmod +x /home/container/linux-palworld-oneclick.sh
-```
+此版本不会修改或替换旧的 `0.1.0-dev.1` Release。
+一键部署脚本应在新 Release 资产实际存在并验证后，再由其维护流程更新固定标签和期望字段。

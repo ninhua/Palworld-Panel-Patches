@@ -12,5 +12,6 @@
     "sha256": "e41151c620cc764564df15cafc4b65ecacfa1edc4b424df1ab299d030463a977"
   },
   "probe_artifact": "uitok-dev-probe-5e3c0bce9d33",
-  "notes": "Source locked from the dev branch probe. Compatibility target v1.2.2 remains unverified."
+  "notes": "Source locked from the dev branch probe. Patch adds metadata and base custom names; compatibility target v1.2.2 remains unverified.",
+  "patch_version": "0.2.0-dev.1"
 }

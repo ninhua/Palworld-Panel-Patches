@@ -9,43 +9,58 @@ usage() {
 
 [[ $# -eq 2 ]] || usage
 
-command -v realpath >/dev/null 2>&1 || {
-    echo "缺少构建命令：realpath" >&2
-    exit 1
-}
+for command in realpath python3 git go gofmt sha256sum tar; do
+    command -v "${command}" >/dev/null 2>&1 || {
+        echo "缺少构建命令：${command}" >&2
+        exit 1
+    }
+done
 
 upstream="$(cd "$1" && pwd)"
 output="$(realpath -m "$2")"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 patch_root="$(cd "${script_dir}/.." && pwd)"
-repo_root="$(cd "${patch_root}/../../../.." && pwd)"
 lock="${patch_root}/upstream-lock.json"
 manifest_template="${patch_root}/manifest.template.json"
-patch_file="${patch_root}/source/0001-add-patch-info-api.patch"
+patch_dir="${patch_root}/source"
 
-for path in "${lock}" "${manifest_template}" "${patch_file}"; do
+for path in "${lock}" "${manifest_template}" "${patch_dir}/SHA256SUMS"; do
     [[ -f "${path}" ]] || {
         echo "缺少文件：${path}" >&2
         exit 1
     }
 done
 
+mapfile -t patch_files < <(find "${patch_dir}" -maxdepth 1 -type f -name '*.patch' -print | LC_ALL=C sort)
+((${#patch_files[@]} > 0)) || {
+    echo "没有找到源码补丁：${patch_dir}" >&2
+    exit 1
+}
+
+(
+    cd "${patch_dir}"
+    sha256sum -c SHA256SUMS
+)
+
 mapfile -t lock_values < <(
-python3 - "${lock}" <<'PY'
+python3 - "${lock}" "${manifest_template}" <<'PY'
 from pathlib import Path
 import json
 import sys
 
-data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-print(data["source_commit"])
-print(data["source_commit_date"])
-print(data["target_version"])
+lock = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+manifest = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+print(lock["source_commit"])
+print(lock["source_commit_date"])
+print(lock["target_version"])
+print(manifest["patch_version"])
 PY
 )
 
 expected_commit="${lock_values[0]}"
 source_commit_date="${lock_values[1]}"
 target_version="${lock_values[2]}"
+patch_version="${lock_values[3]}"
 actual_commit="$(git -C "${upstream}" rev-parse HEAD)"
 
 [[ "${actual_commit}" == "${expected_commit}" ]] || {
@@ -75,20 +90,19 @@ patched="${output}/work/patched"
 cp -a "${upstream}" "${original}"
 cp -a "${upstream}" "${patched}"
 
-git -C "${patched}" apply --check "${patch_file}"
-git -C "${patched}" apply "${patch_file}"
+for patch_file in "${patch_files[@]}"; do
+    echo "Applying $(basename "${patch_file}")"
+    git -C "${patched}" apply --check "${patch_file}"
+    git -C "${patched}" apply "${patch_file}"
+done
 
-for go_file in \
-    backend/internal/api/patch_info.go \
-    backend/internal/api/patch_info_test.go \
-    backend/internal/api/routes.go \
-    backend/internal/api/router_contract_test.go; do
-    if [[ -n "$(gofmt -d "${patched}/${go_file}")" ]]; then
-        echo "Go 文件未通过 gofmt：${go_file}" >&2
-        gofmt -d "${patched}/${go_file}" >&2
+while IFS= read -r -d '' go_file; do
+    if [[ -n "$(gofmt -d "${go_file}")" ]]; then
+        echo "Go 文件未通过 gofmt：${go_file#"${patched}/"}" >&2
+        gofmt -d "${go_file}" >&2
         exit 1
     fi
-done
+done < <(find "${patched}/backend" -type f -name '*.go' -print0)
 
 generated="${patched}/frontend/src/api/generated/contracts.ts"
 generated_sha_before="$(sha256sum "${generated}" | awk '{print $1}')"
@@ -123,23 +137,25 @@ patched_binary="${output}/work/patched-palpanel"
 "${script_dir}/build-palpanel.sh" \
     "${patched}" \
     "${patched_binary}" \
-    "${target_version}-compat-p0.1.0-dev.1" \
+    "${target_version}-compat-p${patch_version}" \
     "${expected_commit}" \
     "${build_time}"
 
 "${patch_root}/tests/smoke.sh" \
     "${patched_binary}" \
     "${expected_commit}" \
+    "${patch_version}" \
     >"${output}/release/smoke-test.log" 2>&1
 
 original_sha="$(sha256sum "${original_binary}" | awk '{print $1}')"
 patched_sha="$(sha256sum "${patched_binary}" | awk '{print $1}')"
 
-package_name="uitok-palworld-panel_dev-${expected_commit:0:12}_target-${target_version}_patch-0.1.0-dev.1_linux-amd64"
+package_name="uitok-palworld-panel_dev-${expected_commit:0:12}_target-${target_version}_patch-${patch_version}_linux-amd64"
 package_dir="${output}/work/${package_name}"
 mkdir -p "${package_dir}/overlay/bin" "${package_dir}/source"
 cp "${patched_binary}" "${package_dir}/overlay/bin/palpanel"
-cp "${patch_file}" "${package_dir}/source/"
+cp "${patch_files[@]}" "${package_dir}/source/"
+cp "${patch_dir}/SHA256SUMS" "${package_dir}/source/SHA256SUMS"
 cp "${lock}" "${package_dir}/upstream-lock.json"
 cp "${patch_root}/LICENSE" "${package_dir}/LICENSE"
 cp "${patch_root}/LICENSE-NOTICE.md" "${package_dir}/LICENSE-NOTICE.md"
@@ -164,16 +180,20 @@ Path(output).write_text(
 )
 PY
 
-cat >"${package_dir}/SOURCE.md" <<EOF
-# Corresponding source
-
-Upstream repository: uitok/palworld-panel
-Source ref: dev
-Source commit: ${expected_commit}
-Patch: source/0001-add-patch-info-api.patch
-
-The workflow artifact also contains a complete patched source archive.
-EOF
+{
+    echo "# Corresponding source"
+    echo
+    echo "Upstream repository: uitok/palworld-panel"
+    echo "Source ref: dev"
+    echo "Source commit: ${expected_commit}"
+    echo "Patch version: ${patch_version}"
+    echo "Patches:"
+    for patch_file in "${patch_files[@]}"; do
+        echo "- source/$(basename "${patch_file}")"
+    done
+    echo
+    echo "The workflow artifact also contains a complete patched source archive."
+} >"${package_dir}/SOURCE.md"
 
 (
     cd "${package_dir}"
@@ -199,7 +219,7 @@ rm -rf \
     "${patched}/backend/internal/webui/embedded/"*
 touch "${patched}/backend/internal/webui/embedded/.keep"
 
-source_name="uitok-palworld-panel_dev-${expected_commit:0:12}_patch-0.1.0-dev.1_source"
+source_name="uitok-palworld-panel_dev-${expected_commit:0:12}_patch-${patch_version}_source"
 source_archive="${output}/release/${source_name}.tar.gz"
 tar \
     --exclude='.git' \
@@ -216,7 +236,8 @@ tar \
 
 cp "${package_dir}/manifest.json" "${output}/release/manifest.json"
 cp "${lock}" "${output}/release/upstream-lock.json"
-cp "${patch_file}" "${output}/release/0001-add-patch-info-api.patch"
+cp "${patch_files[@]}" "${output}/release/"
+cp "${patch_dir}/SHA256SUMS" "${output}/release/PATCH-SHA256SUMS"
 cp "${patch_root}/LICENSE" "${output}/release/LICENSE"
 cp "${patch_root}/LICENSE-NOTICE.md" "${output}/release/LICENSE-NOTICE.md"
 
@@ -224,6 +245,8 @@ python3 - \
     "${output}/release/build-metadata.json" \
     "${expected_commit}" \
     "${build_time}" \
+    "${target_version}" \
+    "${patch_version}" \
     "${original_sha}" \
     "${patched_sha}" \
     "$(basename "${archive}")" \
@@ -236,6 +259,8 @@ import sys
     output,
     commit,
     build_time,
+    target_version,
+    patch_version,
     original_sha,
     patched_sha,
     archive,
@@ -246,8 +271,8 @@ payload = {
     "schema_version": 1,
     "source_commit": commit,
     "build_time": build_time,
-    "target_version": "v1.2.2",
-    "patch_version": "0.1.0-dev.1",
+    "target_version": target_version,
+    "patch_version": patch_version,
     "original_palpanel_sha256": original_sha,
     "patched_palpanel_sha256": patched_sha,
     "binary_package": archive,

@@ -3,14 +3,15 @@ set -Eeuo pipefail
 umask 077
 
 usage() {
-    echo "用法：$0 <palpanel二进制> <期望commit>" >&2
+    echo "用法：$0 <palpanel二进制> <期望commit> <期望补丁版本>" >&2
     exit 2
 }
 
-[[ $# -eq 2 ]] || usage
+[[ $# -eq 3 ]] || usage
 
 binary="$(realpath "$1")"
 expected_commit="$2"
+expected_patch_version="$3"
 
 [[ -x "${binary}" ]] || {
     echo "二进制不可执行：${binary}" >&2
@@ -20,6 +21,10 @@ expected_commit="$2"
 version_output="$("${binary}" --version)"
 grep -F "${expected_commit}" <<<"${version_output}" >/dev/null || {
     echo "版本输出中没有期望 commit：${version_output}" >&2
+    exit 1
+}
+grep -F "${expected_patch_version}" <<<"${version_output}" >/dev/null || {
+    echo "版本输出中没有期望补丁版本：${version_output}" >&2
     exit 1
 }
 
@@ -76,13 +81,14 @@ done
     exit 1
 }
 
-python3 - "${response}" "${expected_commit}" <<'PY'
+python3 - "${response}" "${expected_commit}" "${expected_patch_version}" <<'PY'
 from pathlib import Path
 import json
 import sys
 
 data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 expected_commit = sys.argv[2]
+expected_patch_version = sys.argv[3]
 
 assert data["ok"] is True
 payload = data["data"]
@@ -93,9 +99,9 @@ assert payload["compatibility"] == {
     "target_version": "v1.2.2",
     "verified": False,
 }
-assert payload["patch"]["version"] == "0.1.0-dev.1"
+assert payload["patch"]["version"] == expected_patch_version
 assert payload["patch"]["repository"] == "ninhua/Palworld-Panel-Patches"
-assert payload["patch"]["features"] == ["patch-info-api"]
+assert payload["patch"]["features"] == ["patch-info-api", "base-custom-names"]
 assert payload["build"]["commit"] == expected_commit
 print(json.dumps(data, ensure_ascii=False, indent=2))
 PY

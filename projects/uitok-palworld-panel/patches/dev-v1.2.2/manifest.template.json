@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "uitok-palworld-panel",
-  "patch_version": "0.1.0-dev.1",
+  "patch_version": "0.2.0-dev.1",
   "patch_type": "source-build",
   "upstream": {
     "repository": "uitok/palworld-panel",
@@ -24,7 +24,8 @@
     }
   },
   "features": [
-    "patch-info-api"
+    "patch-info-api",
+    "base-custom-names"
   ],
-  "notes": "The build workflow replaces SHA-256 placeholders and emits the final manifest.json."
+  "notes": "Adds patch metadata plus persistent, save-source-scoped custom base names without modifying Palworld save files."
 }

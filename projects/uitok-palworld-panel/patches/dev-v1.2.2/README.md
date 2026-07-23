@@ -7,58 +7,65 @@ repository: uitok/palworld-panel
 ref: dev
 commit: 5e3c0bce9d33091b3261f82b3e4da062fc35a8a1
 target: v1.2.2
+compatibility: source-alias, verified=false
 ```
 
-## Patch 0.1.0-dev.1
+## Patch 0.2.0-dev.1
 
-新增：
+This version contains two features:
+
+```text
+patch-info-api
+base-custom-names
+```
+
+### Patch information
 
 ```http
 GET /api/patch/info
 ```
 
-返回示例：
+The response reports patch version `0.2.0-dev.1` and both feature identifiers.
 
-```json
-{
-  "ok": true,
-  "data": {
-    "upstream": {
-      "repository": "uitok/palworld-panel",
-      "ref": "dev",
-      "commit": "5e3c0bce9d33091b3261f82b3e4da062fc35a8a1"
-    },
-    "compatibility": {
-      "target_version": "v1.2.2",
-      "verified": false
-    },
-    "patch": {
-      "version": "0.1.0-dev.1",
-      "repository": "ninhua/Palworld-Panel-Patches",
-      "features": ["patch-info-api"]
-    },
-    "build": {
-      "version": "v1.2.2-compat-p0.1.0-dev.1",
-      "commit": "5e3c0bce9d33091b3261f82b3e4da062fc35a8a1",
-      "build_time": "2026-07-23T09:13:44Z"
-    }
-  }
-}
+### Persistent custom base names
+
+```http
+PUT /api/bases/{id}/name
+Content-Type: application/json
+
+{"name":"北境制造中心"}
 ```
+
+```http
+DELETE /api/bases/{id}/name
+```
+
+Behavior:
+
+- Requires `server:control` permission.
+- Stores names in the PalPanel SQLite KV table.
+- Does not modify `Level.sav` or any player save.
+- Isolates names by active save-source ID.
+- Returns `name`, `raw_name`, `custom_name`, and `has_custom_name` in base list/detail data.
+- Allows base search to match the custom name.
+- Adds edit and restore-original-name controls to the base page.
+- Limits custom names to 64 Unicode characters.
+
+## Patch sequence
+
+```text
+0001-add-patch-info-api.patch
+0002-add-base-custom-names.patch
+```
+
+Both patches are applied in lexical order and verified against `source/SHA256SUMS` before build.
 
 ## Build scope
 
-本补丁只构建：
+The patch only rebuilds:
 
 ```text
 bin/palpanel
 ```
 
-不会重复构建：
-
-```text
-bin/sav-cli
-bin/palcalc-bridge
-```
-
-现有 AIO 可继续使用原来的两个侧车。
+It does not rebuild `sav-cli` or `palcalc-bridge`.
