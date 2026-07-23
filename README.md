@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-骨架版本：`v0.4.1`
+骨架版本：`v0.4.2`
 
 用于维护 Palworld 面板源码补丁、Jiaayu 功能移植记录，以及 Host Wine AIO 兼容接入代码。
 
@@ -72,4 +72,48 @@ Artifact 包含：
 ```bash
 python3 -m pip install -r requirements-ci.txt
 bash common/scripts/validate-repository.sh
+```
+
+
+## 发布补丁
+
+在 GitHub 仓库中运行：
+
+```text
+Actions
+→ Release uitok dev patch
+→ Run workflow
+```
+
+工作流会重新执行完整构建和冒烟测试，然后创建或更新预发布：
+
+```text
+uitok-dev-v1.2.2-p0.1.0-dev.1
+```
+
+Release 中的 `SHA256SUMS` 是 Host Wine AIO 下载补丁时的远程完整性依据。
+
+## Host Wine AIO
+
+已提供：
+
+```text
+projects/host-wine-aio/scripts/linux-palworld-oneclick-v1.0.40.sh
+```
+
+默认行为：
+
+- 对面板 `v1.2.1` 和 `v1.2.2` 启用当前开发补丁；
+- 下载固定预发布及其 `SHA256SUMS`；
+- 校验外层压缩包、内部 checksums、manifest 和补丁二进制；
+- 原子替换 `app/bin/palpanel`；
+- 保存原版二进制备份；
+- 记录功能补丁 SHA 和后续运行时 URL 补丁 SHA；
+- 下载或安装失败时默认继续使用原版；
+- 设置 `PALWORLD_LINUX_PANEL_PATCH_REQUIRED=1` 可改为强制补丁模式。
+
+本地测试可设置：
+
+```bash
+PALWORLD_LINUX_PANEL_PATCH_FILE=/path/to/uitok-palworld-panel_dev-5e3c0bce9d33_target-v1.2.2_patch-0.1.0-dev.1_linux-amd64.tar.gz
 ```

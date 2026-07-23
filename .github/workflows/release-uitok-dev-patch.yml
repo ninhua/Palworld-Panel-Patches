@@ -1,0 +1,164 @@
+name: Release uitok dev patch
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-uitok-dev-v1.2.2-p0.1.0-dev.1
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      RELEASE_TAG: uitok-dev-v1.2.2-p0.1.0-dev.1
+      RELEASE_TITLE: uitok dev → v1.2.2 patch 0.1.0-dev.1
+
+    steps:
+      - name: Checkout patch repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Checkout locked upstream source
+        uses: actions/checkout@v6
+        with:
+          repository: uitok/palworld-panel
+          ref: 5e3c0bce9d33091b3261f82b3e4da062fc35a8a1
+          path: .work/upstream
+          fetch-depth: 1
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.25.12"
+          cache-dependency-path: .work/upstream/backend/go.sum
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: .work/upstream/frontend/package-lock.json
+
+      - name: Build and test patch
+        run: |
+          bash projects/uitok-palworld-panel/patches/dev-v1.2.2/build/build.sh \
+            .work/upstream \
+            .work/output
+
+      - name: Verify release files
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd .work/output/release
+          sha256sum -c SHA256SUMS
+
+          test -s manifest.json
+          test -s build-metadata.json
+          test -s smoke-test.log
+          grep -Fq "Patch API smoke test passed." smoke-test.log
+
+          binary_package="$(
+            python3 -c \
+              'import json; print(json.load(open("build-metadata.json"))["binary_package"])'
+          )"
+          source_package="$(
+            python3 -c \
+              'import json; print(json.load(open("build-metadata.json"))["source_package"])'
+          )"
+
+          test -s "${binary_package}"
+          test -s "${source_package}"
+          tar -tzf "${binary_package}" >/dev/null
+          tar -tzf "${source_package}" >/dev/null
+
+      - name: Create release notes
+        shell: bash
+        run: |
+          cat > .work/release-notes.md <<'EOF'
+          ## uitok dev → v1.2.2 compatibility patch
+
+          Source:
+
+          - Repository: `uitok/palworld-panel`
+          - Ref: `dev`
+          - Commit: `5e3c0bce9d33091b3261f82b3e4da062fc35a8a1`
+
+          Patch:
+
+          - Version: `0.1.0-dev.1`
+          - Compatibility target: `v1.2.2`
+          - Exact compatibility verified: `false`
+          - Feature: `GET /api/patch/info`
+
+          This prerelease includes the Linux amd64 binary overlay, complete
+          corresponding source archive, source patch, manifest, license files,
+          smoke-test log, build metadata, and SHA-256 checksums.
+
+          Host Wine AIO may also apply this development patch to `v1.2.1`
+          as a temporary compatibility proxy. It must not be treated as an
+          exact official v1.2.2 rebuild.
+          EOF
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: uitok-dev-v1.2.2-patch-0.1.0-dev.1-5e3c0bce9d33
+          path: .work/output/release/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Create or update GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if gh release view "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1
+          then
+              gh release upload "${RELEASE_TAG}" \
+                  .work/output/release/* \
+                  --clobber \
+                  --repo "${GITHUB_REPOSITORY}"
+
+              gh release edit "${RELEASE_TAG}" \
+                  --title "${RELEASE_TITLE}" \
+                  --notes-file .work/release-notes.md \
+                  --prerelease \
+                  --repo "${GITHUB_REPOSITORY}"
+          else
+              gh release create "${RELEASE_TAG}" \
+                  .work/output/release/* \
+                  --target "${GITHUB_SHA}" \
+                  --title "${RELEASE_TITLE}" \
+                  --notes-file .work/release-notes.md \
+                  --prerelease \
+                  --repo "${GITHUB_REPOSITORY}"
+          fi
+
+      - name: Write job summary
+        shell: bash
+        run: |
+          {
+            echo "## Patch prerelease published"
+            echo
+            echo "- Tag: \`${RELEASE_TAG}\`"
+            echo "- Source commit: \`5e3c0bce9d33091b3261f82b3e4da062fc35a8a1\`"
+            echo "- Patch: \`0.1.0-dev.1\`"
+            echo "- Target: \`v1.2.2\`"
+            echo
+            echo '```json'
+            cat .work/output/release/build-metadata.json
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"

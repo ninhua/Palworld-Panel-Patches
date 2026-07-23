@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.4.2
+
+### Added
+
+- 新增 `Release uitok dev patch` 手动发布工作流。
+- 构建通过后自动创建或更新固定 GitHub 预发布。
+- Release 同时发布二进制包、完整对应源码、manifest、补丁、许可证、冒烟日志和 `SHA256SUMS`。
+- 新增 Host Wine AIO `v1.0.40` 完整脚本。
+- 新增固定补丁通道元数据 `patch-channel.json`。
+- AIO 支持远程 Release 下载以及本地补丁包测试。
+- AIO 对补丁包执行外层、内层、manifest 和二进制四层校验。
+- AIO 支持原子替换、原版备份、状态记录和失败放行。
+- AIO 记录功能补丁后二进制 SHA 与 PalDefender URL 运行时补丁后的最终 SHA。
+
+### Compatibility
+
+- 当前允许面板版本：`v1.2.1,v1.2.2`。
+- 补丁源码：`uitok/palworld-panel:dev@5e3c0bce9d33091b3261f82b3e4da062fc35a8a1`。
+- 兼容目标仍为未精确验证的 `v1.2.2`。
+
 ## v0.4.1
 
 ### Fixed
