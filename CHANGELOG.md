@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.10.0
+
+### Added
+
+- 新增独立实现的 `base-feed-box-summary` 顶级功能。
+- 新增只读接口 `GET /api/bases/{id}/feed-boxes`。
+- 基地页面增加桌面端苹果图标与移动端“饲料箱”入口。
+- 只识别普通饲料箱和低温保鲜饲料箱，不把普通仓库或冰箱误算为饲料箱。
+- 汇总相同物品在多个饲料箱中的总数量与分布箱数，并保留按箱查看。
+- 新增饲料箱数、空箱数、占用格、物品种类和物品总量统计。
+- 支持按物品名称、内部 ID、饲料箱名称、类型或容器 ID 搜索。
+- 补丁版本升级为 `0.7.0-dev.1`，预发布标签为 `uitok-dev-v1.2.2-p0.7.0-dev.1`。
+
+### Safety
+
+- 只读取锁定存档索引中的容器与槽位数据，不修改容器或 Palworld 存档。
+- 不推断食物保质期、腐败时间、营养值或其他当前索引未提供的数据。
+- 顶级 features 现在为 `patch-info-api`、`base-custom-names`、`base-storage-browser`、`player-notes`、`guild-detail-browser`、`base-worker-browser`、`base-feed-box-summary`。
+
+### Validation
+
+- 新增饲料箱类型过滤、跨箱聚合、空箱保留和普通仓库排除回归测试。
+- OpenAPI、生成的 TypeScript 契约和前端 API 映射测试同步更新。
+
 ## v0.9.0
 
 ### Added

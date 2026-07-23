@@ -10,9 +10,9 @@ target: v1.2.2
 compatibility: source-alias, verified=false
 ```
 
-## Patch 0.6.0-dev.1
+## Patch 0.7.0-dev.1
 
-This version contains six features:
+This version contains seven features:
 
 ```text
 patch-info-api
@@ -21,6 +21,7 @@ base-storage-browser
 player-notes
 guild-detail-browser
 base-worker-browser
+base-feed-box-summary
 ```
 
 ### Patch information
@@ -29,7 +30,7 @@ base-worker-browser
 GET /api/patch/info
 ```
 
-The response reports patch version `0.6.0-dev.1` and all feature identifiers.
+The response reports patch version `0.7.0-dev.1` and all feature identifiers.
 
 ### Persistent custom base names
 
@@ -129,6 +130,24 @@ Behavior:
 - Does not invent hunger, SAN, work suitability, or other fields absent from the locked save index.
 - Reads save-index data only and does not mutate Pal or base save data.
 
+
+### Read-only base feed-box summary
+
+```http
+GET /api/bases/{id}/feed-boxes
+```
+
+Behavior:
+
+- Adds a feed-box action to desktop base rows and mobile base cards.
+- Recognizes normal feed boxes and refrigerated feed boxes while excluding generic chests and refrigerators.
+- Aggregates identical items across feed boxes and reports total quantity and box distribution.
+- Shows feed-box count, empty-box count, occupied slots, distinct item types, and total item quantity.
+- Keeps per-box slot details and bundled item icons.
+- Supports search by item name, item ID, feed-box name, feed-box type, or container ID.
+- Does not infer spoilage, nutrition, freshness, or other fields absent from the locked save index.
+- Reads save-index data only and does not mutate containers or save files.
+
 ## Patch sequence
 
 ```text
@@ -140,6 +159,7 @@ Behavior:
 0006-add-player-notes.patch
 0007-add-guild-detail-browser.patch
 0008-add-base-worker-browser.patch
+0009-add-base-feed-box-summary.patch
 ```
 
 All patches are applied in lexical order and verified against `source/SHA256SUMS` before build.
