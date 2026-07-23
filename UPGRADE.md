@@ -1,25 +1,30 @@
-# Upgrade v0.2.1 → v0.2.2
+# Upgrade v0.2.2 → v0.2.3
 
-将本目录内容覆盖到仓库根目录：
+覆盖仓库根目录：
 
 ```bash
-cp -a Palworld-Panel-Patches-upgrade-v0.2.1-to-v0.2.2/. /path/to/Palworld-Panel-Patches/
+cp -a Palworld-Panel-Patches-upgrade-v0.2.2-to-v0.2.3/. /path/to/Palworld-Panel-Patches/
 cd /path/to/Palworld-Panel-Patches
 
 git add .
-git commit -m "fix: configure pip cache and target v1.2.2"
+git commit -m "fix: migrate actions to Node 24"
 git push origin main
 ```
 
-修复后的关键配置：
+关键 Action 版本：
 
 ```yaml
-- name: Set up Python
-  uses: actions/setup-python@v5
-  with:
-    python-version: "3.12"
-    cache: pip
-    cache-dependency-path: requirements-ci.txt
+uses: actions/checkout@v6
+uses: actions/setup-python@v6
 ```
 
-推送后重新查看 Actions。预期 `Validate repository` 通过。
+这两个版本原生使用 Node.js 24。
+
+## 临时版本映射
+
+开发时可以使用 v1.2.1 源码测试 v1.2.2，但不能把 `upstream.version`
+写成 v1.2.2。请使用新增目录：
+
+```text
+projects/uitok-palworld-panel/patches/v1.2.2-compat-v1.2.1/
+```
