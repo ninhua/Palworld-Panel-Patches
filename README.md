@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-骨架版本：`v0.4.0`
+骨架版本：`v0.4.1`
 
 用于维护 Palworld 面板源码补丁、Jiaayu 功能移植记录，以及 Host Wine AIO 兼容接入代码。
 

@@ -28,3 +28,7 @@ jobs:
 
       - name: Validate repository
         run: bash common/scripts/validate-repository.sh
+
+      - name: Test relative build output path
+        run: |
+          bash projects/uitok-palworld-panel/patches/dev-v1.2.2/tests/test-relative-output-path.sh

@@ -9,8 +9,13 @@ usage() {
 
 [[ $# -eq 2 ]] || usage
 
+command -v realpath >/dev/null 2>&1 || {
+    echo "缺少构建命令：realpath" >&2
+    exit 1
+}
+
 upstream="$(cd "$1" && pwd)"
-output="$2"
+output="$(realpath -m "$2")"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 patch_root="$(cd "${script_dir}/.." && pwd)"
 repo_root="$(cd "${patch_root}/../../../.." && pwd)"
