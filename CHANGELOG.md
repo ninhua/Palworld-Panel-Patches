@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.6.1
+
+### Fixed
+
+- 修复 `tests/smoke.sh` 仍精确要求旧功能数组，导致 `base-storage-browser` 已构建成功后冒烟测试误判失败。
+- 冒烟测试改为检查所需功能集合是否包含 `patch-info-api`、`base-custom-names` 和 `base-storage-browser`，不依赖数组顺序，也不限制未来增加额外功能。
+- 功能补丁版本保持 `0.3.0-dev.1`，预发布标签保持 `uitok-dev-v1.2.2-p0.3.0-dev.1`。
+
 ## v0.6.0
 
 ### Added

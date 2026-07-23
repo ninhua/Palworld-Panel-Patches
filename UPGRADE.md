@@ -1,18 +1,14 @@
-# Upgrade v0.5.1 → v0.6.0
+# Upgrade v0.6.0 → v0.6.1
 
-本版本新增只读的基地仓库浏览功能，并将补丁版本升级到 `0.3.0-dev.1`。
+本修订只修复 Build/Release 的 `/api/patch/info` 冒烟断言。
+
+原错误要求功能数组精确等于两个旧功能，导致新增 `base-storage-browser` 后误判失败。修复后检查所需功能是否均存在，不依赖数组顺序，也允许未来增加其他功能。
 
 覆盖仓库：
 
 ```bash
-cp -a Palworld-Panel-Patches-upgrade-v0.5.1-to-v0.6.0/. /path/to/Palworld-Panel-Patches/
+cp -a Palworld-Panel-Patches-upgrade-v0.6.0-to-v0.6.1/. /path/to/Palworld-Panel-Patches/
 cd /path/to/Palworld-Panel-Patches
-```
-
-验证：
-
-```bash
-python3 -m pip install -r requirements-ci.txt
 bash common/scripts/validate-repository.sh
 ```
 
@@ -20,32 +16,14 @@ bash common/scripts/validate-repository.sh
 
 ```bash
 git add .
-git commit -m "feat: add read-only base storage browser"
+git commit -m "fix: accept storage feature in patch smoke test"
 git push origin main
 ```
 
-先运行：
+重新运行：
 
 ```text
 Actions → Build uitok dev patch → Run workflow
 ```
 
-预期 Artifact：
-
-```text
-uitok-dev-v1.2.2-patch-0.3.0-dev.1-5e3c0bce9d33
-```
-
-Build 完整通过后再运行：
-
-```text
-Actions → Release uitok dev patch → Run workflow
-```
-
-预期标签：
-
-```text
-uitok-dev-v1.2.2-p0.3.0-dev.1
-```
-
-在新 Release 资产完成发布并验收前，部署脚本不要提前切换默认补丁版本。
+Build 通过后再运行 Release。补丁版本仍为 `0.3.0-dev.1`。
