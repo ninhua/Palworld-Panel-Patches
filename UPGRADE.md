@@ -1,26 +1,25 @@
-# Upgrade v0.2.0 → v0.2.1
+# Upgrade v0.2.1 → v0.2.2
 
-在仓库根目录执行：
+将本目录内容覆盖到仓库根目录：
 
 ```bash
-cp -a /path/to/Palworld-Panel-Patches-upgrade-v0.2.0-to-v0.2.1/. .
+cp -a Palworld-Panel-Patches-upgrade-v0.2.1-to-v0.2.2/. /path/to/Palworld-Panel-Patches/
+cd /path/to/Palworld-Panel-Patches
+
 git add .
-git commit -m "chore: upgrade scaffold to v0.2.1"
+git commit -m "fix: configure pip cache and target v1.2.2"
 git push origin main
 ```
 
-覆盖文件包括：
+修复后的关键配置：
 
-- VERSION、README、CHANGELOG；
-- JSON Schema；
-- CI 和本地验证脚本；
-- `.gitattributes`；
-- MIT LICENSE；
-- CI Python 依赖。
-
-升级后运行：
-
-```bash
-python3 -m pip install -r requirements-ci.txt
-bash common/scripts/validate-repository.sh
+```yaml
+- name: Set up Python
+  uses: actions/setup-python@v5
+  with:
+    python-version: "3.12"
+    cache: pip
+    cache-dependency-path: requirements-ci.txt
 ```
+
+推送后重新查看 Actions。预期 `Validate repository` 通过。
