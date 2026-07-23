@@ -1,3 +1,4 @@
+\
 #!/usr/bin/env bash
 set -Eeuo pipefail
 umask 022
@@ -35,9 +36,15 @@ overlay="${patch_dir%/}/overlay"
     exit 1
 }
 
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 work_parent="$(dirname "${app_dir}")"
 staging="${work_parent}/.$(basename "${app_dir}").patching.$$"
-rm -rf "${staging}"
+
+cleanup() {
+    rm -rf "${staging}"
+}
+trap cleanup EXIT
+
 cp -a "${app_dir}" "${staging}"
 
 python3 - "${manifest}" "${app_dir}" <<'PY'
@@ -84,10 +91,9 @@ for relative, metadata in manifest["files"].items():
         )
 PY
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-
 "${repo_root}/common/scripts/atomic-install.sh" \
     "${app_dir}" "${staging}" "${backup_dir}"
 
+trap - EXIT
 cp -f "${manifest}" "${app_dir}/.patch-manifest.json"
 echo "补丁应用完成：${manifest}"

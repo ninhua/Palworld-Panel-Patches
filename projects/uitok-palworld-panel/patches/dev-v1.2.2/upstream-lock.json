@@ -12,6 +12,6 @@
     "sha256": "e41151c620cc764564df15cafc4b65ecacfa1edc4b424df1ab299d030463a977"
   },
   "probe_artifact": "uitok-dev-probe-5e3c0bce9d33",
-  "notes": "Source locked from the dev branch probe. Patch adds metadata, base custom names, and a read-only base storage browser with base-linked container resolution; compatibility target v1.2.2 remains unverified.",
-  "patch_version": "0.3.1-dev.1"
+  "notes": "Source locked from the dev branch probe. Patch adds metadata, base custom names, and a read-only base storage browser with base-linked container resolution, localized container names, and bundled item icons; compatibility target v1.2.2 remains unverified.",
+  "patch_version": "0.3.2-dev.1"
 }

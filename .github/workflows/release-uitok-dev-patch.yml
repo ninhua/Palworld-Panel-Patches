@@ -7,7 +7,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-uitok-dev-v1.2.2-p0.3.1-dev.1
+  group: release-uitok-dev-v1.2.2-p0.3.2-dev.1
   cancel-in-progress: false
 
 jobs:
@@ -16,8 +16,8 @@ jobs:
     timeout-minutes: 60
 
     env:
-      RELEASE_TAG: uitok-dev-v1.2.2-p0.3.1-dev.1
-      RELEASE_TITLE: uitok dev → v1.2.2 patch 0.3.1-dev.1
+      RELEASE_TAG: uitok-dev-v1.2.2-p0.3.2-dev.1
+      RELEASE_TITLE: uitok dev → v1.2.2 patch 0.3.2-dev.1
 
     steps:
       - name: Checkout patch repository
@@ -94,13 +94,14 @@ jobs:
 
           Patch:
 
-          - Version: `0.3.1-dev.1`
+          - Version: `0.3.2-dev.1`
           - Compatibility target: `v1.2.2`
           - Exact compatibility verified: `false`
           - Feature: `GET /api/patch/info`
           - Feature: persistent custom base names (`PUT/DELETE /api/bases/{id}/name`)
           - Feature: read-only base storage browser (`GET /api/bases/{id}/storage`)
           - Fix: resolve map-object containers linked through each base container list
+          - Enhancement: localized container names and bundled item icons in the storage browser
           - Save mutation: none; aliases use PalPanel metadata and storage browsing is read-only
 
           This prerelease includes the Linux amd64 binary overlay, complete
@@ -114,7 +115,7 @@ jobs:
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7
         with:
-          name: uitok-dev-v1.2.2-patch-0.3.1-dev.1-5e3c0bce9d33
+          name: uitok-dev-v1.2.2-patch-0.3.2-dev.1-5e3c0bce9d33
           path: .work/output/release/
           if-no-files-found: error
           retention-days: 14
@@ -150,7 +151,7 @@ jobs:
             echo
             echo "- Tag: \`${RELEASE_TAG}\`"
             echo "- Source commit: \`5e3c0bce9d33091b3261f82b3e4da062fc35a8a1\`"
-            echo "- Patch: \`0.3.1-dev.1\`"
+            echo "- Patch: \`0.3.2-dev.1\`"
             echo "- Target: \`v1.2.2\`"
             echo
             echo '```json'

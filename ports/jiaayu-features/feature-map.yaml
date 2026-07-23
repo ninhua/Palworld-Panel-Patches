@@ -25,17 +25,18 @@ features:
   - id: base-storage-browser
     reference_label: 据点仓库浏览
     status: implemented-independently
-    patch_version: 0.3.1-dev.1
+    patch_version: 0.3.2-dev.1
     implementation: behavior-reimplementation
     source_paths: []
     target_paths:
       - backend/internal/api/save_index.go
       - backend/internal/api/base_storage_test.go
+      - backend/internal/pallocalize/localize.go
       - frontend/src/api/bases.ts
       - frontend/src/api/bases.test.ts
       - frontend/src/pages/Bases.tsx
       - frontend/src/types/index.ts
-    notes: Uses the target project's read-only base storage endpoint, resolves map-object containers linked by the base record, and adds an independent browser UI; no source code is copied from the reference repository and no save data is modified.
+    notes: Uses the target project's read-only base storage endpoint, resolves map-object containers linked by the base record, enriches them with localized container names and bundled item icons, and adds an independent browser UI; no source code is copied from the reference repository and no save data is modified.
 
   - id: player-summary
     status: planned

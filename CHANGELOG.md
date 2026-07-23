@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.6.3
+
+### Enhanced
+
+- 完善现有 `base-storage-browser`，不新增顶级 feature。
+- 基地仓库接口通过 `container.owner_id` 关联存档索引中的地图对象，返回 `container_type` 和本地化 `container_name`。
+- 仓库槽位返回现有物品目录中的 `item_icon`，前端使用内置 `/assets/items/*.webp` 图标并提供 SVG 缺图回退。
+- 仓库搜索同时支持容器中文名、容器类型、物品中文名和内部 ID。
+- OpenAPI、生成的 TypeScript 契约、后端测试和前端 API 映射测试同步更新。
+- 功能补丁版本升级为 `0.3.2-dev.1`，预发布标签为 `uitok-dev-v1.2.2-p0.3.2-dev.1`。
+
+### Safety
+
+- 仍为只读展示，不修改容器或 Palworld 存档。
+- 顶级 features 仍为 `patch-info-api`、`base-custom-names`、`base-storage-browser`。
+
 ## v0.6.2
 
 - 修复基地仓库接口只接受 `owner_type=base`，导致实际由地图对象承载的基地箱子无法返回。

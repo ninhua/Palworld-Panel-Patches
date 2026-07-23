@@ -4,7 +4,9 @@
   "source": {
     "repository": "Jiaayu/palworld-panel",
     "commit": "0000000000000000000000000000000000000000",
-    "paths": []
+    "paths": [
+      "replace/source/path.py"
+    ]
   },
   "target": {
     "project": "uitok-palworld-panel",
