@@ -22,6 +22,19 @@ features:
       - frontend/src/pages/Bases.tsx
     notes: Stores display aliases in PalPanel KV storage; does not modify Palworld save files and copies no source code from the reference repository.
 
+  - id: base-storage-browser
+    reference_label: 据点仓库浏览
+    status: implemented-independently
+    patch_version: 0.3.0-dev.1
+    implementation: behavior-reimplementation
+    source_paths: []
+    target_paths:
+      - frontend/src/api/bases.ts
+      - frontend/src/api/bases.test.ts
+      - frontend/src/pages/Bases.tsx
+      - frontend/src/types/index.ts
+    notes: Uses the target project's existing read-only base storage endpoint and adds an independent browser UI; no source code is copied from the reference repository and no save data is modified.
+
   - id: player-summary
     status: planned
     implementation: not-decided

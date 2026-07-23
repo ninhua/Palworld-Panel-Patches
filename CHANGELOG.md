@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.6.0
+
+### Added
+
+- 新增独立实现的 `base-storage-browser` 功能。
+- 基地桌面列表和移动卡片增加“查看仓库”入口。
+- 复用既有 `GET /api/bases/{id}/storage` 只读接口。
+- 新增容器数、占用格、物品总量汇总。
+- 新增按本地化物品名和内部物品 ID 搜索。
+- 按容器显示槽位、数量及可用耐久信息。
+- 新增存档索引过期提示、错误展示和重试。
+- 新增前端 API 映射测试。
+- 补丁版本升级为 `0.3.0-dev.1`，功能列表增加 `base-storage-browser`。
+
+### Changed
+
+- PatchInfo OpenAPI 契约和生成的 TypeScript 类型同步到 `0.3.0-dev.1`。
+- 新预发布标签为 `uitok-dev-v1.2.2-p0.3.0-dev.1`。
+
+### Safety
+
+- 本功能不修改容器、不修改 Palworld 存档，只读取现有存档索引。
+- 兼容状态仍为 `source-alias`、`verified=false`。
+
 ## v0.5.1
 
 ### Fixed

@@ -1,11 +1,11 @@
-# Upgrade v0.5.0 → v0.5.1
+# Upgrade v0.5.1 → v0.6.0
 
-本修订只修复 `0002-add-base-custom-names.patch` 中的 Go 测试编译错误，不改变补丁版本和 Release 标签。
+本版本新增只读的基地仓库浏览功能，并将补丁版本升级到 `0.3.0-dev.1`。
 
 覆盖仓库：
 
 ```bash
-cp -a Palworld-Panel-Patches-upgrade-v0.5.0-to-v0.5.1/. /path/to/Palworld-Panel-Patches/
+cp -a Palworld-Panel-Patches-upgrade-v0.5.1-to-v0.6.0/. /path/to/Palworld-Panel-Patches/
 cd /path/to/Palworld-Panel-Patches
 ```
 
@@ -19,24 +19,33 @@ bash common/scripts/validate-repository.sh
 提交：
 
 ```bash
-git add VERSION README.md CHANGELOG.md UPGRADE.md \
-  projects/uitok-palworld-panel/patches/dev-v1.2.2/source/0002-add-base-custom-names.patch \
-  projects/uitok-palworld-panel/patches/dev-v1.2.2/source/SHA256SUMS
-git commit -m "fix: use Gin context in base custom name test"
+git add .
+git commit -m "feat: add read-only base storage browser"
 git push origin main
 ```
 
-然后重新运行：
+先运行：
 
 ```text
 Actions → Build uitok dev patch → Run workflow
 ```
 
-预期补丁版本和标签仍为：
+预期 Artifact：
 
 ```text
-0.2.0-dev.1
-uitok-dev-v1.2.2-p0.2.0-dev.1
+uitok-dev-v1.2.2-patch-0.3.0-dev.1-5e3c0bce9d33
 ```
 
-失败的构建没有发布 Release，因此无需增加补丁版本号。
+Build 完整通过后再运行：
+
+```text
+Actions → Release uitok dev patch → Run workflow
+```
+
+预期标签：
+
+```text
+uitok-dev-v1.2.2-p0.3.0-dev.1
+```
+
+在新 Release 资产完成发布并验收前，部署脚本不要提前切换默认补丁版本。

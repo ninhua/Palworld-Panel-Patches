@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "uitok-palworld-panel",
-  "patch_version": "0.2.0-dev.1",
+  "patch_version": "0.3.0-dev.1",
   "patch_type": "source-build",
   "upstream": {
     "repository": "uitok/palworld-panel",
@@ -25,7 +25,8 @@
   },
   "features": [
     "patch-info-api",
-    "base-custom-names"
+    "base-custom-names",
+    "base-storage-browser"
   ],
-  "notes": "Adds patch metadata plus persistent, save-source-scoped custom base names without modifying Palworld save files."
+  "notes": "Adds patch metadata, persistent save-source-scoped custom base names, and a read-only base storage browser without modifying Palworld save files."
 }

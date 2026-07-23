@@ -10,13 +10,14 @@ target: v1.2.2
 compatibility: source-alias, verified=false
 ```
 
-## Patch 0.2.0-dev.1
+## Patch 0.3.0-dev.1
 
-This version contains two features:
+This version contains three features:
 
 ```text
 patch-info-api
 base-custom-names
+base-storage-browser
 ```
 
 ### Patch information
@@ -25,7 +26,7 @@ base-custom-names
 GET /api/patch/info
 ```
 
-The response reports patch version `0.2.0-dev.1` and both feature identifiers.
+The response reports patch version `0.3.0-dev.1` and all feature identifiers.
 
 ### Persistent custom base names
 
@@ -51,14 +52,32 @@ Behavior:
 - Adds edit and restore-original-name controls to the base page.
 - Limits custom names to 64 Unicode characters.
 
+### Read-only base storage browser
+
+The base page now calls the existing read endpoint:
+
+```http
+GET /api/bases/{id}/storage
+```
+
+Behavior:
+
+- Adds a “查看仓库” action to desktop rows and mobile cards.
+- Shows container count, occupied slot count, and total item quantity.
+- Supports search by localized item name or internal item ID.
+- Groups occupied slots by container and shows slot, quantity, and durability when available.
+- Displays stale-index warnings and retry handling.
+- Does not mutate containers or save files.
+
 ## Patch sequence
 
 ```text
 0001-add-patch-info-api.patch
 0002-add-base-custom-names.patch
+0003-add-base-storage-browser.patch
 ```
 
-Both patches are applied in lexical order and verified against `source/SHA256SUMS` before build.
+All patches are applied in lexical order and verified against `source/SHA256SUMS` before build.
 
 ## Build scope
 
