@@ -53,6 +53,20 @@ features:
       - frontend/src/types/index.ts
     notes: Stores save-source-scoped management notes and tags in PalPanel KV storage, supports search and permission-gated editing, copies no source code from the reference repository, and does not modify player save files.
 
+  - id: guild-detail-browser
+    reference_label: 公会详情浏览
+    status: implemented-independently
+    patch_version: 0.5.0-dev.1
+    implementation: behavior-reimplementation
+    source_paths: []
+    target_paths:
+      - backend/internal/api/guild_detail.go
+      - backend/internal/api/save_index.go
+      - frontend/src/api/guilds.ts
+      - frontend/src/pages/Guilds.tsx
+      - frontend/src/types/index.ts
+    notes: Enriches the target project's existing read-only guild detail endpoint with member annotations and linked base metadata, copies no source code from the reference repository, and performs no save mutation.
+
   - id: player-summary
     status: planned
     implementation: not-decided

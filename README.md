@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.7.0`
+仓库版本：`v0.8.0`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -12,7 +12,7 @@
 源码分支：dev
 源码提交：5e3c0bce9d33091b3261f82b3e4da062fc35a8a1
 兼容目标：v1.2.2
-补丁版本：0.4.0-dev.1
+补丁版本：0.5.0-dev.1
 兼容状态：source-alias / verified=false
 ```
 
@@ -23,6 +23,7 @@ patch-info-api
 base-custom-names
 base-storage-browser
 player-notes
+guild-detail-browser
 ```
 
 `base-custom-names` 提供：
@@ -72,6 +73,20 @@ PUT /api/players/{id}/annotation
 DELETE /api/players/{id}/annotation
 ```
 
+`guild-detail-browser` 提供：
+
+- 公会列表增加桌面端和移动端“查看详情”入口；
+- 公会详情展示会长、成员在线状态、等级、最后在线时间；
+- 复用 `player-notes` 展示成员备注和标签；
+- 展示公会关联基地、自定义基地名称、坐标、建筑数和工作帕鲁数；
+- 详情数据来自只读存档索引与 PalPanel 元数据，不修改游戏存档。
+
+API：
+
+```http
+GET /api/guilds/{id}
+```
+
 ## 补丁结构
 
 ```text
@@ -85,6 +100,7 @@ projects/uitok-palworld-panel/patches/dev-v1.2.2/
 │   ├── 0004-fix-base-storage-container-resolution.patch
 │   ├── 0005-enhance-base-storage-display.patch
 │   ├── 0006-add-player-notes.patch
+│   ├── 0007-add-guild-detail-browser.patch
 │   └── SHA256SUMS
 ├── build/
 │   ├── build.sh
@@ -109,7 +125,7 @@ Actions
 预期 Artifact：
 
 ```text
-uitok-dev-v1.2.2-patch-0.4.0-dev.1-5e3c0bce9d33
+uitok-dev-v1.2.2-patch-0.5.0-dev.1-5e3c0bce9d33
 ```
 
 Artifact 包含二进制安装包、完整对应源码、manifest、全部补丁、许可证、构建元数据、冒烟日志和 SHA-256。
@@ -125,7 +141,7 @@ Actions
 预期预发布标签：
 
 ```text
-uitok-dev-v1.2.2-p0.4.0-dev.1
+uitok-dev-v1.2.2-p0.5.0-dev.1
 ```
 
 Release 标签不可变；标签已存在时工作流应失败，不覆盖旧资产。

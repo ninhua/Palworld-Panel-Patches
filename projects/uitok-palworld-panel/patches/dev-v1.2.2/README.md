@@ -10,15 +10,16 @@ target: v1.2.2
 compatibility: source-alias, verified=false
 ```
 
-## Patch 0.4.0-dev.1
+## Patch 0.5.0-dev.1
 
-This version contains four features:
+This version contains five features:
 
 ```text
 patch-info-api
 base-custom-names
 base-storage-browser
 player-notes
+guild-detail-browser
 ```
 
 ### Patch information
@@ -27,7 +28,7 @@ player-notes
 GET /api/patch/info
 ```
 
-The response reports patch version `0.4.0-dev.1` and all feature identifiers.
+The response reports patch version `0.5.0-dev.1` and all feature identifiers.
 
 ### Persistent custom base names
 
@@ -96,6 +97,21 @@ Behavior:
 - Adds note and tag search to the player list.
 - Does not modify player `.sav` files.
 
+### Guild detail browser
+
+```http
+GET /api/guilds/{id}
+```
+
+Behavior:
+
+- Adds detail actions to desktop rows and mobile guild cards.
+- Shows the guild owner, member online state, level, and last-online time.
+- Reuses save-source-scoped player notes and tags in the member view.
+- Resolves both explicit guild base IDs and bases linked by guild ID.
+- Shows custom base names, coordinates, structure counts, and worker counts.
+- Reads save-index and PalPanel metadata only; no save mutation is performed.
+
 ## Patch sequence
 
 ```text
@@ -105,6 +121,7 @@ Behavior:
 0004-fix-base-storage-container-resolution.patch
 0005-enhance-base-storage-display.patch
 0006-add-player-notes.patch
+0007-add-guild-detail-browser.patch
 ```
 
 All patches are applied in lexical order and verified against `source/SHA256SUMS` before build.

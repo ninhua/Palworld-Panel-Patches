@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.8.0
+
+### Added
+
+- 新增独立实现的 `guild-detail-browser` 顶级功能。
+- `GET /api/guilds/{id}` 返回丰富的成员详情、玩家备注/标签及关联基地详情。
+- 公会页面增加桌面端和移动端详情入口与响应式侧边抽屉。
+- 成员详情展示会长标识、在线状态、等级、最后在线时间、备注和标签。
+- 基地详情展示面板自定义名称、坐标、建筑数和工作帕鲁数。
+- 补丁版本升级为 `0.5.0-dev.1`，预发布标签为 `uitok-dev-v1.2.2-p0.5.0-dev.1`。
+
+### Safety
+
+- 本功能只读取存档索引与 PalPanel SQLite 元数据，不修改 `Level.sav`、玩家 `.sav` 或基地数据。
+- 顶级 features 现在为 `patch-info-api`、`base-custom-names`、`base-storage-browser`、`player-notes`、`guild-detail-browser`。
+
+### Validation
+
+- 新增公会成员注释、会长识别、显式/隐式基地关联和自定义基地名称回归测试。
+- OpenAPI 与生成的 TypeScript 契约同步更新。
+
 ## v0.7.0
 
 ### Added
