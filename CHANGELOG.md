@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.9.0
+
+### Added
+
+- 新增独立实现的 `base-worker-browser` 顶级功能。
+- 新增只读接口 `GET /api/bases/{id}/workers`。
+- 基地页面增加桌面端图标与移动端“工作帕鲁”入口。
+- 工作帕鲁详情按实例 ID 合并存档索引中的种类、昵称、等级、性别、Rank、状态、远征状态和被动词条。
+- 新增总数、平均等级、最高等级、命名数量和种类数量统计。
+- 支持按昵称、种类、内部 ID、实例 ID 和被动词条搜索。
+- 补丁版本升级为 `0.6.0-dev.1`，预发布标签为 `uitok-dev-v1.2.2-p0.6.0-dev.1`。
+
+### Safety
+
+- 只展示锁定存档索引真实提供的数据；不虚构饱食度、SAN、工作适性等缺失字段。
+- 不修改 `Level.sav`、玩家 `.sav`、帕鲁数据或基地数据。
+- 顶级 features 现在为 `patch-info-api`、`base-custom-names`、`base-storage-browser`、`player-notes`、`guild-detail-browser`、`base-worker-browser`。
+
+### Validation
+
+- 新增工作帕鲁详情合并与统计回归测试。
+- OpenAPI、生成的 TypeScript 契约和前端 API 映射测试同步更新。
+
 ## v0.8.0
 
 ### Added

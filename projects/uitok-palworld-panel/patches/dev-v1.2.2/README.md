@@ -10,9 +10,9 @@ target: v1.2.2
 compatibility: source-alias, verified=false
 ```
 
-## Patch 0.5.0-dev.1
+## Patch 0.6.0-dev.1
 
-This version contains five features:
+This version contains six features:
 
 ```text
 patch-info-api
@@ -20,6 +20,7 @@ base-custom-names
 base-storage-browser
 player-notes
 guild-detail-browser
+base-worker-browser
 ```
 
 ### Patch information
@@ -28,7 +29,7 @@ guild-detail-browser
 GET /api/patch/info
 ```
 
-The response reports patch version `0.5.0-dev.1` and all feature identifiers.
+The response reports patch version `0.6.0-dev.1` and all feature identifiers.
 
 ### Persistent custom base names
 
@@ -112,6 +113,22 @@ Behavior:
 - Shows custom base names, coordinates, structure counts, and worker counts.
 - Reads save-index and PalPanel metadata only; no save mutation is performed.
 
+### Read-only base worker browser
+
+```http
+GET /api/bases/{id}/workers
+```
+
+Behavior:
+
+- Adds worker-list actions to desktop base rows and mobile base cards.
+- Merges each base worker with the indexed Pal record by instance ID when available.
+- Shows localized species name, nickname, level, gender, rank, status, expedition state, and passive traits.
+- Shows total workers, average level, maximum level, named-worker count, and distinct species count.
+- Supports search by nickname, species, character ID, instance ID, or passive trait.
+- Does not invent hunger, SAN, work suitability, or other fields absent from the locked save index.
+- Reads save-index data only and does not mutate Pal or base save data.
+
 ## Patch sequence
 
 ```text
@@ -122,6 +139,7 @@ Behavior:
 0005-enhance-base-storage-display.patch
 0006-add-player-notes.patch
 0007-add-guild-detail-browser.patch
+0008-add-base-worker-browser.patch
 ```
 
 All patches are applied in lexical order and verified against `source/SHA256SUMS` before build.

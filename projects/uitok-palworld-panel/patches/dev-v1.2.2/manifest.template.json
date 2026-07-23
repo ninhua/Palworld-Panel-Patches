@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "uitok-palworld-panel",
-  "patch_version": "0.5.0-dev.1",
+  "patch_version": "0.6.0-dev.1",
   "patch_type": "source-build",
   "upstream": {
     "repository": "uitok/palworld-panel",
@@ -28,7 +28,8 @@
     "base-custom-names",
     "base-storage-browser",
     "player-notes",
-    "guild-detail-browser"
+    "guild-detail-browser",
+    "base-worker-browser"
   ],
-  "notes": "Adds patch metadata, persistent custom base names, a read-only base storage browser with localized container names and bundled item icons, save-source-scoped player notes and tags, and a read-only guild detail browser, without modifying Palworld save files."
+  "notes": "Adds patch metadata, persistent custom base names, a read-only base storage browser with localized container names and bundled item icons, save-source-scoped player notes and tags, a read-only guild detail browser, and a read-only base worker browser, without modifying Palworld save files."
 }
