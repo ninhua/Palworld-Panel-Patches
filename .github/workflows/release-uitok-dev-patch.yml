@@ -7,7 +7,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-uitok-dev-v1.2.2-p0.7.0-dev.1
+  group: release-uitok-dev-v1.2.2-p0.8.0-dev.1
   cancel-in-progress: false
 
 jobs:
@@ -16,8 +16,8 @@ jobs:
     timeout-minutes: 60
 
     env:
-      RELEASE_TAG: uitok-dev-v1.2.2-p0.7.0-dev.1
-      RELEASE_TITLE: uitok dev → v1.2.2 patch 0.7.0-dev.1
+      RELEASE_TAG: uitok-dev-v1.2.2-p0.8.0-dev.1
+      RELEASE_TITLE: uitok dev → v1.2.2 patch 0.8.0-dev.1
 
     steps:
       - name: Checkout patch repository
@@ -94,7 +94,7 @@ jobs:
 
           Patch:
 
-          - Version: `0.7.0-dev.1`
+          - Version: `0.8.0-dev.1`
           - Compatibility target: `v1.2.2`
           - Exact compatibility verified: `false`
           - Feature: `GET /api/patch/info`
@@ -106,6 +106,11 @@ jobs:
           - Feature: read-only guild detail browser (`GET /api/guilds/{id}`)
           - Feature: read-only base worker browser (`GET /api/bases/{id}/workers`)
           - Feature: read-only base feed-box summary (`GET /api/bases/{id}/feed-boxes`)
+          - Feature: `insecure-endpoint-support` for configurable HTTP/HTTPS service endpoints
+          - Compatibility: AstrBot-to-PalPanel and PalPanel-to-AstrBot endpoints accept HTTP or HTTPS
+          - Compatibility: WebDAV and OpenAI-compatible provider URLs accept HTTP or HTTPS
+          - Compatibility: configurable Steam/community/download endpoints and public remote Mod ZIP imports accept HTTP or HTTPS
+          - Safety retained: embedded URL credentials, unsafe WebDAV paths, non-public Mod download targets, redirects, and size limits remain validated
           - Player annotations: save-source-scoped PalPanel metadata, searchable, permission-gated, and non-mutating to game saves
           - Save mutation: none; aliases and annotations use PalPanel metadata, while storage, worker, guild, and feed-box browsing are read-only
 
@@ -120,7 +125,7 @@ jobs:
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v7
         with:
-          name: uitok-dev-v1.2.2-patch-0.7.0-dev.1-5e3c0bce9d33
+          name: uitok-dev-v1.2.2-patch-0.8.0-dev.1-5e3c0bce9d33
           path: .work/output/release/
           if-no-files-found: error
           retention-days: 14
@@ -156,7 +161,7 @@ jobs:
             echo
             echo "- Tag: \`${RELEASE_TAG}\`"
             echo "- Source commit: \`5e3c0bce9d33091b3261f82b3e4da062fc35a8a1\`"
-            echo "- Patch: \`0.7.0-dev.1\`"
+            echo "- Patch: \`0.8.0-dev.1\`"
             echo "- Target: \`v1.2.2\`"
             echo
             echo '```json'

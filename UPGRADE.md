@@ -1,32 +1,44 @@
-# Upgrade v0.10.0 → v0.10.1
+# Upgrade v0.10.1 → v0.10.2
 
-本次是构建修复，不新增功能，也不提升功能补丁版本。`0008-add-base-worker-browser.patch` 之前漏掉了两个新 Go 文件，导致 Release 编译报错：
-
-```text
-s.getSaveBaseWorkers undefined (type Server has no field or method getSaveBaseWorkers)
-```
-
-`v0.10.1` 新增 `0010-fix-missing-base-worker-handler.patch`，正式补入：
+本次升级新增：
 
 ```text
-backend/internal/api/base_workers.go
-backend/internal/api/base_workers_test.go
+0011-allow-http-service-endpoints.patch
 ```
 
-## 覆盖升级
+该补丁将 AstrBot 双向连接、WebDAV、AI 翻译 Base URL、可配置上游/下载地址和公共远程 Mod ZIP 从“部分场景强制 HTTPS”调整为接受 HTTP 或 HTTPS。
+
+安全校验仍保留：
+
+- URL 必须为绝对 HTTP(S) 地址；
+- 禁止不支持的协议；
+- WebDAV 禁止嵌入凭据、查询参数、片段和不安全远程目录；
+- Mod 下载仍拒绝凭据 URL、非公网目标、危险重定向和超限文件；
+- HTTP 明文传输风险由部署者自行承担。
+
+覆盖升级：
 
 ```bash
-cp -a Palworld-Panel-Patches-upgrade-v0.10.0-to-v0.10.1/. /path/to/Palworld-Panel-Patches/
+unzip Palworld-Panel-Patches-upgrade-v0.10.1-to-v0.10.2.zip
+cp -a Palworld-Panel-Patches-upgrade-v0.10.1-to-v0.10.2/. /path/to/Palworld-Panel-Patches/
 cd /path/to/Palworld-Panel-Patches
 bash common/scripts/validate-repository.sh
 ```
 
-提交后重新运行 Build；Build 通过后再运行 Release。
+提交：
 
-```text
-补丁版本：0.7.0-dev.1
-Release tag：uitok-dev-v1.2.2-p0.7.0-dev.1
-features：不变
+```bash
+git add .
+git commit -m "feat: allow HTTP service endpoints"
+git push origin main
 ```
 
-失败的 Release 没有创建不可变标签，因此无需修改功能补丁版本。启动脚本无需更新。
+发布契约：
+
+```text
+补丁版本：0.8.0-dev.1
+Release tag：uitok-dev-v1.2.2-p0.8.0-dev.1
+Artifact：uitok-dev-v1.2.2-patch-0.8.0-dev.1-5e3c0bce9d33
+```
+
+新增顶级 feature：`insecure-endpoint-support`。启动脚本继续按最高兼容 dev 补丁自动选择；现有必需 feature 使用包含关系校验时无需修改。

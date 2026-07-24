@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.10.2
+
+### Changed
+
+- 新增 `0011-allow-http-service-endpoints.patch`。
+- AstrBot 插件调用 PalPanel 与 PalPanel 调用 AstrBot 插件均接受 HTTP 或 HTTPS。
+- WebDAV、公网 AI 翻译 Base URL、Steam/社区服务器/下载类可配置地址均接受 HTTP 或 HTTPS。
+- 公共远程 Mod ZIP 与 Steam Workshop URL 接受 HTTP 或 HTTPS。
+- 前端 WebDAV、AI 翻译和 Mod 导入说明同步更新，不再提示必须使用 HTTPS。
+- 新增顶级 feature `insecure-endpoint-support`，功能补丁版本升级为 `0.8.0-dev.1`。
+
+### Safety
+
+- 仍拒绝非 HTTP(S) 协议、嵌入凭据和不合法 URL。
+- WebDAV 仍拒绝查询参数、片段和不安全远程路径。
+- Mod 下载仍执行公网地址、重定向、凭据和大小限制校验。
+- 明确提示 HTTP 不提供传输加密。
+
+### Validation
+
+- Go `appconfig` 与 `astrbotclient` 单元测试通过。
+- AstrBot URL、签名和操作 Python 测试通过。
+- WebDAV、AI Base URL、远程 Mod URL 回归测试已更新或新增。
+- OpenAPI、TypeScript/TSX 语法和补丁顺序应用检查通过。
+
 ## v0.10.1
 
 ### Fixed

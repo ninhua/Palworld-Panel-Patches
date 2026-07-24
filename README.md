@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.10.1`
+仓库版本：`v0.10.2`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -12,7 +12,7 @@
 源码分支：dev
 源码提交：5e3c0bce9d33091b3261f82b3e4da062fc35a8a1
 兼容目标：v1.2.2
-补丁版本：0.7.0-dev.1
+补丁版本：0.8.0-dev.1
 兼容状态：source-alias / verified=false
 ```
 
@@ -26,6 +26,7 @@ player-notes
 guild-detail-browser
 base-worker-browser
 base-feed-box-summary
+insecure-endpoint-support
 ```
 
 `base-custom-names` 提供：
@@ -125,6 +126,20 @@ API：
 GET /api/bases/{id}/feed-boxes
 ```
 
+
+## HTTP/HTTPS 兼容性
+
+`insecure-endpoint-support` 统一取消以下地址的“公网必须 HTTPS”限制：
+
+- PalPanel 调用 AstrBot 插件的 `PALPANEL_ASTRBOT_PLUGIN_URL`；
+- AstrBot 插件调用 PalPanel 的 `panel_url`；
+- WebDAV 备份地址；
+- OpenAI-compatible AI 翻译 Base URL；
+- Steam API、社区服务器 API、SteamCMD 与 UE4SS 等可配置下载地址；
+- 公共远程 Mod ZIP 和 Steam Workshop URL。
+
+以上地址均接受 `http://` 或 `https://`。仍保留绝对 URL、协议类型、嵌入凭据、查询参数、WebDAV 远程路径、Mod 下载目标公网地址、重定向次数和文件大小等校验。HTTP 不提供传输加密，跨公网使用时由部署者自行承担明文传输风险。
+
 ## 补丁结构
 
 ```text
@@ -142,6 +157,7 @@ projects/uitok-palworld-panel/patches/dev-v1.2.2/
 │   ├── 0008-add-base-worker-browser.patch
 │   ├── 0009-add-base-feed-box-summary.patch
 │   ├── 0010-fix-missing-base-worker-handler.patch
+│   ├── 0011-allow-http-service-endpoints.patch
 │   └── SHA256SUMS
 ├── build/
 │   ├── build.sh
@@ -166,7 +182,7 @@ Actions
 预期 Artifact：
 
 ```text
-uitok-dev-v1.2.2-patch-0.7.0-dev.1-5e3c0bce9d33
+uitok-dev-v1.2.2-patch-0.8.0-dev.1-5e3c0bce9d33
 ```
 
 Artifact 包含二进制安装包、完整对应源码、manifest、全部补丁、许可证、构建元数据、冒烟日志和 SHA-256。
@@ -182,7 +198,7 @@ Actions
 预期预发布标签：
 
 ```text
-uitok-dev-v1.2.2-p0.7.0-dev.1
+uitok-dev-v1.2.2-p0.8.0-dev.1
 ```
 
 Release 标签不可变；标签已存在时工作流应失败，不覆盖旧资产。

@@ -10,9 +10,9 @@ target: v1.2.2
 compatibility: source-alias, verified=false
 ```
 
-## Patch 0.7.0-dev.1
+## Patch 0.8.0-dev.1
 
-This version contains seven features:
+This version contains eight features:
 
 ```text
 patch-info-api
@@ -22,6 +22,7 @@ player-notes
 guild-detail-browser
 base-worker-browser
 base-feed-box-summary
+insecure-endpoint-support
 ```
 
 ### Patch information
@@ -30,7 +31,21 @@ base-feed-box-summary
 GET /api/patch/info
 ```
 
-The response reports patch version `0.7.0-dev.1` and all feature identifiers.
+The response reports patch version `0.8.0-dev.1` and all feature identifiers.
+
+
+### HTTP and HTTPS endpoint compatibility
+
+Behavior:
+
+- Accepts HTTP or HTTPS for `PALPANEL_ASTRBOT_PLUGIN_URL` and the AstrBot plugin `panel_url`.
+- Accepts HTTP or HTTPS WebDAV endpoints.
+- Accepts HTTP or HTTPS OpenAI-compatible provider Base URLs.
+- Accepts HTTP or HTTPS for configurable Steam API, community-server API, SteamCMD, and UE4SS endpoints.
+- Accepts public HTTP or HTTPS remote Mod ZIP and Steam Workshop URLs.
+- Retains validation for absolute URLs, supported schemes, embedded credentials, WebDAV path traversal, public Mod download addresses, redirects, and download size limits.
+- Does not silently rewrite a configured protocol.
+- Warns that HTTP carries credentials and payload data without transport encryption.
 
 ### Persistent custom base names
 
@@ -161,11 +176,14 @@ Behavior:
 0008-add-base-worker-browser.patch
 0009-add-base-feed-box-summary.patch
 0010-fix-missing-base-worker-handler.patch
+0011-allow-http-service-endpoints.patch
 ```
 
 All patches are applied in lexical order and verified against `source/SHA256SUMS` before build.
 
 `0010` is a corrective source patch that restores the base-worker handler and its tests omitted from the generated `0008` patch. It does not change patch version or feature identifiers.
+
+`0011` adds the top-level `insecure-endpoint-support` capability and relaxes HTTPS-only endpoint rules to HTTP/HTTPS compatibility for AstrBot, WebDAV, AI provider, configured upstream/download endpoints, and public remote Mod ZIP imports. It changes patch version to `0.8.0-dev.1`.
 
 ## Build scope
 

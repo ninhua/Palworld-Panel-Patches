@@ -102,3 +102,23 @@ features:
       - frontend/src/pages/Bases.tsx
       - frontend/src/types/index.ts
     notes: Adds a read-only feed-box summary endpoint and browser, filters feed-box container types, aggregates item quantities across boxes, copies no source code from the reference repository, and performs no save mutation.
+  - id: insecure-endpoint-support
+    reference_label: 非 HTTPS 服务端点兼容
+    status: implemented-independently
+    patch_version: 0.8.0-dev.1
+    implementation: behavior-reimplementation
+    source_paths: []
+    target_paths:
+      - astrbot_plugin_palpanel/main.py
+      - astrbot_plugin_palpanel/security.py
+      - backend/internal/aitranslation/service.go
+      - backend/internal/appconfig/config.go
+      - backend/internal/astrbotclient/client.go
+      - backend/internal/mods/downloader.go
+      - backend/internal/mods/importer.go
+      - backend/internal/server/webdav.go
+      - frontend/src/pages/Backups.tsx
+      - frontend/src/pages/Mods.tsx
+      - frontend/src/pages/Settings.tsx
+    notes: Adds explicit HTTP/HTTPS support for configurable AstrBot, WebDAV, AI-provider, upstream/download, and public remote Mod endpoints while retaining URL, credential, redirect, public-address, remote-path, and size validation. HTTP transport is not encrypted.
+
