@@ -1,8 +1,8 @@
 {
   "schema_version": 2,
   "target_version": "v1.3.0",
-  "generated_at": "2026-07-24T12:44:43Z",
-  "state": "released",
+  "generated_at": "2026-07-24T13:33:42Z",
+  "state": "releasable",
   "required_features": [
     "base-custom-names",
     "patch-info-api"
@@ -482,13 +482,34 @@
       "log": "reports/0016-fix-panel-patch-update-openapi-contract.patch.log",
       "validated_at_checkpoint": "0016-fix-panel-patch-update-openapi-contract.patch",
       "included_in_merged": true
+    },
+    {
+      "order": 17,
+      "file": "0017-add-audit-log-response-detail-dialog.patch",
+      "sha256": "47ba3d3219592157572c955169526cdab399451af0f7b0469946f2f7d551651f",
+      "feature": "audit-log-response-display",
+      "required": true,
+      "depends_on": [
+        "0015-add-audit-log-response-display.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "frontend/src/pages/AuditLogs.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0017-add-audit-log-response-detail-dialog.patch.log",
+      "validated_at_checkpoint": "0017-add-audit-log-response-detail-dialog.patch",
+      "included_in_merged": true
     }
   ],
   "adaptations": [
     {
       "name": "retarget-stable-source",
       "status": "applied",
-      "details": "Retargeted patch metadata to v1.3.0 / 0.8.4"
+      "details": "Retargeted patch metadata to v1.3.0 / 0.8.5"
     },
     {
       "name": "frontend-axios-test-fixture-adapter",
@@ -497,12 +518,12 @@
     }
   ],
   "summary": {
-    "compatible": 15,
+    "compatible": 16,
     "blocked": 0,
-    "superseded": 0,
     "adapted": 1,
+    "pending": 0,
     "incompatible": 0,
-    "pending": 0
+    "superseded": 0
   },
   "excluded_features": [],
   "effective_features": [
@@ -518,8 +539,8 @@
     "player-notes"
   ],
   "merged_patch": {
-    "file": "merged/stable-v1.3.0-patch-0.8.4.patch",
-    "sha256": "e118727eccd465c03db9499f79e8fedc114400c8b62f47d60ba8d68df6a53c53",
+    "file": "merged/stable-v1.3.0-patch-0.8.5.patch",
+    "sha256": "5990becb3e3d6816955f7b9a964b16004d7a940931ea34946590d8b19eed7e40",
     "base_commit": "3c8d698abf1d9c4e271e3e62dcc736960f27e8eb"
   },
   "verified": true,
