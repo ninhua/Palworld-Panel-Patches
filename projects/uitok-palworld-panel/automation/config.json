@@ -9,7 +9,7 @@
     "base-custom-names"
   ],
   "optional_features": [],
-  "bootstrap_source_track": "projects/uitok-palworld-panel/patches/candidate-v1.3.0",
+  "bootstrap_source_track": "projects/uitok-palworld-panel/patches/bootstrap-v1.3.0",
   "workspace_root": "projects/uitok-palworld-panel/patches",
   "migration_branch_prefix": "migration/",
   "release_assets": [

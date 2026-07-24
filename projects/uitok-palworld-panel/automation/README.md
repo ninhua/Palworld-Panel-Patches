@@ -31,6 +31,11 @@ candidate-vX.Y.Z/
 
 `source-chain` 保留导入的完整链；`active-source` 只包含进入最终构建的补丁；`merged` 是 clean-room 复验的唯一输入。
 
+
+## Bootstrap 与 candidate 隔离
+
+`bootstrap-vX.Y.Z/` 是不可变的自包含迁移输入；`candidate-vX.Y.Z/` 只保存某次迁移结果。两者不得使用同一路径。blocked candidate 分支或 Draft PR 即使被更新，也不能覆盖 bootstrap 的 `source/`。
+
 ## 上游更新流程
 
 1. `select-latest-version.py` 选择最高正式 tag。
@@ -61,7 +66,7 @@ candidate-vX.Y.Z/
 - Go、前端、构建或 smoke test 失败；
 - manifest、运行时 feature 或 Release 文件白名单不一致。
 
-失败不会创建 PR、Issue 或 Release。
+失败不会创建 Release；blocked migration 会更新 Issue 和 Draft PR，并以成功状态结束 workflow。
 
 ## Axios 测试响应适配
 

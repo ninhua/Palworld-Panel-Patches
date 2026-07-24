@@ -10,7 +10,13 @@ git init -q -b main "${work}/repo"
 cd "${work}/repo"
 git config user.name Test
 git config user.email test@example.com
-mkdir -p projects/uitok-palworld-panel/patches
+mkdir -p \
+    projects/uitok-palworld-panel/automation \
+    projects/uitok-palworld-panel/patches/bootstrap-v9.9.9/source
+cat >projects/uitok-palworld-panel/automation/config.json <<'JSON'
+{"bootstrap_source_track":"projects/uitok-palworld-panel/patches/bootstrap-v9.9.9"}
+JSON
+echo immutable-bootstrap >projects/uitok-palworld-panel/patches/bootstrap-v9.9.9/source/0001.patch
 echo base >README.md
 git add .
 git commit -qm base
@@ -28,6 +34,7 @@ echo failed >"${work}/candidate/reports/0001.log"
 
 "${script_dir}/persist-workspace.sh" candidate "${work}/candidate" v9.9.9 migration/
 git show migration/v9.9.9:projects/uitok-palworld-panel/patches/candidate-v9.9.9/workspace.json >/dev/null
+git show migration/v9.9.9:projects/uitok-palworld-panel/patches/bootstrap-v9.9.9/source/0001.patch | grep -Fxq immutable-bootstrap
 if git show main:projects/uitok-palworld-panel/patches/candidate-v9.9.9/workspace.json >/dev/null 2>&1; then
     echo "candidate 工作区不得写入 main" >&2
     exit 1
@@ -40,5 +47,6 @@ sed -i 's/blocked/releasable/' "${work}/candidate/compatibility-report.json"
 sed -i 's/false/true/' "${work}/candidate/compatibility-report.json"
 "${script_dir}/persist-workspace.sh" stable "${work}/candidate" v9.9.9 migration/
 git show main:projects/uitok-palworld-panel/patches/stable-v9.9.9/workspace.json >/dev/null
+git show main:projects/uitok-palworld-panel/patches/bootstrap-v9.9.9/source/0001.patch | grep -Fxq immutable-bootstrap
 
 echo "persist-workspace regression tests passed."

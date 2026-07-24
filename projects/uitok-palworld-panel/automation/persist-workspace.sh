@@ -45,6 +45,25 @@ else
     rm -rf "${patches_root}/candidate-${target_version}"
 fi
 
+config_path="${repo_root}/projects/uitok-palworld-panel/automation/config.json"
+if [[ -f "${config_path}" ]]; then
+    bootstrap_rel="$(python3 - "${config_path}" <<'PYCFG'
+from pathlib import Path
+import json, sys
+value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8")).get("bootstrap_source_track", "")
+print(value)
+PYCFG
+)"
+    if [[ -n "${bootstrap_rel}" ]]; then
+        bootstrap_path="$(realpath -m "${repo_root}/${bootstrap_rel}")"
+        destination_path="$(realpath -m "${destination}")"
+        if [[ "${destination_path}" == "${bootstrap_path}" ]]; then
+            echo "拒绝覆盖 bootstrap 源轨道：${bootstrap_rel}" >&2
+            exit 1
+        fi
+    fi
+fi
+
 rm -rf "${destination}"
 mkdir -p "${destination}"
 tar -xf "${temp_archive}" -C "${destination}"

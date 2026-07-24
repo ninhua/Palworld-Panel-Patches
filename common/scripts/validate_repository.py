@@ -229,12 +229,14 @@ def validate_stable_automation() -> None:
         declared_track.relative_to(patches_root)
     except ValueError:
         fail("bootstrap_source_track 必须位于 workspace_root 下")
+    if declared_track.name.startswith(("candidate-", "stable-")):
+        fail("bootstrap_source_track 不得与 candidate/stable 工作区共用路径")
     if not (declared_track / "track.json").is_file():
-        fail("bootstrap_source_track 必须是显式 candidate 工作区")
+        fail("bootstrap_source_track 必须包含 track.json")
 
     track = load_json(declared_track / "track.json")
     if not isinstance(track, dict) or track.get("status") != "candidate":
-        fail(f"候选轨道 status 必须为 candidate：{declared_track}")
+        fail(f"bootstrap 轨道 status 必须为 candidate：{declared_track}")
     target_version = track.get("target_version")
     if not isinstance(target_version, str) or not re.fullmatch(r"v\d+\.\d+\.\d+", target_version):
         fail("active candidate target_version 格式错误")
@@ -250,6 +252,22 @@ def validate_stable_automation() -> None:
     for path in (manifest_path, source_dir / "SHA256SUMS", bootstrap_build):
         if not path.is_file():
             fail(f"bootstrap 源轨道不完整：{path}")
+
+    bootstrap_patches = sorted(source_dir.glob("*.patch"))
+    if not bootstrap_patches:
+        fail(f"bootstrap 源轨道没有源码补丁：{source_dir}")
+    for patch_path in bootstrap_patches:
+        data = patch_path.read_bytes()
+        if not data:
+            fail(f"bootstrap 补丁为空文件：{patch_path}")
+        try:
+            patch_text = data.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            fail(f"bootstrap 补丁不是 UTF-8：{patch_path}: {exc}")
+        if "diff --git " not in patch_text:
+            fail(f"bootstrap 补丁缺少 diff --git：{patch_path}")
+        if not re.search(r"^@@ .+ @@", patch_text, flags=re.MULTILINE):
+            fail(f"bootstrap 补丁缺少 unified diff hunk：{patch_path}")
 
     manifest = load_json(manifest_path)
     if not isinstance(manifest, dict):

@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.12.7
+
+### Fixed
+
+- 将不可变的 bootstrap 源补丁轨道从 `candidate-v1.3.0` 分离为 `bootstrap-v1.3.0`，避免 blocked candidate 持久化、Draft PR 或人工合并覆盖下一次发布所需的 `source/`。
+- `config.json.bootstrap_source_track` 只指向 `bootstrap-v1.3.0`；`candidate-vX.Y.Z` 仅作为迁移报告工作区。
+- `persist-workspace.sh` 增加路径冲突保护，禁止 candidate/stable 持久化覆盖配置中的 bootstrap 源轨道。
+- 仓库 validator 明确拒绝把 `candidate-*` 或 `stable-*` 用作 bootstrap，并校验 bootstrap 中每个 patch 非空且包含 unified diff hunk。
+
+### Recovery
+
+- 增量包包含完整 `bootstrap-v1.3.0` 源轨道，可直接修复 main 中 `candidate-v1.3.0/source` 已缺失的仓库。
+
 ## v0.12.6
 
 ### Changed

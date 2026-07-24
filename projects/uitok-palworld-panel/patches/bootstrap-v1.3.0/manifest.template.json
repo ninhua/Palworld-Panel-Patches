@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "project": "uitok-palworld-panel",
+  "patch_version": "0.8.1",
+  "patch_type": "source-build",
+  "upstream": {
+    "repository": "uitok/palworld-panel",
+    "version": "v1.3.0",
+    "commit": "resolved-at-build"
+  },
+  "compatibility": {
+    "mode": "exact",
+    "target_version": "v1.3.0",
+    "verified": false,
+    "notes": "Candidate source track. Verification becomes true only after clean-room build and smoke tests against official v1.3.0."
+  },
+  "platforms": [
+    "linux-amd64"
+  ],
+  "files": {
+    "bin/palpanel": {
+      "original_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "patched_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  },
+  "features": [
+    "patch-info-api",
+    "base-custom-names",
+    "base-storage-browser",
+    "player-notes",
+    "guild-detail-browser",
+    "base-worker-browser",
+    "base-feed-box-summary",
+    "insecure-endpoint-support"
+  ],
+  "notes": "Self-contained v1.3.0 stable maintenance source track. No Palworld save files are modified."
+}

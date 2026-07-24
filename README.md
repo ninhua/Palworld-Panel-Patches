@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.6`
+仓库版本：`v0.12.7`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -10,15 +10,12 @@
 ```text
 上游项目：uitok/palworld-panel
 当前维护目标：v1.3.0
-仓库轨道：patches/candidate-v1.3.0
+bootstrap 源轨道：patches/bootstrap-v1.3.0
 稳定补丁版本：0.8.1
 候选状态：candidate / 未发布前 verified=false
 ```
 
-`candidate-v1.3.0` 是当前日常维护入口，并且是自包含轨道。它拥有自己的 `source/`、
-`build/`、manifest 和许可文件；所有补丁应用、测试和构建均以官方 `v1.3.0` tag 为基线。只有完整 stable Workflow
-通过后，Release manifest 才会写入 `mode=exact`、`target_version=v1.3.0` 和
-`verified=true`。
+`bootstrap-v1.3.0` 是不可变的自包含发布源轨道，拥有自己的 `source/`、`build/`、manifest 和许可文件；所有补丁应用、测试和构建均以官方 `v1.3.0` tag 为基线。`candidate-v1.3.0` 仅用于保存迁移失败或无变更工作区，可以不存在、被覆盖或由 Draft PR 更新，不再作为下一次发布的输入。只有完整 stable Workflow 通过后，Release manifest 才会写入 `mode=exact`、`target_version=v1.3.0` 和 `verified=true`。
 
 旧 `dev-v1.2.2` 仅作为历史归档保留，不再参与 validation、build 或 release。首个可用
 `v1.3.0` stable Release 发布后，后续版本从最新的较旧 stable Release 源码包派生。
