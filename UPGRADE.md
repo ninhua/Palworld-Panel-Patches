@@ -1,70 +1,49 @@
-# Upgrade v0.11.5 → v0.12.0
+# Upgrade v0.12.0 → v0.12.1
 
-本次升级重构 PalPanel stable 补丁更新链路，并修复 Run #5 的 TypeScript `TS1117`。
+本次升级修复 stable Release 已成功、但仓库 Validate 随后失败的问题。
 
-## Run #5 根因
+## 根因
 
-旧适配器在 `vi.spyOn(apiClient, ...).mockResolvedValue({...})` 的 `data` 前直接插入：
-
-```ts
-status: 200,
-```
-
-部分 PalPanel v1.3.0 上游测试已经在同一对象后部定义了顶层 `status`，因此出现重复属性。
-
-v0.12.0 会解析 mock 对象的顶层属性：
-
-- 已有顶层 `status`：不插入；
-- 只有嵌套业务字段 `status`：仍补充 Axios 顶层 `status`；
-- 检测到旧适配器紧邻 `data` 插入的重复 `status: 200`：删除注入项，保留上游状态码；
-- 无法安全判断的重复属性：在构建前明确失败，不交给 TypeScript 输出一批 TS1117。
-
-## 新更新链路
+`build-palpanel.sh` 已执行完整前端命令链：
 
 ```text
-检测官方 stable tag
-→ 创建 candidate-vX.Y.Z 工作区
-→ 从最新更旧 stable Release 导入补丁链
-→ 逐补丁应用和编译检测
-→ 标记 compatible/adapted/incompatible/blocked
-→ 生成 active-source 和 merged patch
-→ 在全新官方源码上只应用 merged patch
-→ 完整测试、构建和 smoke test
-→ 固化 stable-vX.Y.Z
-→ 发布五文件 Release
+npm ci --no-audit --no-fund
+npm run lint
+npm run test
+npm run build
 ```
 
-失败时：
-
-- 不创建 Release；
-- 不创建 PR 或 Issue；
-- candidate 工作区及兼容报告写入 `migration/vX.Y.Z` 分支；
-- main 和上一稳定 Release 不被覆盖。
-
-成功时 Release 顶层只有：
+但 `tests/test-relative-output-path.sh` 的 fake npm 仍只接受 `npm ci` 和
+`npm run build`，因此在 `npm run lint` 主动报错：
 
 ```text
-uitok-palworld-panel_stable-vX.Y.Z_patch-P_linux-amd64.tar.gz
-uitok-palworld-panel_stable-vX.Y.Z_patch-P_source.tar.gz
-manifest.json
-compatibility-report.json
-SHA256SUMS
+unexpected npm arguments: run lint
 ```
 
-## 覆盖升级
+这是回归测试夹具过期，不是已发布 PalPanel 二进制或补丁功能失败。
+
+## 修复
+
+- fake npm 现在接受并记录完整的 ci/lint/test/build 命令链；
+- 测试会校验命令参数和执行顺序，避免以后再次发生夹具漂移；
+- 新增 `common/scripts/validate-all.sh`；
+- 普通 Validate 与 stable Release 发布前均调用同一个统一校验入口；
+- 仓库或回归测试失败时，stable Release 工作流会在版本检测和发布前停止。
+
+## 应用升级
 
 ```bash
-unzip Palworld-Panel-Patches-upgrade-v0.11.5-to-v0.12.0.zip
-cp -a Palworld-Panel-Patches-upgrade-v0.11.5-to-v0.12.0/. /path/to/Palworld-Panel-Patches/
+unzip Palworld-Panel-Patches-upgrade-v0.12.0-to-v0.12.1.zip
+cd Palworld-Panel-Patches-upgrade-v0.12.0-to-v0.12.1
+bash apply-upgrade.sh /path/to/Palworld-Panel-Patches
+```
+
+然后执行：
+
+```bash
 cd /path/to/Palworld-Panel-Patches
-bash common/scripts/validate-repository.sh
+python3 -m pip install -r requirements-ci.txt
+bash common/scripts/validate-all.sh
 ```
 
-提交后重新运行：
-
-```text
-Auto release uitok stable patch
-upstream_version = v1.3.0
-```
-
-Run #5 未创建 `uitok-stable-v1.3.0-p0.8.1`，因此当前 stable patch version 继续使用 `0.8.1`。
+已经成功发布的 `uitok-stable-v1.3.0-p0.8.1` 不需要删除或重新构建。本次只修复补丁仓库的验证与发布前置检查，stable patch version 继续保持 `0.8.1`。

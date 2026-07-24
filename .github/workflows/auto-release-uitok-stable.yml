@@ -31,6 +31,19 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
+      - name: Set up validation Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+
+      - name: Install validation dependencies
+        run: python3 -m pip install -r requirements-ci.txt
+
+      - name: Repository release preflight
+        run: bash common/scripts/validate-all.sh
+
       - name: Read automation configuration
         id: config
         shell: bash

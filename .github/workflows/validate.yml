@@ -26,13 +26,5 @@ jobs:
       - name: Install validation dependencies
         run: python3 -m pip install -r requirements-ci.txt
 
-      - name: Validate repository
-        run: bash common/scripts/validate-repository.sh
-
-      - name: Test relative build output path
-        run: |
-          bash projects/uitok-palworld-panel/patches/dev-v1.2.2/tests/test-relative-output-path.sh
-
-      - name: Test stable release automation
-        run: |
-          bash projects/uitok-palworld-panel/automation/tests/test-automation.sh
+      - name: Validate repository and release preflight
+        run: bash common/scripts/validate-all.sh

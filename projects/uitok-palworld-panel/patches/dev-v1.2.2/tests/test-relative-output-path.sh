@@ -14,6 +14,8 @@ trap cleanup EXIT
 source_dir="${tmp}/source"
 fake_bin="${tmp}/fake-bin"
 caller="${tmp}/caller"
+npm_calls="${tmp}/npm-calls.log"
+expected_npm_calls="${tmp}/expected-npm-calls.log"
 
 mkdir -p \
     "${source_dir}/backend/internal/webui/embedded" \
@@ -24,32 +26,38 @@ mkdir -p \
 : >"${source_dir}/backend/go.mod"
 : >"${source_dir}/frontend/package-lock.json"
 : >"${source_dir}/backend/internal/webui/embedded/.keep"
+: >"${npm_calls}"
 
-cat >"${fake_bin}/node" <<'EOF'
+cat >"${fake_bin}/node" <<'EOF_NODE'
 #!/usr/bin/env bash
 exit 0
-EOF
+EOF_NODE
 
-cat >"${fake_bin}/npm" <<'EOF'
+cat >"${fake_bin}/npm" <<'EOF_NPM'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-if [[ "${1:-}" == "ci" ]]; then
-    exit 0
-fi
+: "${NPM_CALLS_LOG:?NPM_CALLS_LOG is required}"
+printf '%s\n' "$*" >>"${NPM_CALLS_LOG}"
 
-if [[ "${1:-}" == "run" && "${2:-}" == "build" ]]; then
-    mkdir -p dist/assets
-    printf '<!doctype html>\n' >dist/index.html
-    printf 'console.log("test")\n' >dist/assets/index.js
-    exit 0
-fi
+case "$*" in
+    "ci --no-audit --no-fund" | "run lint" | "run test")
+        exit 0
+        ;;
+    "run build")
+        mkdir -p dist/assets
+        printf '<!doctype html>\n' >dist/index.html
+        printf 'console.log("test")\n' >dist/assets/index.js
+        exit 0
+        ;;
+    *)
+        echo "unexpected npm arguments: $*" >&2
+        exit 1
+        ;;
+esac
+EOF_NPM
 
-echo "unexpected npm arguments: $*" >&2
-exit 1
-EOF
-
-cat >"${fake_bin}/go" <<'EOF'
+cat >"${fake_bin}/go" <<'EOF_GO'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
@@ -77,22 +85,23 @@ done
 }
 
 mkdir -p "$(dirname "${output}")"
-cat >"${output}" <<'SCRIPT'
+cat >"${output}" <<'EOF_BINARY'
 #!/usr/bin/env bash
 if [[ "${1:-}" == "--version" ]]; then
     echo "palpanel regression-test"
     exit 0
 fi
 exit 0
-SCRIPT
+EOF_BINARY
 chmod 0755 "${output}"
-EOF
+EOF_GO
 
 chmod 0755 "${fake_bin}/node" "${fake_bin}/npm" "${fake_bin}/go"
 
 (
     cd "${caller}"
     PATH="${fake_bin}:${PATH}" \
+        NPM_CALLS_LOG="${npm_calls}" \
         "${build_script}" \
         "${source_dir}" \
         ".work/output/work/original-palpanel" \
@@ -113,5 +122,18 @@ chmod 0755 "${fake_bin}/node" "${fake_bin}/npm" "${fake_bin}/go"
         exit 1
     }
 )
+
+cat >"${expected_npm_calls}" <<'EOF_EXPECTED'
+ci --no-audit --no-fund
+run lint
+run test
+run build
+EOF_EXPECTED
+
+if ! cmp -s "${expected_npm_calls}" "${npm_calls}"; then
+    echo "前端构建命令顺序或参数与预期不一致：" >&2
+    diff -u "${expected_npm_calls}" "${npm_calls}" >&2 || true
+    exit 1
+fi
 
 echo "Relative output path regression test passed."

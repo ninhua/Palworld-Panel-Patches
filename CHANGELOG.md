@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.12.1
+
+### Fixed
+
+- 修复 `test-relative-output-path.sh` 的 fake npm 仍只接受旧命令集，导致完整构建脚本执行 `npm run lint` 时错误失败。
+- fake npm 现在接受并记录 `npm ci --no-audit --no-fund`、`npm run lint`、`npm run test` 和 `npm run build`，并校验顺序与参数。
+
+### Changed
+
+- 新增统一入口 `common/scripts/validate-all.sh`，集中执行仓库静态验证、相对输出路径回归和 stable 自动化测试。
+- `.github/workflows/validate.yml` 与 stable Release workflow 改为调用同一校验入口；发布前置检查失败时不会进入版本检测、构建或发布阶段。
+
+### Release impact
+
+- 已发布的 `uitok-stable-v1.3.0-p0.8.1` 不受影响，无需删除或重建。
+- stable patch version 保持 `0.8.1`；本次仅修复补丁仓库验证链路。
+
 ## v0.12.0
 
 ### Changed
