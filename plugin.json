@@ -1,0 +1,27 @@
+{
+  "id": "palpanel-qwenpaw",
+  "name": {
+    "zh-CN": "PalPanel 幻兽帕鲁助手",
+    "en-US": "PalPanel Assistant"
+  },
+  "version": "0.2.4",
+  "type": "general",
+  "description": {
+    "zh-CN": "连接 PalPanel，同时支持 QwenPaw QQ 官方频道与 OneBot/NapCat，提供角色绑定、数字序号选择、Markdown/ASCII 双表格模式、服务器运维、管理 API 与补丁扩展接口。",
+    "en-US": "PalPanel integration for QwenPaw official QQ and OneBot/NapCat with player binding, numbered selection, switchable Markdown/ASCII tables, server management APIs and patched endpoint support."
+  },
+  "author": "PalPanel contributors",
+  "entry": {
+    "backend": "plugin.py"
+  },
+  "dependencies": [],
+  "qwenpaw_version": {
+    "min": "1.1.7",
+    "max": "3.0.0"
+  },
+  "meta": {
+    "source": "astrbot_plugin_palpanel",
+    "protocol_version": "v2",
+    "patch_repository": "ninhua/Palworld-Panel-Patches"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "panel_url": "http://127.0.0.1:8080",
+  "panel_public_url": "http://192.168.1.100:8080",
+  "panel_id": "palpanel",
+  "shared_secret": "replace-with-the-same-secret-as-palpanel",
+  "panel_api_key": "ppk_replace-with-palpanel-development-key",
+  "allowed_group_ids": [
+    "123456789"
+  ],
+  "admin_qq_ids": [
+    "987654321"
+  ],
+  "allowed_agent_ids": [
+    "default"
+  ],
+  "listen_host": "127.0.0.1",
+  "listen_port": 8092,
+  "daily_points": 10,
+  "solve_cost": 1,
+  "timezone": "Asia/Shanghai",
+  "ticket_ttl_seconds": 300,
+  "quick_solve_timeout_seconds": 300,
+  "query_cooldown_seconds": 5,
+  "control_cooldown_seconds": 15,
+  "max_room_results": 10,
+  "output_max_chars": 1800,
+  "require_qq_channel": true,
+  "selection_ttl_seconds": 300,
+  "table_mode": "markdown"
+}
