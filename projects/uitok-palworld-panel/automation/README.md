@@ -95,3 +95,25 @@ incompatible-versions.json
 ```
 
 命中后 Workflow 正常跳过，不创建 PR、Issue 或 Release。
+
+## 已知测试上下文漂移
+
+上游稳定版调整 `backend/internal/pallocalize/localize_test.go` 时，旧补丁中的测试 hunk 可能无法直接应用。
+
+构建使用 `apply-source-patch.sh`：
+
+```text
+完整补丁可应用
+→ 正常应用
+
+只有 pallocalize/localize_test.go 冲突
+且补丁内容仍是 ItemIcon / ContainerName 测试
+且排除该路径后其余补丁可完整应用
+→ 排除旧测试 hunk
+→ 生成独立 patch_storage_localize_test.go
+
+任何其他情况
+→ 构建失败，不创建 Release
+```
+
+该规则不会忽略核心实现冲突，也不会使用 `.rej` 文件继续构建。

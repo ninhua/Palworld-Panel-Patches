@@ -1,37 +1,28 @@
-# Upgrade v0.11.0 → v0.11.1
+# Upgrade v0.11.1 → v0.11.2
 
-本次升级修正稳定版自动发布的派生规则。
-
-旧行为：
+本次升级修复稳定版 Action 的补丁应用错误：
 
 ```text
-每个新的上游稳定版本
-→ 都从固定 dev 补丁轨道重新迁移
+backend/internal/pallocalize/localize_test.go: patch does not apply
 ```
 
-新行为：
+该冲突来自上游测试文件结构变化，不代表存储图标或容器名称核心实现不兼容。
+
+新逻辑：
 
 ```text
-查找目标版本之前最高的已发布 stable Release
-→ 下载并校验该 Release 的合并补丁
-→ 将上一个稳定补丁应用到新的官方稳定版源码
-→ 完整构建和测试
-→ 发布新的 stable Release
+先执行完整 git apply --check
+→ 成功：正常应用
+→ 失败：检查是否只有已知 pallocalize 测试路径冲突
+→ 其他文件全部可应用：排除旧测试 hunk，并生成独立等价测试文件
+→ 仍有其他冲突：Workflow 失败，不发布 Release
 ```
-
-只有第一次不存在更早 stable Release 时，才使用：
-
-```text
-projects/uitok-palworld-panel/patches/dev-v1.2.2
-```
-
-作为首次迁移源。
 
 覆盖升级：
 
 ```bash
-unzip Palworld-Panel-Patches-upgrade-v0.11.0-to-v0.11.1.zip
-cp -a Palworld-Panel-Patches-upgrade-v0.11.0-to-v0.11.1/. /path/to/Palworld-Panel-Patches/
+unzip Palworld-Panel-Patches-upgrade-v0.11.1-to-v0.11.2.zip
+cp -a Palworld-Panel-Patches-upgrade-v0.11.1-to-v0.11.2/. /path/to/Palworld-Panel-Patches/
 cd /path/to/Palworld-Panel-Patches
 bash common/scripts/validate-repository.sh
 ```
@@ -40,14 +31,14 @@ bash common/scripts/validate-repository.sh
 
 ```bash
 git add .
-git commit -m "fix: derive stable patches from previous stable release"
+git commit -m "fix: rebase pallocalize tests during stable migration"
 git push origin main
 ```
 
-然后在 Actions 手动运行一次：
+然后重新运行失败的：
 
 ```text
 Auto release uitok stable patch
 ```
 
-后续仍每天 UTC 01:17 自动检查。无需修改启动脚本。
+无需修改生产启动脚本或 `palpanel-feature-patch.sh`。

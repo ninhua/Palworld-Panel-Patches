@@ -46,6 +46,7 @@ build_palpanel="${source_track}/build/build-palpanel.sh"
 license_file="${source_track}/LICENSE"
 notice_file="${source_track}/LICENSE-NOTICE.md"
 derivation_file="${source_track}/derivation.json"
+apply_source_patch="${script_dir}/apply-source-patch.sh"
 
 for path in \
     "${manifest_template}" \
@@ -53,7 +54,8 @@ for path in \
     "${build_palpanel}" \
     "${license_file}" \
     "${notice_file}" \
-    "${derivation_file}"; do
+    "${derivation_file}" \
+    "${apply_source_patch}"; do
     [[ -f "${path}" ]] || {
         echo "缺少源补丁轨道文件：${path}" >&2
         exit 1
@@ -118,8 +120,7 @@ cp -a "${upstream}" "${patched}"
 
 for patch_file in "${patch_files[@]}"; do
     echo "Applying $(basename "${patch_file}")"
-    git -C "${patched}" apply --check "${patch_file}"
-    git -C "${patched}" apply "${patch_file}"
+    "${apply_source_patch}" "${patched}" "${patch_file}"
 done
 
 python3 "${script_dir}/retarget-stable-source.py" \

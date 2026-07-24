@@ -238,11 +238,19 @@ def validate_stable_automation() -> None:
     required_scripts = (
         automation / "select-previous-stable-release.py",
         automation / "prepare-source-track.sh",
+        automation / "apply-source-patch.sh",
         automation / "build-stable-release.sh",
     )
     for path in required_scripts:
         if not path.is_file():
             fail(f"稳定版自动化缺少脚本：{path}")
+
+    build_script_text = (automation / "build-stable-release.sh").read_text(encoding="utf-8")
+    if "apply-source-patch.sh" not in build_script_text:
+        fail("稳定版构建未使用受控补丁应用器")
+    apply_script_text = (automation / "apply-source-patch.sh").read_text(encoding="utf-8")
+    if "patch_storage_localize_test.go" not in apply_script_text:
+        fail("受控补丁应用器缺少 pallocalize 测试重定位规则")
 
 def validate_placeholders() -> None:
     # 模板目录允许占位值，正式补丁目录不允许。

@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.11.2
+
+### Fixed
+
+- 修复首次稳定版迁移时 `0005-enhance-base-storage-display.patch` 因上游调整 `backend/internal/pallocalize/localize_test.go` 而无法应用。
+- 新增受控补丁应用器：普通补丁仍要求完整 `git apply --check`；只有确认冲突仅来自已知 pallocalize 测试路径时，才排除旧测试 hunk。
+- 被排除的测试覆盖迁移到独立 `patch_storage_localize_test.go`，继续验证 ItemIcon、ContainerName 与未知值回退行为。
+
+### Safety
+
+- 不使用 `git apply --reject`，不允许半应用补丁。
+- 排除已知测试路径后，只要其他任意文件仍有冲突，Workflow 立即失败且不创建 Release。
+- 已知测试 hunk 内容与预期标记不一致时拒绝自动重定位。
+
+### Validation
+
+- 增加已知测试上下文漂移回归测试。
+- 验证重定位后核心补丁完整应用，独立 Go 测试文件格式正确并保留原测试语义。
+
 ## v0.11.1
 
 ### Changed
