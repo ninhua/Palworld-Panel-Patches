@@ -1,39 +1,37 @@
-# Upgrade v0.10.3 → v0.11.0
+# Upgrade v0.11.0 → v0.11.1
 
-本次升级新增上游稳定版每日自动发布能力。
+本次升级修正稳定版自动发布的派生规则。
 
-## 行为
-
-```text
-每天检查一次上游正式 Release
-→ 选择最高稳定版本
-→ 若已有同名稳定补丁 Release，则跳过
-→ 若版本在明确不兼容列表中，则跳过
-→ 应用当前完整补丁链并运行完整构建验证
-→ 成功后直接创建稳定 Release
-```
-
-不会创建 PR 或 Issue。失败时只保留 GitHub Actions 日志，不提交仓库变更，也不发布资产。
-
-新增文件：
+旧行为：
 
 ```text
-.github/workflows/auto-release-uitok-stable.yml
-projects/uitok-palworld-panel/automation/README.md
-projects/uitok-palworld-panel/automation/config.json
-projects/uitok-palworld-panel/automation/incompatible-versions.json
-projects/uitok-palworld-panel/automation/select-latest-version.py
-projects/uitok-palworld-panel/automation/retarget-stable-source.py
-projects/uitok-palworld-panel/automation/build-stable-release.sh
-projects/uitok-palworld-panel/automation/smoke-stable.sh
-projects/uitok-palworld-panel/automation/tests/test-automation.sh
+每个新的上游稳定版本
+→ 都从固定 dev 补丁轨道重新迁移
 ```
+
+新行为：
+
+```text
+查找目标版本之前最高的已发布 stable Release
+→ 下载并校验该 Release 的合并补丁
+→ 将上一个稳定补丁应用到新的官方稳定版源码
+→ 完整构建和测试
+→ 发布新的 stable Release
+```
+
+只有第一次不存在更早 stable Release 时，才使用：
+
+```text
+projects/uitok-palworld-panel/patches/dev-v1.2.2
+```
+
+作为首次迁移源。
 
 覆盖升级：
 
 ```bash
-unzip Palworld-Panel-Patches-upgrade-v0.10.3-to-v0.11.0.zip
-cp -a Palworld-Panel-Patches-upgrade-v0.10.3-to-v0.11.0/. /path/to/Palworld-Panel-Patches/
+unzip Palworld-Panel-Patches-upgrade-v0.11.0-to-v0.11.1.zip
+cp -a Palworld-Panel-Patches-upgrade-v0.11.0-to-v0.11.1/. /path/to/Palworld-Panel-Patches/
 cd /path/to/Palworld-Panel-Patches
 bash common/scripts/validate-repository.sh
 ```
@@ -42,17 +40,14 @@ bash common/scripts/validate-repository.sh
 
 ```bash
 git add .
-git commit -m "feat: automate stable patch releases"
+git commit -m "fix: derive stable patches from previous stable release"
 git push origin main
 ```
 
-仓库设置必须允许 GitHub Actions 使用读写权限创建 Release：
+然后在 Actions 手动运行一次：
 
 ```text
-Settings → Actions → General → Workflow permissions
-→ Read and write permissions
+Auto release uitok stable patch
 ```
 
-无需允许 Actions 创建 Pull Request。
-
-首次推送后，可以在 Actions 中手动运行 `Auto release uitok stable patch`，留空版本即自动选择最新稳定版；之后每天自动检查一次。
+后续仍每天 UTC 01:17 自动检查。无需修改启动脚本。

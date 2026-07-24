@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "upstream_repository": "uitok/palworld-panel",
-  "source_track": "projects/uitok-palworld-panel/patches/dev-v1.2.2",
   "release_tag_prefix": "uitok-stable-",
   "platform": "linux-amd64",
   "required_features": [
     "patch-info-api",
     "base-custom-names"
-  ]
+  ],
+  "bootstrap_source_track": "projects/uitok-palworld-panel/patches/dev-v1.2.2"
 }

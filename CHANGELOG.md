@@ -1,29 +1,26 @@
 # Changelog
 
-## v0.11.0
+## v0.11.1
 
-### Added
+### Changed
 
-- 新增每日一次的 `Auto release uitok stable patch` Workflow。
-- 自动选择上游最高正式 `vMAJOR.MINOR[.PATCH]` Release。
-- 自动应用当前完整功能补丁链，并把 PatchInfo、OpenAPI 和生成契约重定向到目标稳定版本。
-- 自动执行 Go 测试、前端构建、嵌入式二进制构建和 `/api/patch/info` 冒烟测试。
-- 构建通过后直接创建 `uitok-stable-vX.Y.Z-pA.B.C` 稳定 Release。
-- 新增明确不兼容版本列表 `automation/incompatible-versions.json`。
+- 稳定版自动发布改为优先从目标版本之前、版本最高的已发布稳定补丁 Release 派生。
+- 同一上游版本存在多个稳定补丁时，选择补丁版本最高者。
+- 只有第一次没有更早 stable Release 时，才回退到 `bootstrap_source_track`。
+- 新增 `select-previous-stable-release.py` 与 `prepare-source-track.sh`。
+- 自动下载并校验上一个稳定 Release 的 manifest、build metadata、SHA256SUMS 和合并补丁。
+- 稳定 Release 新增 `derivation.json`，构建元数据同步记录派生来源。
 
-### Behavior
+### Safety
 
-- 不创建 PR。
-- 不创建 Issue。
-- 不自动提交稳定轨道目录到 `main`；GitHub Release 是生产脚本的唯一可安装发布信号。
-- 补丁冲突、测试失败、构建失败或冒烟失败时，Workflow 直接失败，不创建 Release。
-- 稳定兼容按 `target_version`、`verified=true`、SHA256SUMS、包结构和 feature 包含关系判断；上游 commit 仅用于追踪。
+- 上一个稳定 Release 必须为 `exact`、`verified=true`，且 tag、目标版本、补丁版本和合并补丁 SHA-256 完全一致。
+- 派生、补丁应用、测试、构建或冒烟失败时不创建 Release。
+- 不创建 PR，不创建 Issue，不修改生产环境。
 
 ### Validation
 
-- 新增稳定版本排序测试，支持 `v1.3` 与 `v1.3.0`。
-- 新增 PatchInfo 稳定版重定向测试。
-- 仓库校验确认自动化每天只调度一次、不得创建 PR/Issue，并必须直接创建 Release。
+- 新增上一个稳定 Release 选择、同版本最高补丁选择、首次迁移回退和派生轨道构建测试。
+- 仓库校验要求 Workflow 必须包含稳定 Release 选择与派生源准备步骤。
 
 ## v0.10.3
 

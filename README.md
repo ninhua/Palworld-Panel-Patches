@@ -1,35 +1,11 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.11.0`
+仓库版本：`v0.11.1`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
 
-
-## 上游稳定版自动发布
-
-仓库每天自动检查一次 `uitok/palworld-panel` 的正式 Release。发现尚未发布补丁的最高稳定版本后，会直接：
-
-```text
-拉取官方稳定标签
-→ 应用当前完整功能补丁链
-→ 按目标版本重定向 PatchInfo
-→ 运行 Go 测试、前端构建和二进制冒烟测试
-→ 生成 exact / verified=true 的 manifest 与 SHA256SUMS
-→ 创建稳定 GitHub Release
-```
-
-不会创建 PR 或 Issue。任何补丁冲突、测试失败、构建失败或冒烟失败都会让 Workflow 失败，并且不会产生可供启动脚本安装的 Release。
-
-Workflow：
-
-```text
-.github/workflows/auto-release-uitok-stable.yml
-```
-
-稳定版安装按 `target_version` 匹配；上游 commit 仅用于源码追踪，不参与安装判断。
-
-## 当前开发基线
+## 首次稳定迁移兜底基线
 
 ```text
 源码仓库：uitok/palworld-panel
@@ -39,6 +15,8 @@ Workflow：
 补丁版本：0.8.0-dev.1
 兼容状态：source-alias / verified=false
 ```
+
+该轨道只在没有任何已发布 stable Release 时作为首次迁移源；首次稳定版发布后，后续上游版本统一从上一个稳定补丁 Release 派生。
 
 ## 当前功能
 
@@ -229,6 +207,22 @@ uitok-dev-v1.2.2-p0.8.0-dev.1
 ```
 
 Release 标签不可变；标签已存在时工作流应失败，不覆盖旧资产。
+
+## 稳定版自动发布
+
+每天检查一次上游正式 Release。首次没有已发布稳定补丁时，从 `bootstrap_source_track` 完成第一次迁移；之后的新上游稳定版本统一从版本最高的上一个已发布稳定补丁 Release 派生。
+
+```text
+上一个 stable Release 的合并补丁
+→ 新的官方稳定版源码
+→ 重新定向版本元数据
+→ Go / 前端 / 二进制 / API 冒烟验证
+→ 直接发布新的 stable Release
+```
+
+不会创建 PR 或 Issue。派生校验、补丁应用、测试或构建失败时不创建 Release，生产启动脚本不会更新。每个 Release 都包含 `derivation.json` 记录派生来源。
+
+第一次稳定迁移后，后续稳定版不再从 `dev-v1.2.2` 轨道派生。
 
 ## 验证
 

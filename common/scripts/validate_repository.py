@@ -187,13 +187,13 @@ def validate_stable_automation() -> None:
     if not isinstance(config, dict) or config.get("schema_version") != 1:
         fail("稳定版自动化 config.json 格式错误")
 
-    source_track_value = config.get("source_track")
+    source_track_value = config.get("bootstrap_source_track")
     if not isinstance(source_track_value, str) or not source_track_value:
-        fail("稳定版自动化 source_track 无效")
+        fail("稳定版自动化 bootstrap_source_track 无效")
     source_track = ROOT / source_track_value
     manifest_path = source_track / "manifest.template.json"
     if not manifest_path.is_file():
-        fail(f"稳定版自动化源补丁轨道不存在：{source_track}")
+        fail(f"稳定版自动化首次迁移源轨道不存在：{source_track}")
 
     manifest = load_json(manifest_path)
     if not isinstance(manifest, dict):
@@ -230,6 +230,19 @@ def validate_stable_automation() -> None:
         fail("稳定版自动化不得创建 Issue")
     if "gh release create" not in workflow_text:
         fail("稳定版自动化缺少直接 Release 发布步骤")
+    if "select-previous-stable-release.py" not in workflow_text:
+        fail("稳定版自动化未选择上一个已发布稳定补丁")
+    if "prepare-source-track.sh" not in workflow_text:
+        fail("稳定版自动化未准备稳定版派生源轨道")
+
+    required_scripts = (
+        automation / "select-previous-stable-release.py",
+        automation / "prepare-source-track.sh",
+        automation / "build-stable-release.sh",
+    )
+    for path in required_scripts:
+        if not path.is_file():
+            fail(f"稳定版自动化缺少脚本：{path}")
 
 def validate_placeholders() -> None:
     # 模板目录允许占位值，正式补丁目录不允许。

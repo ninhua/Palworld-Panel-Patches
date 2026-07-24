@@ -29,7 +29,7 @@ else
     source_track_rel="$(python3 - "${config}" <<'PY'
 from pathlib import Path
 import json, sys
-print(json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["source_track"])
+print(json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["bootstrap_source_track"])
 PY
 )"
     source_track="${repo_root}/${source_track_rel}"
@@ -45,13 +45,15 @@ patch_dir="${source_track}/source"
 build_palpanel="${source_track}/build/build-palpanel.sh"
 license_file="${source_track}/LICENSE"
 notice_file="${source_track}/LICENSE-NOTICE.md"
+derivation_file="${source_track}/derivation.json"
 
 for path in \
     "${manifest_template}" \
     "${patch_dir}/SHA256SUMS" \
     "${build_palpanel}" \
     "${license_file}" \
-    "${notice_file}"; do
+    "${notice_file}" \
+    "${derivation_file}"; do
     [[ -f "${path}" ]] || {
         echo "缺少源补丁轨道文件：${path}" >&2
         exit 1
@@ -208,6 +210,7 @@ cp "${patch_files[@]}" "${package_dir}/source/source-chain/"
 cp "${patch_dir}/SHA256SUMS" "${package_dir}/source/source-chain/SHA256SUMS"
 cp "${license_file}" "${package_dir}/LICENSE"
 cp "${notice_file}" "${package_dir}/LICENSE-NOTICE.md"
+cp "${derivation_file}" "${package_dir}/derivation.json"
 
 python3 - \
     "${manifest_template}" \
@@ -284,6 +287,7 @@ Upstream repository: uitok/palworld-panel
 Stable version: ${target_version}
 Source commit: ${actual_commit} (traceability only)
 Patch version: ${stable_patch_version}
+Derivation metadata: derivation.json
 Merged patch: source/stable-${target_version}-patch-${stable_patch_version}.patch
 
 The Release also contains a complete patched source archive and the original
@@ -335,6 +339,7 @@ cp "${output}/work/stable-${target_version}-patch-${stable_patch_version}.patch"
     "${output}/release/"
 cp "${license_file}" "${output}/release/LICENSE"
 cp "${notice_file}" "${output}/release/LICENSE-NOTICE.md"
+cp "${derivation_file}" "${output}/release/derivation.json"
 cp "${patch_files[@]}" "${output}/release/"
 cp "${patch_dir}/SHA256SUMS" "${output}/release/PATCH-SHA256SUMS"
 
@@ -347,7 +352,8 @@ python3 - \
     "${original_sha}" \
     "${patched_sha}" \
     "$(basename "${archive}")" \
-    "$(basename "${source_archive}")" <<'PY'
+    "$(basename "${source_archive}")" \
+    "${derivation_file}" <<'PY'
 from pathlib import Path
 import json, sys
 (
@@ -360,7 +366,9 @@ import json, sys
     patched_sha,
     archive,
     source_archive,
+    derivation_path,
 ) = sys.argv[1:]
+derivation = json.loads(Path(derivation_path).read_text(encoding="utf-8"))
 payload = {
     "schema_version": 1,
     "channel": "stable",
@@ -372,6 +380,7 @@ payload = {
     "patched_palpanel_sha256": patched_sha,
     "binary_package": archive,
     "source_package": source_archive,
+    "derivation": derivation,
 }
 Path(output).write_text(
     json.dumps(payload, ensure_ascii=False, indent=2) + "\n",

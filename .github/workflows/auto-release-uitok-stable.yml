@@ -43,7 +43,7 @@ jobs:
 
           data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
           print(f'upstream_repository={data["upstream_repository"]}')
-          print(f'source_track={data["source_track"]}')
+          print(f'bootstrap_source_track={data["bootstrap_source_track"]}')
           print(f'release_tag_prefix={data["release_tag_prefix"]}')
           PY
 
@@ -72,11 +72,77 @@ jobs:
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
           echo "检测到上游稳定版：${version}"
 
+      - name: Resolve previous stable derivation source
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_VERSION: ${{ steps.detect.outputs.version }}
+          TAG_PREFIX: ${{ steps.config.outputs.release_tag_prefix }}
+          BOOTSTRAP_SOURCE_TRACK: ${{ steps.config.outputs.bootstrap_source_track }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm -rf .work/source-track .work/previous-release
+          mkdir -p .work
+
+          previous_tag="$(
+            gh api --paginate \
+              -H 'Accept: application/vnd.github+json' \
+              "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+              --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' |
+            "${AUTOMATION_DIR}/select-previous-stable-release.py" \
+              "${TARGET_VERSION}" \
+              "${TAG_PREFIX}"
+          )"
+
+          if [[ -n "${previous_tag}" ]]; then
+            mapfile -t previous_meta < <(
+              python3 - "${previous_tag}" "${TAG_PREFIX}" <<'PY'
+          import re, sys
+          tag, prefix = sys.argv[1:]
+          match = re.fullmatch(
+              re.escape(prefix) + r"(v\d+\.\d+(?:\.\d+)?)-p(\d+\.\d+\.\d+)",
+              tag,
+          )
+          if not match:
+              raise SystemExit(f"非法稳定 Release tag：{tag}")
+          print(match.group(1))
+          print(match.group(2))
+          PY
+            )
+            previous_target="${previous_meta[0]}"
+            previous_patch="${previous_meta[1]}"
+            merged_name="stable-${previous_target}-patch-${previous_patch}.patch"
+
+            mkdir -p .work/previous-release
+            gh release download "${previous_tag}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --dir .work/previous-release \
+              --pattern manifest.json \
+              --pattern build-metadata.json \
+              --pattern SHA256SUMS \
+              --pattern "${merged_name}"
+
+            "${AUTOMATION_DIR}/prepare-source-track.sh" \
+              .work/source-track \
+              "${BOOTSTRAP_SOURCE_TRACK}" \
+              .work/previous-release \
+              "${previous_tag}"
+          else
+            "${AUTOMATION_DIR}/prepare-source-track.sh" \
+              .work/source-track \
+              "${BOOTSTRAP_SOURCE_TRACK}"
+          fi
+
+          echo "source_track=.work/source-track" >> "${GITHUB_OUTPUT}"
+          echo "previous_tag=${previous_tag}" >> "${GITHUB_OUTPUT}"
+          cat .work/source-track/derivation.json
+
       - name: Resolve patch version and release tag
         id: release_meta
         env:
           TARGET_VERSION: ${{ steps.detect.outputs.version }}
-          SOURCE_TRACK: ${{ steps.config.outputs.source_track }}
+          SOURCE_TRACK: ${{ steps.source.outputs.source_track }}
           TAG_PREFIX: ${{ steps.config.outputs.release_tag_prefix }}
         shell: bash
         run: |
@@ -179,7 +245,7 @@ jobs:
         if: steps.gate.outputs.skip != 'true'
         env:
           TARGET_VERSION: ${{ steps.detect.outputs.version }}
-          SOURCE_TRACK: ${{ steps.config.outputs.source_track }}
+          SOURCE_TRACK: ${{ steps.source.outputs.source_track }}
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -199,6 +265,7 @@ jobs:
           test -s manifest.json
           test -s upstream-lock.json
           test -s build-metadata.json
+          test -s derivation.json
           test -s smoke-test.log
           grep -Fq "Stable patch API smoke test passed." smoke-test.log
 
@@ -208,7 +275,10 @@ jobs:
           manifest = json.loads(Path("manifest.json").read_text(encoding="utf-8"))
           assert manifest["compatibility"]["mode"] == "exact"
           assert manifest["compatibility"]["verified"] is True
+          derivation = json.loads(Path("derivation.json").read_text(encoding="utf-8"))
+          assert derivation["mode"] in {"bootstrap-track", "previous-stable-release"}
           metadata = json.loads(Path("build-metadata.json").read_text(encoding="utf-8"))
+          assert metadata["derivation"] == derivation
           for key in ("binary_package", "source_package"):
               path = Path(metadata[key])
               assert path.is_file() and path.stat().st_size > 0, path
@@ -216,9 +286,6 @@ jobs:
 
       - name: Create release notes
         if: steps.gate.outputs.skip != 'true'
-        env:
-          TARGET_VERSION: ${{ steps.detect.outputs.version }}
-          PATCH_VERSION: ${{ steps.release_meta.outputs.patch_version }}
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -234,6 +301,15 @@ jobs:
           manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
           metadata = json.loads(Path(metadata_path).read_text(encoding="utf-8"))
           features = "\n".join(f"- `{value}`" for value in manifest["features"])
+          derivation = metadata["derivation"]
+          if derivation["mode"] == "previous-stable-release":
+              derived = (
+                  f"- Derived from stable Release: `{derivation['derived_from_release']}`\n"
+                  f"- Previous target: `{derivation['derived_from_target_version']}`\n"
+                  f"- Previous patch: `{derivation['derived_from_patch_version']}`"
+              )
+          else:
+              derived = "- Derived from bootstrap track: first stable migration"
           text = f"""## PalPanel {metadata['target_version']} stable patch
 
           This Release was generated automatically from the official stable tag.
@@ -245,16 +321,20 @@ jobs:
           - Mode: `exact`
           - Verified: `true`
           - Source commit: `{metadata['source_commit']}` (traceability only; installation matching is version-based)
+          {derived}
 
           Features:
 
           {features}
 
-          The workflow applied the maintained feature patch chain, retargeted patch metadata,
-          regenerated API contracts, ran Go tests, built the frontend and embedded binary,
-          executed `/api/patch/info` smoke validation, and generated SHA-256 checksums.
+          For the first stable migration the workflow uses the configured bootstrap track.
+          Every later upstream stable version is derived from the newest older published stable
+          patch Release, then reapplied and fully tested against the new official source tag.
 
-          No Release is created when patch application, tests, build, or smoke validation fails.
+          The workflow regenerated API contracts, ran Go tests, built the frontend and embedded
+          binary, executed `/api/patch/info` smoke validation, and generated SHA-256 checksums.
+
+          No Release is created when derivation, patch application, tests, build, or smoke validation fails.
           """
           Path(output_path).write_text(text, encoding="utf-8")
           PY
