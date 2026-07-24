@@ -1233,7 +1233,7 @@ index 0000000000000000000000000000000000000000..7cf7a85773dfb956a02f139e004b78ee
 +}
 diff --git a/backend/internal/api/patch_info.go b/backend/internal/api/patch_info.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..6b374f416bd177173e21939ba02edc3d71240b3f
+index 0000000000000000000000000000000000000000..ff59c50ea93190746717303b3b97578858f3e8e0
 --- /dev/null
 +++ b/backend/internal/api/patch_info.go
 @@ -0,0 +1,38 @@
@@ -1249,11 +1249,11 @@ index 0000000000000000000000000000000000000000..6b374f416bd177173e21939ba02edc3d
 +	patchSourceRepository = "uitok/palworld-panel"
 +	patchSourceRef        = "v1.3.0"
 +	patchTargetVersion    = "v1.3.0"
-+	patchVersion          = "0.8.1"
++	patchVersion          = "0.8.4"
 +	patchRepository       = "ninhua/Palworld-Panel-Patches"
 +)
 +
-+var patchFeatures = []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support"}
++var patchFeatures = []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display"}
 +
 +func (s Server) patchInfo(c *gin.Context) {
 +	info := buildinfo.Current()
@@ -1277,7 +1277,7 @@ index 0000000000000000000000000000000000000000..6b374f416bd177173e21939ba02edc3d
 +}
 diff --git a/backend/internal/api/patch_info_test.go b/backend/internal/api/patch_info_test.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..ad3cc306b3a8e2ab0a8bea7c1b6fc30d94e206c5
+index 0000000000000000000000000000000000000000..f63e46ad941611877841d5986f83224afc4dbfda
 --- /dev/null
 +++ b/backend/internal/api/patch_info_test.go
 @@ -0,0 +1,88 @@
@@ -1360,7 +1360,7 @@ index 0000000000000000000000000000000000000000..ad3cc306b3a8e2ab0a8bea7c1b6fc30d
 +	for _, feature := range response.Data.Patch.Features {
 +		features[feature] = true
 +	}
-+	for _, expected := range []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support"} {
++	for _, expected := range []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display"} {
 +		if !features[expected] {
 +			t.Fatalf("missing feature %q in %#v", expected, response.Data.Patch.Features)
 +		}
@@ -1369,12 +1369,65 @@ index 0000000000000000000000000000000000000000..ad3cc306b3a8e2ab0a8bea7c1b6fc30d
 +		t.Fatalf("unexpected build metadata: %+v", response.Data.Build)
 +	}
 +}
+diff --git a/backend/internal/api/patch_update.go b/backend/internal/api/patch_update.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..1265bd5121b5bc30bf9adb06c00834475c9dd567
+--- /dev/null
++++ b/backend/internal/api/patch_update.go
+@@ -0,0 +1,47 @@
++package api
++
++import (
++	"net/http"
++
++	"github.com/gin-gonic/gin"
++
++	"palpanel/internal/server"
++)
++
++const patchHotUpdateFeature = "panel-patch-hot-update"
++
++func (s Server) patchUpdateRequest() server.PatchUpdateRequest {
++	return server.PatchUpdateRequest{
++		TargetVersion:       patchTargetVersion,
++		CurrentPatchVersion: patchVersion,
++		Repository:          patchRepository,
++		RequiredFeature:     patchHotUpdateFeature,
++	}
++}
++
++func (s Server) patchUpdateStatus(c *gin.Context) {
++	status, err := s.server.PatchUpdateStatus(c.Request.Context(), s.patchUpdateRequest())
++	if err != nil {
++		fail(c, http.StatusBadGateway, "patch_update_status_failed", err.Error())
++		return
++	}
++	ok(c, status)
++}
++
++func (s Server) patchUpdateCheck(c *gin.Context) {
++	job, err := s.server.CheckPatchUpdate(c.Request.Context(), s.patchUpdateRequest())
++	if err != nil {
++		fail(c, http.StatusInternalServerError, "patch_update_check_failed", err.Error())
++		return
++	}
++	accepted(c, job)
++}
++
++func (s Server) patchUpdate(c *gin.Context) {
++	job, err := s.server.ApplyPatchUpdate(c.Request.Context(), s.patchUpdateRequest())
++	if err != nil {
++		fail(c, http.StatusInternalServerError, "patch_update_failed", err.Error())
++		return
++	}
++	accepted(c, job)
++}
 diff --git a/backend/internal/api/player_annotations.go b/backend/internal/api/player_annotations.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..1f3095399cdea8fe2ba6b9b034733ce8aef64a2c
+index 0000000000000000000000000000000000000000..ad17a3769fd620455aaee70c8fec502583ad0b30
 --- /dev/null
 +++ b/backend/internal/api/player_annotations.go
-@@ -0,0 +1,225 @@
+@@ -0,0 +1,237 @@
 +package api
 +
 +import (
@@ -1474,22 +1527,34 @@ index 0000000000000000000000000000000000000000..1f3095399cdea8fe2ba6b9b034733ce8
 +}
 +
 +func (s Server) resolvePlayerAnnotationTarget(c *gin.Context) (saveindex.Player, string, bool) {
-+	index, status, view, _, valid, err := s.currentPlayerIndex(c)
++	index, status, view, overlay, valid, err := s.currentPlayerIndex(c)
 +	if !valid {
 +		return saveindex.Player{}, "", false
++	}
++	var online onlinePlayersResult
++	if overlay {
++		online = s.onlinePlayers(c)
++		status = statusWithOnlineState(status, online)
 +	}
 +	if err != nil && !status.Stale && status.State != "disabled" {
 +		fail(c, http.StatusServiceUnavailable, "save_index_unavailable", err.Error())
 +		return saveindex.Player{}, "", false
 +	}
-+	id := c.Param("id")
-+	for _, player := range index.Players {
-+		if matchesID(id, player.PlayerUID, player.SteamID) {
-+			return player, view.SourceID, true
-+		}
++	players := playersForView(index.Players, online, overlay)
++	if player, found := findPlayerAnnotationTarget(c.Param("id"), players); found {
++		return player, view.SourceID, true
 +	}
 +	fail(c, http.StatusNotFound, "player_not_found", "player not found")
 +	return saveindex.Player{}, "", false
++}
++
++func findPlayerAnnotationTarget(id string, players []saveindex.Player) (saveindex.Player, bool) {
++	for _, player := range players {
++		if matchesID(id, player.PlayerUID, player.SteamID) {
++			return player, true
++		}
++	}
++	return saveindex.Player{}, false
 +}
 +
 +func normalizePlayerAnnotation(input playerAnnotationInput) (playerAnnotation, error) {
@@ -1602,10 +1667,10 @@ index 0000000000000000000000000000000000000000..1f3095399cdea8fe2ba6b9b034733ce8
 +}
 diff --git a/backend/internal/api/player_annotations_test.go b/backend/internal/api/player_annotations_test.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..4c9bd3f61c9c30c9a067546c81420a79ba42c18c
+index 0000000000000000000000000000000000000000..7b0d87cacd52fd15a40c02f67c7922b87bbe047d
 --- /dev/null
 +++ b/backend/internal/api/player_annotations_test.go
-@@ -0,0 +1,138 @@
+@@ -0,0 +1,158 @@
 +package api
 +
 +import (
@@ -1701,6 +1766,26 @@ index 0000000000000000000000000000000000000000..4c9bd3f61c9c30c9a067546c81420a79
 +	}
 +}
 +
++func TestPlayerAnnotationTargetIncludesOnlineOnlyPlayer(t *testing.T) {
++	online := onlinePlayersResult{Players: map[string]onlinePlayer{
++		normalizedPlayerKey("steam-online"): {
++			SteamID:          "steam-online",
++			Nickname:         "Online Only",
++			OnlineStateKnown: true,
++			IsOnline:         true,
++			RESTOnline:       true,
++		},
++	}}
++	players := playersForView(nil, online, true)
++	player, found := findPlayerAnnotationTarget("steam-online", players)
++	if !found {
++		t.Fatal("online-only player must be available to annotation routes")
++	}
++	if player.SteamID != "steam-online" || !player.IsOnline {
++		t.Fatalf("resolved player = %#v", player)
++	}
++}
++
 +func TestPlayerAnnotationRoutesRequirePlayersWrite(t *testing.T) {
 +	gin.SetMode(gin.TestMode)
 +	router := gin.New()
@@ -1745,7 +1830,7 @@ index 0000000000000000000000000000000000000000..4c9bd3f61c9c30c9a067546c81420a79
 +	}
 +}
 diff --git a/backend/internal/api/router_contract_test.go b/backend/internal/api/router_contract_test.go
-index bf0da2ae8962a225a72c5b4f7f950bd477a0bc67..9c6ee8fa43d3a725c6d3a4c86c1c636853e0e180 100644
+index bf0da2ae8962a225a72c5b4f7f950bd477a0bc67..ab5358e2e04bd4df4e748a63580799722a4e3b3a 100644
 --- a/backend/internal/api/router_contract_test.go
 +++ b/backend/internal/api/router_contract_test.go
 @@ -82,6 +82,14 @@ func TestNewContractRoutes(t *testing.T) {
@@ -1763,7 +1848,17 @@ index bf0da2ae8962a225a72c5b4f7f950bd477a0bc67..9c6ee8fa43d3a725c6d3a4c86c1c6368
  
  	for _, path := range []string{
  		"/api/server/startup",
-@@ -149,11 +157,15 @@ func TestNewContractRoutes(t *testing.T) {
+@@ -108,6 +116,9 @@ func TestNewContractRoutes(t *testing.T) {
+ 		"POST /api/server/force-stop",
+ 		"GET /api/server/version",
+ 		"GET /api/server/game-data",
++		"GET /api/patch/update/status",
++		"POST /api/patch/update/check",
++		"POST /api/patch/update",
+ 		"GET /api/auth/me",
+ 		"GET /api/server/world",
+ 		"POST /api/server/world/reset",
+@@ -149,11 +160,15 @@ func TestNewContractRoutes(t *testing.T) {
  		"GET /api/players",
  		"GET /api/players/:id",
  		"GET /api/players/:id/inventory",
@@ -1780,7 +1875,7 @@ index bf0da2ae8962a225a72c5b4f7f950bd477a0bc67..9c6ee8fa43d3a725c6d3a4c86c1c6368
  		"GET /api/pals/:id",
  		"GET /api/map/entities",
 diff --git a/backend/internal/api/routes.go b/backend/internal/api/routes.go
-index 8a7be6b50c85342d686849c283b7612b678f0db5..0faea5e80b6fae7bb07deb27c45bed28dd367bdf 100644
+index 8a7be6b50c85342d686849c283b7612b678f0db5..5f7943d7abbddb79149003f8bc74e98215c1b510 100644
 --- a/backend/internal/api/routes.go
 +++ b/backend/internal/api/routes.go
 @@ -13,6 +13,7 @@ import (
@@ -1791,7 +1886,17 @@ index 8a7be6b50c85342d686849c283b7612b678f0db5..0faea5e80b6fae7bb07deb27c45bed28
  	authPublic := router.Group("/api/auth")
  	authPublic.Use(SameOriginWrite())
  	authPublic.GET("/status", s.authStatus)
-@@ -238,7 +239,11 @@ func (s Server) registerWorldRoutes(api *gin.RouterGroup) {
+@@ -64,6 +65,9 @@ func (s Server) registerSystemRoutes(api *gin.RouterGroup) {
+ 	api.DELETE("/auth/api-keys/:id", Require(PermSecurityWrite), s.revokeAPIKey)
+ 	api.GET("/jobs", s.listJobs)
+ 	api.GET("/jobs/:id", s.getJob)
++	api.GET("/patch/update/status", s.patchUpdateStatus)
++	api.POST("/patch/update/check", Require(PermServerControl), s.patchUpdateCheck)
++	api.POST("/patch/update", Require(PermServerControl), s.patchUpdate)
+ 	api.GET("/audit-logs", Require(PermAuditRead), s.listAuditLogs)
+ 	api.GET("/system/debug", s.debugLoggingStatus)
+ 	api.PUT("/system/debug", Require(PermConfigWrite), s.putDebugLogging)
+@@ -238,7 +242,11 @@ func (s Server) registerWorldRoutes(api *gin.RouterGroup) {
  	api.GET("/guilds/:id", s.getSaveGuild)
  	api.GET("/bases", s.listSaveBases)
  	api.GET("/bases/:id", s.getSaveBase)
@@ -1803,7 +1908,7 @@ index 8a7be6b50c85342d686849c283b7612b678f0db5..0faea5e80b6fae7bb07deb27c45bed28
  	api.GET("/pals", s.listSavePals)
  	api.GET("/pals/:id", s.getSavePal)
  	api.GET("/map/entities", s.listMapEntities)
-@@ -265,6 +270,8 @@ func (s Server) registerWorldRoutes(api *gin.RouterGroup) {
+@@ -265,6 +273,8 @@ func (s Server) registerWorldRoutes(api *gin.RouterGroup) {
  	api.POST("/players/:id/ban", Require(PermPlayersWrite), s.banPlayer)
  	api.POST("/players/:id/unban", Require(PermPlayersWrite), s.unbanPlayer)
  	api.GET("/players/:id/inventory", s.getSavePlayerInventory)
@@ -2492,6 +2597,1043 @@ index 0000000000000000000000000000000000000000..a61a9fdb43f5db3d75db2d6ed2e3c4fe
 +		})
 +	}
 +}
+diff --git a/backend/internal/server/manager.go b/backend/internal/server/manager.go
+index f8aab6be275bee281f2a1cde31d83f62c33e4276..67d0fa5664a31c4607ed13282081d31e401459fc 100644
+--- a/backend/internal/server/manager.go
++++ b/backend/internal/server/manager.go
+@@ -149,6 +149,7 @@ type RestartNotifier func(ctx context.Context, wait int, message string) error
+ 
+ func NewManager(cfg appconfig.Config, store *db.Store, runner docker.Runner, executors ...*jobs.Executor) Manager {
+ 	cfg = cfg.WithServerDirectoryState()
++	recoverPatchUpdateIfNeeded(store)
+ 	executor := jobs.New(store, 4)
+ 	if len(executors) > 0 && executors[0] != nil {
+ 		executor = executors[0]
+diff --git a/backend/internal/server/patch_update.go b/backend/internal/server/patch_update.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..5ba696c7acf04c9865a93926b77a44ccc3fb7862
+--- /dev/null
++++ b/backend/internal/server/patch_update.go
+@@ -0,0 +1,813 @@
++package server
++
++import (
++	"archive/tar"
++	"compress/gzip"
++	"context"
++	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
++	"fmt"
++	"io"
++	"net/http"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"regexp"
++	"runtime"
++	"sort"
++	"strconv"
++	"strings"
++	"time"
++
++	"palpanel/internal/db"
++	"palpanel/internal/jobs"
++)
++
++const (
++	patchUpdateMaxMetadataBytes = 8 << 20
++	patchUpdateMaxArchiveBytes  = 512 << 20
++	patchUpdateRepository       = "ninhua/Palworld-Panel-Patches"
++)
++
++var patchRepositoryPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
++
++type PatchUpdateRequest struct {
++	TargetVersion       string
++	CurrentPatchVersion string
++	Repository          string
++	RequiredFeature     string
++}
++
++type PatchUpdateStatus struct {
++	TargetVersion       string `json:"target_version"`
++	CurrentPatchVersion string `json:"current_patch_version"`
++	LatestPatchVersion  string `json:"latest_patch_version"`
++	ReleaseTag          string `json:"release_tag"`
++	ReleaseURL          string `json:"release_url"`
++	UpdateAvailable     bool   `json:"update_available"`
++	CheckedAt           string `json:"checked_at"`
++	Message             string `json:"message"`
++}
++
++type patchGitHubRelease struct {
++	TagName    string             `json:"tag_name"`
++	HTMLURL    string             `json:"html_url"`
++	Draft      bool               `json:"draft"`
++	Prerelease bool               `json:"prerelease"`
++	Assets     []patchGitHubAsset `json:"assets"`
++}
++
++type patchGitHubAsset struct {
++	Name               string `json:"name"`
++	BrowserDownloadURL string `json:"browser_download_url"`
++	Size               int64  `json:"size"`
++}
++
++type patchReleaseSelection struct {
++	Release   patchGitHubRelease
++	Version   string
++	Archive   patchGitHubAsset
++	Manifest  patchGitHubAsset
++	Checksums patchGitHubAsset
++}
++
++type patchReleaseManifest struct {
++	SchemaVersion int    `json:"schema_version"`
++	Project       string `json:"project"`
++	PatchVersion  string `json:"patch_version"`
++	PatchType     string `json:"patch_type"`
++	Upstream      struct {
++		Repository string `json:"repository"`
++		Version    string `json:"version"`
++	} `json:"upstream"`
++	Compatibility struct {
++		Mode          string `json:"mode"`
++		TargetVersion string `json:"target_version"`
++		Verified      bool   `json:"verified"`
++	} `json:"compatibility"`
++	Platforms []string `json:"platforms"`
++	Files     map[string]struct {
++		OriginalSHA256 string `json:"original_sha256"`
++		PatchedSHA256  string `json:"patched_sha256"`
++	} `json:"files"`
++	Features []string `json:"features"`
++}
++
++type patchRestartMarker struct {
++	JobID          string `json:"job_id"`
++	BinaryPath     string `json:"binary_path"`
++	BackupPath     string `json:"backup_path"`
++	ExpectedSHA256 string `json:"expected_sha256"`
++	CreatedAt      string `json:"created_at"`
++}
++
++func normalizePatchUpdateRequest(request PatchUpdateRequest) (PatchUpdateRequest, error) {
++	request.TargetVersion = strings.TrimSpace(request.TargetVersion)
++	request.CurrentPatchVersion = strings.TrimSpace(request.CurrentPatchVersion)
++	request.Repository = strings.TrimSpace(request.Repository)
++	request.RequiredFeature = strings.TrimSpace(request.RequiredFeature)
++	if request.Repository == "" {
++		request.Repository = patchUpdateRepository
++	}
++	if !regexp.MustCompile(`^v\d+\.\d+\.\d+$`).MatchString(request.TargetVersion) {
++		return request, fmt.Errorf("invalid patch target version: %s", request.TargetVersion)
++	}
++	if !regexp.MustCompile(`^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$`).MatchString(request.CurrentPatchVersion) {
++		return request, fmt.Errorf("invalid current patch version: %s", request.CurrentPatchVersion)
++	}
++	if !patchRepositoryPattern.MatchString(request.Repository) {
++		return request, fmt.Errorf("invalid patch repository: %s", request.Repository)
++	}
++	return request, nil
++}
++
++func (m Manager) PatchUpdateStatus(ctx context.Context, request PatchUpdateRequest) (PatchUpdateStatus, error) {
++	request, err := normalizePatchUpdateRequest(request)
++	if err != nil {
++		return PatchUpdateStatus{}, err
++	}
++	selection, err := m.resolvePatchRelease(ctx, request)
++	if err != nil {
++		return PatchUpdateStatus{}, err
++	}
++	available := comparePatchVersions(selection.Version, request.CurrentPatchVersion) > 0
++	message := "当前已是最新补丁 " + request.CurrentPatchVersion
++	if available {
++		message = "发现补丁更新 " + selection.Version
++	}
++	return PatchUpdateStatus{
++		TargetVersion:       request.TargetVersion,
++		CurrentPatchVersion: request.CurrentPatchVersion,
++		LatestPatchVersion:  selection.Version,
++		ReleaseTag:          selection.Release.TagName,
++		ReleaseURL:          selection.Release.HTMLURL,
++		UpdateAvailable:     available,
++		CheckedAt:           time.Now().UTC().Format(time.RFC3339Nano),
++		Message:             message,
++	}, nil
++}
++
++func (m Manager) CheckPatchUpdate(ctx context.Context, request PatchUpdateRequest) (db.Job, error) {
++	return m.jobs.Submit(ctx, jobs.ClassGeneral, "patch_update_check", "queued panel patch update check", func(jobCtx context.Context, jobID string) {
++		_ = m.jobs.Update(jobID, "running", 20, "checking stable panel patch releases", "")
++		status, err := m.PatchUpdateStatus(jobCtx, request)
++		if err != nil {
++			_ = m.jobs.UpdateWithCode(jobID, "failed", 100, "panel patch update check failed", err.Error(), "patch_update_check_failed")
++			return
++		}
++		_ = m.jobs.Update(jobID, "completed", 100, status.Message, "")
++	})
++}
++
++func (m Manager) ApplyPatchUpdate(ctx context.Context, request PatchUpdateRequest) (db.Job, error) {
++	request, err := normalizePatchUpdateRequest(request)
++	if err != nil {
++		return db.Job{}, err
++	}
++	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
++		return db.Job{}, fmt.Errorf("panel patch hot update currently requires linux-amd64")
++	}
++	return m.jobs.Submit(ctx, jobs.ClassLifecycle, "patch_hot_update", "queued panel patch hot update", func(jobCtx context.Context, jobID string) {
++		m.runPatchUpdate(jobCtx, jobID, request)
++	})
++}
++
++func (m Manager) runPatchUpdate(ctx context.Context, jobID string, request PatchUpdateRequest) {
++	fail := func(progress int, code, message string, err error) {
++		detail := message
++		if err != nil {
++			detail = err.Error()
++		}
++		_ = m.jobs.UpdateWithCode(jobID, "failed", progress, message, detail, code)
++	}
++
++	_ = m.jobs.Update(jobID, "running", 5, "reading current panel patch metadata", "")
++	selection, err := m.resolvePatchRelease(ctx, request)
++	if err != nil {
++		fail(15, "patch_release_lookup_failed", "panel patch release lookup failed", err)
++		return
++	}
++	if comparePatchVersions(selection.Version, request.CurrentPatchVersion) <= 0 {
++		_ = m.jobs.Update(jobID, "completed", 100, "current panel patch is already up to date: "+request.CurrentPatchVersion, "")
++		return
++	}
++
++	_ = m.jobs.Update(jobID, "running", 25, "downloading patch release metadata", "")
++	stage, err := os.MkdirTemp(executableDirectory(), ".palpanel-patch-update-")
++	if err != nil {
++		fail(25, "patch_stage_failed", "cannot create panel patch staging directory", err)
++		return
++	}
++	defer os.RemoveAll(stage)
++
++	checksumsPath := filepath.Join(stage, selection.Checksums.Name)
++	manifestPath := filepath.Join(stage, selection.Manifest.Name)
++	archivePath := filepath.Join(stage, selection.Archive.Name)
++	if err := m.downloadPatchAsset(ctx, selection.Checksums.BrowserDownloadURL, checksumsPath, patchUpdateMaxMetadataBytes); err != nil {
++		fail(30, "patch_checksums_download_failed", "cannot download panel patch checksums", err)
++		return
++	}
++	if err := m.downloadPatchAsset(ctx, selection.Manifest.BrowserDownloadURL, manifestPath, patchUpdateMaxMetadataBytes); err != nil {
++		fail(35, "patch_manifest_download_failed", "cannot download panel patch manifest", err)
++		return
++	}
++
++	checksums, err := parsePatchChecksums(checksumsPath)
++	if err != nil {
++		fail(40, "patch_checksums_invalid", "panel patch checksums are invalid", err)
++		return
++	}
++	if err := verifyNamedPatchFile(manifestPath, selection.Manifest.Name, checksums); err != nil {
++		fail(45, "patch_manifest_checksum_failed", "panel patch manifest checksum mismatch", err)
++		return
++	}
++	manifest, err := readPatchManifest(manifestPath)
++	if err != nil {
++		fail(45, "patch_manifest_invalid", "panel patch manifest is invalid", err)
++		return
++	}
++	if err := validatePatchManifest(manifest, request, selection.Version); err != nil {
++		fail(45, "patch_manifest_incompatible", "panel patch manifest is incompatible", err)
++		return
++	}
++
++	_ = m.jobs.Update(jobID, "running", 55, "downloading verified panel patch binary", "")
++	if err := m.downloadPatchAsset(ctx, selection.Archive.BrowserDownloadURL, archivePath, patchUpdateMaxArchiveBytes); err != nil {
++		fail(55, "patch_archive_download_failed", "cannot download panel patch archive", err)
++		return
++	}
++	if err := verifyNamedPatchFile(archivePath, selection.Archive.Name, checksums); err != nil {
++		fail(60, "patch_archive_checksum_failed", "panel patch archive checksum mismatch", err)
++		return
++	}
++
++	candidate := filepath.Join(stage, "palpanel")
++	if err := extractPatchBinary(archivePath, candidate); err != nil {
++		fail(65, "patch_archive_invalid", "cannot extract panel patch binary", err)
++		return
++	}
++	binaryInfo, ok := manifest.Files["bin/palpanel"]
++	if !ok {
++		fail(65, "patch_binary_metadata_missing", "panel patch manifest has no bin/palpanel metadata", nil)
++		return
++	}
++	candidateSHA, err := sha256PatchFile(candidate)
++	if err != nil || !strings.EqualFold(candidateSHA, binaryInfo.PatchedSHA256) {
++		if err == nil {
++			err = fmt.Errorf("patched binary sha256 = %s, expected %s", candidateSHA, binaryInfo.PatchedSHA256)
++		}
++		fail(70, "patch_binary_checksum_failed", "panel patch binary checksum mismatch", err)
++		return
++	}
++	if err := os.Chmod(candidate, 0o755); err != nil {
++		fail(70, "patch_binary_mode_failed", "cannot mark panel patch binary executable", err)
++		return
++	}
++	checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
++	output, checkErr := exec.CommandContext(checkCtx, candidate, "--version").CombinedOutput()
++	cancel()
++	if checkErr != nil || !strings.Contains(string(output), request.TargetVersion) {
++		if checkErr == nil {
++			checkErr = fmt.Errorf("candidate version output does not contain target %s: %s", request.TargetVersion, strings.TrimSpace(string(output)))
++		}
++		fail(70, "patch_binary_probe_failed", "panel patch binary probe failed", checkErr)
++		return
++	}
++
++	_ = m.jobs.Update(jobID, "running", 75, "backing up current panel binary", "")
++	executable, err := executablePath()
++	if err != nil {
++		fail(75, "patch_executable_path_failed", "cannot resolve current panel binary", err)
++		return
++	}
++	backupDir := filepath.Join(filepath.Dir(executable), ".palpanel-patch-backups")
++	if err := os.MkdirAll(backupDir, 0o700); err != nil {
++		fail(75, "patch_backup_directory_failed", "cannot create panel patch backup directory", err)
++		return
++	}
++	backup := filepath.Join(backupDir, fmt.Sprintf("palpanel-%s-%s", request.CurrentPatchVersion, time.Now().UTC().Format("20060102T150405.000000000Z")))
++	if err := copyPatchFile(executable, backup, 0o755); err != nil {
++		fail(75, "patch_backup_failed", "cannot back up current panel binary", err)
++		return
++	}
++
++	_ = m.jobs.Update(jobID, "running", 85, "atomically replacing panel binary", "")
++	replacement := filepath.Join(filepath.Dir(executable), ".palpanel-patch-replacement")
++	_ = os.Remove(replacement)
++	if err := copyPatchFile(candidate, replacement, 0o755); err != nil {
++		fail(85, "patch_replacement_prepare_failed", "cannot prepare panel patch replacement", err)
++		return
++	}
++	marker := patchRestartMarker{
++		JobID:          jobID,
++		BinaryPath:     executable,
++		BackupPath:     backup,
++		ExpectedSHA256: binaryInfo.PatchedSHA256,
++		CreatedAt:      time.Now().UTC().Format(time.RFC3339Nano),
++	}
++	if err := writePatchRestartMarker(marker); err != nil {
++		_ = os.Remove(replacement)
++		fail(85, "patch_restart_marker_failed", "cannot write panel patch restart marker", err)
++		return
++	}
++	if err := os.Rename(replacement, executable); err != nil {
++		_ = removePatchRestartMarker(executable)
++		fail(85, "patch_replacement_failed", "cannot activate panel patch binary", err)
++		return
++	}
++	if activeSHA, hashErr := sha256PatchFile(executable); hashErr != nil || !strings.EqualFold(activeSHA, binaryInfo.PatchedSHA256) {
++		_ = restorePatchBackup(executable, backup)
++		_ = removePatchRestartMarker(executable)
++		if hashErr == nil {
++			hashErr = fmt.Errorf("active binary sha256 = %s, expected %s", activeSHA, binaryInfo.PatchedSHA256)
++		}
++		fail(90, "patch_activation_checksum_failed", "activated panel patch binary checksum mismatch", hashErr)
++		return
++	}
++
++	_ = os.RemoveAll(stage)
++	_ = m.jobs.Update(jobID, "completed", 100, "panel patch "+selection.Version+" installed; restarting PalPanel", "")
++	if err := replaceCurrentPanelProcess(executable); err != nil {
++		_ = restorePatchBackup(executable, backup)
++		_ = removePatchRestartMarker(executable)
++		fail(100, "patch_restart_failed", "panel patch installed but process restart failed; previous binary restored", err)
++	}
++}
++
++func (m Manager) resolvePatchRelease(ctx context.Context, request PatchUpdateRequest) (patchReleaseSelection, error) {
++	endpoint := "https://api.github.com/repos/" + request.Repository + "/releases?per_page=100"
++	var releases []patchGitHubRelease
++	if err := m.getPatchJSON(ctx, endpoint, &releases); err != nil {
++		return patchReleaseSelection{}, err
++	}
++	prefix := "uitok-stable-" + request.TargetVersion + "-p"
++	var candidates []patchReleaseSelection
++	for _, release := range releases {
++		if release.Draft || release.Prerelease || !strings.HasPrefix(release.TagName, prefix) {
++			continue
++		}
++		version := strings.TrimPrefix(release.TagName, prefix)
++		if _, err := parsePatchVersion(version); err != nil {
++			continue
++		}
++		archiveName := fmt.Sprintf("uitok-palworld-panel_stable-%s_patch-%s_linux-amd64.tar.gz", request.TargetVersion, version)
++		selection := patchReleaseSelection{Release: release, Version: version}
++		for _, asset := range release.Assets {
++			switch asset.Name {
++			case archiveName:
++				selection.Archive = asset
++			case "manifest.json":
++				selection.Manifest = asset
++			case "SHA256SUMS":
++				selection.Checksums = asset
++			}
++		}
++		if selection.Archive.BrowserDownloadURL == "" || selection.Manifest.BrowserDownloadURL == "" || selection.Checksums.BrowserDownloadURL == "" {
++			continue
++		}
++		candidates = append(candidates, selection)
++	}
++	if len(candidates) == 0 {
++		return patchReleaseSelection{}, fmt.Errorf("no verified stable patch release found for %s", request.TargetVersion)
++	}
++	sort.Slice(candidates, func(i, j int) bool { return comparePatchVersions(candidates[i].Version, candidates[j].Version) > 0 })
++	return candidates[0], nil
++}
++
++func (m Manager) getPatchJSON(ctx context.Context, endpoint string, destination any) error {
++	client := m.downloadClient
++	if client == nil {
++		client = &http.Client{Timeout: 2 * time.Minute}
++	}
++	var lastErr error
++	for _, candidate := range patchRequestURLs(endpoint) {
++		req, err := http.NewRequestWithContext(ctx, http.MethodGet, candidate, nil)
++		if err != nil {
++			lastErr = err
++			continue
++		}
++		setPatchRequestHeaders(req)
++		resp, err := client.Do(req)
++		if err != nil {
++			lastErr = err
++			continue
++		}
++		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
++			body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
++			resp.Body.Close()
++			lastErr = fmt.Errorf("github release request returned %s: %s", resp.Status, strings.TrimSpace(string(body)))
++			continue
++		}
++		decoder := json.NewDecoder(io.LimitReader(resp.Body, patchUpdateMaxMetadataBytes))
++		err = decoder.Decode(destination)
++		resp.Body.Close()
++		if err == nil {
++			return nil
++		}
++		lastErr = err
++	}
++	if lastErr == nil {
++		lastErr = fmt.Errorf("no patch release request URL available")
++	}
++	return lastErr
++}
++
++func (m Manager) downloadPatchAsset(ctx context.Context, endpoint, destination string, maxBytes int64) error {
++	client := m.downloadClient
++	if client == nil {
++		client = &http.Client{Timeout: 10 * time.Minute}
++	}
++	var lastErr error
++	for _, candidate := range patchRequestURLs(endpoint) {
++		req, err := http.NewRequestWithContext(ctx, http.MethodGet, candidate, nil)
++		if err != nil {
++			lastErr = err
++			continue
++		}
++		setPatchRequestHeaders(req)
++		resp, err := client.Do(req)
++		if err != nil {
++			lastErr = err
++			continue
++		}
++		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
++			resp.Body.Close()
++			lastErr = fmt.Errorf("download returned %s", resp.Status)
++			continue
++		}
++		if resp.ContentLength > maxBytes {
++			resp.Body.Close()
++			lastErr = fmt.Errorf("download exceeds size limit")
++			continue
++		}
++		temporary := destination + ".part"
++		_ = os.Remove(temporary)
++		file, err := os.OpenFile(temporary, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
++		if err != nil {
++			resp.Body.Close()
++			lastErr = err
++			continue
++		}
++		written, copyErr := io.Copy(file, io.LimitReader(resp.Body, maxBytes+1))
++		closeErr := file.Close()
++		resp.Body.Close()
++		if copyErr != nil {
++			_ = os.Remove(temporary)
++			lastErr = copyErr
++			continue
++		}
++		if closeErr != nil {
++			_ = os.Remove(temporary)
++			lastErr = closeErr
++			continue
++		}
++		if written > maxBytes {
++			_ = os.Remove(temporary)
++			lastErr = fmt.Errorf("download exceeds size limit")
++			continue
++		}
++		if err := os.Rename(temporary, destination); err != nil {
++			_ = os.Remove(temporary)
++			lastErr = err
++			continue
++		}
++		return nil
++	}
++	if lastErr == nil {
++		lastErr = fmt.Errorf("no patch asset download URL available")
++	}
++	return lastErr
++}
++
++func patchRequestURLs(endpoint string) []string {
++	values := make([]string, 0, 4)
++	seen := map[string]bool{}
++	for _, proxy := range []string{
++		os.Getenv("PALPANEL_PATCH_GITHUB_PROXY"),
++		os.Getenv("GH_PROXY_BASE"),
++		os.Getenv("GH_PROXY_FALLBACK"),
++	} {
++		proxy = strings.TrimRight(strings.TrimSpace(proxy), "/")
++		if proxy == "" || (!strings.HasPrefix(proxy, "https://") && !strings.HasPrefix(proxy, "http://")) {
++			continue
++		}
++		candidate := proxy + "/" + endpoint
++		if !seen[candidate] {
++			seen[candidate] = true
++			values = append(values, candidate)
++		}
++	}
++	if !seen[endpoint] {
++		values = append(values, endpoint)
++	}
++	return values
++}
++
++func setPatchRequestHeaders(req *http.Request) {
++	req.Header.Set("Accept", "application/vnd.github+json")
++	req.Header.Set("User-Agent", "PalPanel-patch-hot-update")
++	if token := strings.TrimSpace(firstPatchValue(os.Getenv("GITHUB_TOKEN"), os.Getenv("GH_TOKEN"))); token != "" {
++		req.Header.Set("Authorization", "Bearer "+token)
++	}
++}
++
++func firstPatchValue(values ...string) string {
++	for _, value := range values {
++		if strings.TrimSpace(value) != "" {
++			return strings.TrimSpace(value)
++		}
++	}
++	return ""
++}
++
++func parsePatchVersion(value string) ([]int, error) {
++	core := strings.SplitN(value, "-", 2)[0]
++	parts := strings.Split(core, ".")
++	if len(parts) != 3 {
++		return nil, fmt.Errorf("invalid patch version: %s", value)
++	}
++	out := make([]int, 3)
++	for index, part := range parts {
++		number, err := strconv.Atoi(part)
++		if err != nil || number < 0 {
++			return nil, fmt.Errorf("invalid patch version: %s", value)
++		}
++		out[index] = number
++	}
++	return out, nil
++}
++
++func comparePatchVersions(left, right string) int {
++	leftParts, leftErr := parsePatchVersion(left)
++	rightParts, rightErr := parsePatchVersion(right)
++	if leftErr != nil || rightErr != nil {
++		return strings.Compare(left, right)
++	}
++	for index := range leftParts {
++		if leftParts[index] > rightParts[index] {
++			return 1
++		}
++		if leftParts[index] < rightParts[index] {
++			return -1
++		}
++	}
++	return 0
++}
++
++func parsePatchChecksums(path string) (map[string]string, error) {
++	body, err := os.ReadFile(path)
++	if err != nil {
++		return nil, err
++	}
++	out := map[string]string{}
++	for _, raw := range strings.Split(string(body), "\n") {
++		line := strings.TrimSpace(raw)
++		if line == "" {
++			continue
++		}
++		parts := strings.Fields(line)
++		if len(parts) != 2 || len(parts[0]) != 64 {
++			return nil, fmt.Errorf("invalid SHA256SUMS line: %s", raw)
++		}
++		if _, err := hex.DecodeString(parts[0]); err != nil {
++			return nil, fmt.Errorf("invalid SHA256SUMS digest: %s", parts[0])
++		}
++		name := strings.TrimPrefix(strings.TrimPrefix(parts[1], "*"), "./")
++		clean := filepath.ToSlash(filepath.Clean(name))
++		if clean == "." || strings.HasPrefix(clean, "../") || filepath.IsAbs(name) || strings.Contains(clean, "/") {
++			return nil, fmt.Errorf("unsafe SHA256SUMS path: %s", name)
++		}
++		if _, exists := out[clean]; exists {
++			return nil, fmt.Errorf("duplicate SHA256SUMS path: %s", clean)
++		}
++		out[clean] = strings.ToLower(parts[0])
++	}
++	return out, nil
++}
++
++func verifyNamedPatchFile(path, name string, checksums map[string]string) error {
++	expected, ok := checksums[name]
++	if !ok {
++		return fmt.Errorf("SHA256SUMS has no entry for %s", name)
++	}
++	actual, err := sha256PatchFile(path)
++	if err != nil {
++		return err
++	}
++	if !strings.EqualFold(actual, expected) {
++		return fmt.Errorf("%s sha256 = %s, expected %s", name, actual, expected)
++	}
++	return nil
++}
++
++func readPatchManifest(path string) (patchReleaseManifest, error) {
++	var manifest patchReleaseManifest
++	body, err := os.ReadFile(path)
++	if err != nil {
++		return manifest, err
++	}
++	if err := json.Unmarshal(body, &manifest); err != nil {
++		return manifest, err
++	}
++	return manifest, nil
++}
++
++func validatePatchManifest(manifest patchReleaseManifest, request PatchUpdateRequest, expectedVersion string) error {
++	if manifest.SchemaVersion != 1 || manifest.Project != "uitok-palworld-panel" || manifest.PatchType != "source-build" {
++		return fmt.Errorf("unexpected patch manifest identity")
++	}
++	if manifest.PatchVersion != expectedVersion {
++		return fmt.Errorf("manifest patch version = %s, expected %s", manifest.PatchVersion, expectedVersion)
++	}
++	if manifest.Upstream.Repository != "uitok/palworld-panel" || manifest.Upstream.Version != request.TargetVersion {
++		return fmt.Errorf("manifest upstream does not match %s", request.TargetVersion)
++	}
++	if manifest.Compatibility.Mode != "exact" || manifest.Compatibility.TargetVersion != request.TargetVersion || !manifest.Compatibility.Verified {
++		return fmt.Errorf("manifest compatibility is not exact and verified for %s", request.TargetVersion)
++	}
++	if !containsPatchValue(manifest.Platforms, "linux-amd64") {
++		return fmt.Errorf("manifest does not contain linux-amd64")
++	}
++	if request.RequiredFeature != "" && !containsPatchValue(manifest.Features, request.RequiredFeature) {
++		return fmt.Errorf("manifest does not contain required feature %s", request.RequiredFeature)
++	}
++	binary, ok := manifest.Files["bin/palpanel"]
++	if !ok || !validPatchSHA256(binary.PatchedSHA256) {
++		return fmt.Errorf("manifest patched binary sha256 is missing or invalid")
++	}
++	return nil
++}
++
++func containsPatchValue(values []string, expected string) bool {
++	for _, value := range values {
++		if value == expected {
++			return true
++		}
++	}
++	return false
++}
++
++func validPatchSHA256(value string) bool {
++	if len(value) != 64 {
++		return false
++	}
++	_, err := hex.DecodeString(value)
++	return err == nil
++}
++
++func extractPatchBinary(archivePath, destination string) error {
++	archive, err := os.Open(archivePath)
++	if err != nil {
++		return err
++	}
++	defer archive.Close()
++	gzipReader, err := gzip.NewReader(archive)
++	if err != nil {
++		return err
++	}
++	defer gzipReader.Close()
++	reader := tar.NewReader(gzipReader)
++	found := 0
++	for {
++		header, err := reader.Next()
++		if err == io.EOF {
++			break
++		}
++		if err != nil {
++			return err
++		}
++		name := filepath.ToSlash(filepath.Clean(header.Name))
++		if filepath.IsAbs(header.Name) || name == ".." || strings.HasPrefix(name, "../") {
++			return fmt.Errorf("unsafe archive path: %s", header.Name)
++		}
++		if !strings.HasSuffix(name, "/overlay/bin/palpanel") {
++			continue
++		}
++		if header.Typeflag != tar.TypeReg && header.Typeflag != tar.TypeRegA {
++			return fmt.Errorf("patch binary is not a regular file")
++		}
++		if header.Size <= 0 || header.Size > patchUpdateMaxArchiveBytes {
++			return fmt.Errorf("patch binary size is invalid")
++		}
++		if found > 0 {
++			return fmt.Errorf("archive contains multiple patch binaries")
++		}
++		file, err := os.OpenFile(destination, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
++		if err != nil {
++			return err
++		}
++		_, copyErr := io.CopyN(file, reader, header.Size)
++		closeErr := file.Close()
++		if copyErr != nil {
++			return copyErr
++		}
++		if closeErr != nil {
++			return closeErr
++		}
++		found++
++	}
++	if found != 1 {
++		return fmt.Errorf("archive does not contain exactly one overlay/bin/palpanel")
++	}
++	return nil
++}
++
++func executablePath() (string, error) {
++	path, err := os.Executable()
++	if err != nil {
++		return "", err
++	}
++	resolved, err := filepath.EvalSymlinks(path)
++	if err == nil {
++		path = resolved
++	}
++	return filepath.Clean(path), nil
++}
++
++func executableDirectory() string {
++	path, err := executablePath()
++	if err != nil {
++		return os.TempDir()
++	}
++	return filepath.Dir(path)
++}
++
++func sha256PatchFile(path string) (string, error) {
++	file, err := os.Open(path)
++	if err != nil {
++		return "", err
++	}
++	defer file.Close()
++	digest := sha256.New()
++	if _, err := io.Copy(digest, file); err != nil {
++		return "", err
++	}
++	return hex.EncodeToString(digest.Sum(nil)), nil
++}
++
++func copyPatchFile(source, destination string, mode os.FileMode) error {
++	input, err := os.Open(source)
++	if err != nil {
++		return err
++	}
++	defer input.Close()
++	temporary := destination + ".tmp"
++	_ = os.Remove(temporary)
++	output, err := os.OpenFile(temporary, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
++	if err != nil {
++		return err
++	}
++	_, copyErr := io.Copy(output, input)
++	syncErr := output.Sync()
++	closeErr := output.Close()
++	if copyErr != nil {
++		_ = os.Remove(temporary)
++		return copyErr
++	}
++	if syncErr != nil {
++		_ = os.Remove(temporary)
++		return syncErr
++	}
++	if closeErr != nil {
++		_ = os.Remove(temporary)
++		return closeErr
++	}
++	if err := os.Chmod(temporary, mode); err != nil {
++		_ = os.Remove(temporary)
++		return err
++	}
++	return os.Rename(temporary, destination)
++}
++
++func patchRestartMarkerPath(binary string) string {
++	return filepath.Join(filepath.Dir(binary), ".palpanel-patch-update-state.json")
++}
++
++func writePatchRestartMarker(marker patchRestartMarker) error {
++	body, err := json.MarshalIndent(marker, "", "  ")
++	if err != nil {
++		return err
++	}
++	path := patchRestartMarkerPath(marker.BinaryPath)
++	temporary := path + ".tmp"
++	if err := os.WriteFile(temporary, append(body, '\n'), 0o600); err != nil {
++		return err
++	}
++	return os.Rename(temporary, path)
++}
++
++func removePatchRestartMarker(binary string) error {
++	err := os.Remove(patchRestartMarkerPath(binary))
++	if os.IsNotExist(err) {
++		return nil
++	}
++	return err
++}
++
++func restorePatchBackup(binary, backup string) error {
++	if backup == "" {
++		return fmt.Errorf("patch backup path is empty")
++	}
++	return copyPatchFile(backup, binary, 0o755)
++}
+diff --git a/backend/internal/server/patch_update_exec_linux.go b/backend/internal/server/patch_update_exec_linux.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..23bbdb0dfccd7610fd9eb70d92d67be61660670e
+--- /dev/null
++++ b/backend/internal/server/patch_update_exec_linux.go
+@@ -0,0 +1,69 @@
++//go:build linux
++
++package server
++
++import (
++	"context"
++	"encoding/json"
++	"fmt"
++	"log"
++	"os"
++	"path/filepath"
++	"strings"
++	"syscall"
++
++	"palpanel/internal/db"
++)
++
++func replaceCurrentPanelProcess(binary string) error {
++	return syscall.Exec(binary, os.Args, os.Environ())
++}
++
++func recoverPatchUpdateIfNeeded(store *db.Store) {
++	binary, err := executablePath()
++	if err != nil {
++		return
++	}
++	markerPath := patchRestartMarkerPath(binary)
++	body, err := os.ReadFile(markerPath)
++	if os.IsNotExist(err) {
++		return
++	}
++	if err != nil {
++		log.Printf("panel patch restart marker read failed: %v", err)
++		return
++	}
++	var marker patchRestartMarker
++	if err := json.Unmarshal(body, &marker); err != nil {
++		log.Printf("panel patch restart marker decode failed: %v", err)
++		return
++	}
++	backupRoot := filepath.Join(filepath.Dir(binary), ".palpanel-patch-backups")
++	backupRelative, relativeErr := filepath.Rel(backupRoot, filepath.Clean(marker.BackupPath))
++	if filepath.Clean(marker.BinaryPath) != binary || relativeErr != nil || backupRelative == ".." || strings.HasPrefix(backupRelative, ".."+string(os.PathSeparator)) {
++		log.Printf("panel patch restart marker contains unsafe paths")
++		_ = os.Remove(markerPath)
++		return
++	}
++	actualSHA, err := sha256PatchFile(binary)
++	if err == nil && validPatchSHA256(marker.ExpectedSHA256) && actualSHA == marker.ExpectedSHA256 {
++		_ = os.Remove(markerPath)
++		return
++	}
++	cause := fmt.Errorf("panel patch startup verification failed: sha256=%s expected=%s", actualSHA, marker.ExpectedSHA256)
++	if err != nil {
++		cause = fmt.Errorf("panel patch startup verification failed: %w", err)
++	}
++	if store != nil && marker.JobID != "" {
++		_ = store.UpdateJobWithCode(context.Background(), marker.JobID, "failed", 100, "panel patch startup verification failed; rolling back", cause.Error(), "patch_startup_verification_failed")
++	}
++	if restoreErr := restorePatchBackup(binary, marker.BackupPath); restoreErr != nil {
++		log.Printf("panel patch rollback failed: %v (original verification error: %v)", restoreErr, cause)
++		return
++	}
++	_ = os.Remove(markerPath)
++	log.Printf("panel patch startup verification failed; restored previous binary and restarting: %v", cause)
++	if execErr := syscall.Exec(binary, os.Args, os.Environ()); execErr != nil {
++		log.Printf("panel patch rollback restart failed: %v", execErr)
++	}
++}
+diff --git a/backend/internal/server/patch_update_exec_other.go b/backend/internal/server/patch_update_exec_other.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..4fcb5c89ed8ae514ebfb769b1d1e5bb305e80528
+--- /dev/null
++++ b/backend/internal/server/patch_update_exec_other.go
+@@ -0,0 +1,15 @@
++//go:build !linux
++
++package server
++
++import (
++	"fmt"
++
++	"palpanel/internal/db"
++)
++
++func replaceCurrentPanelProcess(string) error {
++	return fmt.Errorf("panel patch hot update requires Linux")
++}
++
++func recoverPatchUpdateIfNeeded(*db.Store) {}
+diff --git a/backend/internal/server/patch_update_test.go b/backend/internal/server/patch_update_test.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..8c59b44e06d247bcd98b511e09e78ca4db9ff028
+--- /dev/null
++++ b/backend/internal/server/patch_update_test.go
+@@ -0,0 +1,104 @@
++package server
++
++import (
++	"archive/tar"
++	"compress/gzip"
++	"os"
++	"path/filepath"
++	"strings"
++	"testing"
++)
++
++func TestComparePatchVersions(t *testing.T) {
++	cases := []struct {
++		left  string
++		right string
++		want  int
++	}{
++		{left: "0.8.3", right: "0.8.2", want: 1},
++		{left: "0.8.2", right: "0.8.2", want: 0},
++		{left: "0.8.9", right: "0.8.10", want: -1},
++	}
++	for _, test := range cases {
++		if got := comparePatchVersions(test.left, test.right); got != test.want {
++			t.Fatalf("comparePatchVersions(%q, %q) = %d, want %d", test.left, test.right, got, test.want)
++		}
++	}
++}
++
++func TestParsePatchChecksumsAcceptsGNUMarkers(t *testing.T) {
++	path := filepath.Join(t.TempDir(), "SHA256SUMS")
++	digest := strings.Repeat("a", 64)
++	body := digest + " *manifest.json\n" + strings.Repeat("b", 64) + "  ./archive.tar.gz\n"
++	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
++		t.Fatal(err)
++	}
++	checksums, err := parsePatchChecksums(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if checksums["manifest.json"] != digest || checksums["archive.tar.gz"] != strings.Repeat("b", 64) {
++		t.Fatalf("unexpected checksums: %#v", checksums)
++	}
++}
++
++func TestValidatePatchManifest(t *testing.T) {
++	manifest := patchReleaseManifest{
++		SchemaVersion: 1,
++		Project:       "uitok-palworld-panel",
++		PatchVersion:  "0.8.3",
++		PatchType:     "source-build",
++		Platforms:     []string{"linux-amd64"},
++		Features:      []string{"patch-info-api", "panel-patch-hot-update"},
++		Files: map[string]struct {
++			OriginalSHA256 string `json:"original_sha256"`
++			PatchedSHA256  string `json:"patched_sha256"`
++		}{"bin/palpanel": {PatchedSHA256: strings.Repeat("a", 64)}},
++	}
++	manifest.Upstream.Repository = "uitok/palworld-panel"
++	manifest.Upstream.Version = "v1.3.0"
++	manifest.Compatibility.Mode = "exact"
++	manifest.Compatibility.TargetVersion = "v1.3.0"
++	manifest.Compatibility.Verified = true
++	request := PatchUpdateRequest{TargetVersion: "v1.3.0", CurrentPatchVersion: "0.8.2", Repository: patchUpdateRepository, RequiredFeature: "panel-patch-hot-update"}
++	if err := validatePatchManifest(manifest, request, "0.8.3"); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func TestExtractPatchBinaryRejectsTraversalAndFindsBinary(t *testing.T) {
++	archivePath := filepath.Join(t.TempDir(), "patch.tar.gz")
++	file, err := os.Create(archivePath)
++	if err != nil {
++		t.Fatal(err)
++	}
++	gz := gzip.NewWriter(file)
++	tarWriter := tar.NewWriter(gz)
++	body := []byte("patched-binary")
++	if err := tarWriter.WriteHeader(&tar.Header{Name: "package/overlay/bin/palpanel", Mode: 0o755, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := tarWriter.Write(body); err != nil {
++		t.Fatal(err)
++	}
++	if err := tarWriter.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if err := gz.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if err := file.Close(); err != nil {
++		t.Fatal(err)
++	}
++	destination := filepath.Join(t.TempDir(), "palpanel")
++	if err := extractPatchBinary(archivePath, destination); err != nil {
++		t.Fatal(err)
++	}
++	got, err := os.ReadFile(destination)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if string(got) != string(body) {
++		t.Fatalf("extracted body = %q", got)
++	}
++}
 diff --git a/backend/internal/server/webdav.go b/backend/internal/server/webdav.go
 index e985bdebe79490e4e6439042fcb0b432133b511c..a1a1348631f376428801730d381d7715fdbc9504 100644
 --- a/backend/internal/server/webdav.go
@@ -2546,7 +3688,7 @@ index e2f30d950edda0f5b4b37ab8da47aa3a0525a402..748638d3afd94db10a7edae8efdf0201
  	privateHTTP := "http://192.168.1.20/dav"
  	disabled := false
 diff --git a/docs/openapi.yaml b/docs/openapi.yaml
-index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..536114f3cd57ac6d8b9d2ddbdd80b6accd9d4cf5 100644
+index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..0d69e31e0eeb40483f4793806d0b77969011499c 100644
 --- a/docs/openapi.yaml
 +++ b/docs/openapi.yaml
 @@ -135,6 +135,11 @@ x-player-inventory: &playerInventory
@@ -2580,7 +3722,20 @@ index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..536114f3cd57ac6d8b9d2ddbdd80b6ac
    /auth/status:
      get:
        operationId: getAuthenticationStatus
-@@ -1149,19 +1166,42 @@ paths:
+@@ -302,6 +319,12 @@ paths:
+   /jobs/{id}:
+     parameters: [*idParameter]
+     get: {operationId: getJob, tags: [system], x-palpanel-permission: read, responses: *readResponses}
++  /patch/update/status:
++    get: {operationId: getPatchUpdateStatus, tags: [system], x-palpanel-permission: read, responses: {'200': *success, '401': *error, '502': *error}}
++  /patch/update/check:
++    post: {operationId: checkPatchUpdate, tags: [system], x-palpanel-permission: 'server:control', responses: {'202': *accepted, '401': *error, '403': *error, '500': *error}}
++  /patch/update:
++    post: {operationId: applyPatchUpdate, tags: [system], x-palpanel-permission: 'server:control', responses: {'202': *accepted, '401': *error, '403': *error, '500': *error}}
+   /audit-logs:
+     get: {operationId: listAuditLogs, tags: [system], x-palpanel-permission: 'audit:read', responses: *readResponses}
+   /system/debug:
+@@ -1149,19 +1172,42 @@ paths:
    /players/{id}/inventory:
      parameters: [*idParameter, *playerSourceParameter]
      get: {operationId: getPlayerInventory, tags: [world], x-palpanel-permission: read, responses: {'200': *playerInventory, '400': *error, '401': *error, '404': *error}}
@@ -2624,7 +3779,7 @@ index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..536114f3cd57ac6d8b9d2ddbdd80b6ac
    /pals:
      get: {operationId: listPals, tags: [world], x-palpanel-permission: read, responses: *readResponses}
    /pals/{id}:
-@@ -1249,8 +1289,18 @@ components:
+@@ -1249,8 +1295,18 @@ components:
          location_y: {type: number}
          location_z: {type: number}
          inventory_summary: {type: object, additionalProperties: true}
@@ -2643,7 +3798,7 @@ index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..536114f3cd57ac6d8b9d2ddbdd80b6ac
      PlayerDataView:
        type: object
        required: [scope, source_id, source_kind, source_name, online_overlay]
-@@ -1262,21 +1312,184 @@ components:
+@@ -1262,21 +1318,184 @@ components:
          online_overlay: {type: boolean}
      SaveInventorySlot:
        type: object
@@ -2830,7 +3985,7 @@ index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..536114f3cd57ac6d8b9d2ddbdd80b6ac
      ListSummary:
        type: object
        required: [total, limit, offset, returned, page]
-@@ -2525,6 +2738,45 @@ components:
+@@ -2525,6 +2744,45 @@ components:
      JsonObject:
        type: object
        additionalProperties: true
@@ -2855,7 +4010,7 @@ index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..536114f3cd57ac6d8b9d2ddbdd80b6ac
 +          type: object
 +          required: [version, repository, features]
 +          properties:
-+            version: {type: string, const: 0.8.1}
++            version: {type: string, const: 0.8.4}
 +            repository: {type: string, const: ninhua/Palworld-Panel-Patches}
 +            features:
 +              type: array
@@ -3850,6 +5005,22 @@ index a042c760a85fd6ba08cd97faceef1481ebbc2afc..3345a1524675ab3f9358be487f3dc6d5
  
      await saveSourcesApi.activate('save with spaces');
      await saveSourcesApi.rebuild('save with spaces');
+diff --git a/frontend/src/api/tasks.ts b/frontend/src/api/tasks.ts
+index 6231b865a2600d9e19d2ce3bcafe7006dce91140..7ba56de42df4c1166b26fdc89020f4ef74b43db7 100644
+--- a/frontend/src/api/tasks.ts
++++ b/frontend/src/api/tasks.ts
+@@ -126,4 +126,11 @@ export const tasksApi = {
+       createFallbackJob('update', '已提交更新任务'),
+       { map: mapJob, quiet: true, fallbackOnError: false },
+     ),
++
++  createPatchUpdateJob: () =>
++    handleRequest<unknown, Job>(
++      () => apiClient.post('/patch/update'),
++      createFallbackJob('patch_hot_update', '已提交面板补丁热更新任务'),
++      { map: mapJob, quiet: true, fallbackOnError: false },
++    ),
+ };
 diff --git a/frontend/src/i18n/index.tsx b/frontend/src/i18n/index.tsx
 index c770ee6b05ef5c99bfb3f60ea43a75aeb51e15df..cfea30a26e65a4b5f72d3fb3e0bcbc49996e4371 100644
 --- a/frontend/src/i18n/index.tsx
@@ -3872,6 +5043,50 @@ index c770ee6b05ef5c99bfb3f60ea43a75aeb51e15df..cfea30a26e65a4b5f72d3fb3e0bcbc49
    'settings.proxyCommunityTitle': 'Community-server discovery',
    'settings.proxyCommunityDescription': 'Used only by the backend when accessing BattleMetrics or a compatible source. Local panel APIs are unaffected.',
    'settings.proxyEnabled': 'Enabled',
+diff --git a/frontend/src/pages/AuditLogs.tsx b/frontend/src/pages/AuditLogs.tsx
+index 815f6b768aa496962d664e04a3f5d583745b847c..97437fb2c439ad0c524315422c1a1dc43d4586b4 100644
+--- a/frontend/src/pages/AuditLogs.tsx
++++ b/frontend/src/pages/AuditLogs.tsx
+@@ -29,7 +29,7 @@ export const AuditLogs: React.FC = () => {
+               <ClipboardList size={18} className="text-sky-500" />
+               操作审计
+             </h3>
+-            <p className="mt-1 text-xs font-medium text-slate-400">记录所有写操作的操作者、角色、来源 IP、结果和时间。</p>
++            <p className="mt-1 text-xs font-medium text-slate-400">记录所有写操作的操作者、角色、来源 IP、结果、响应和时间。</p>
+           </div>
+           <button type="button" onClick={load} className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">
+             <RefreshCw size={14} />
+@@ -50,6 +50,7 @@ export const AuditLogs: React.FC = () => {
+               { key: 'action', label: '动作' },
+               { key: 'target', label: '对象' },
+               { key: 'status', label: '结果' },
++              { key: 'response', label: '响应' },
+               { key: 'ip', label: '来源 IP' },
+             ]}
+             data={logs}
+@@ -63,6 +64,12 @@ export const AuditLogs: React.FC = () => {
+                   </div>
+                   <StatusBadge status={item.status === 'success' ? 'success' : 'failed'} />
+                 </div>
++                <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
++                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">响应</p>
++                  <p className={`mt-1 break-words text-[11px] leading-5 ${item.status === 'success' ? 'text-slate-600' : 'text-rose-700'}`}>
++                    {item.message || '无响应摘要'}
++                  </p>
++                </div>
+                 <p className="mt-3 font-mono text-[10px] text-slate-400">{item.created_at}</p>
+               </div>
+             )}
+@@ -75,6 +82,9 @@ export const AuditLogs: React.FC = () => {
+                 <td className="px-6 py-4">
+                   <StatusBadge status={item.status === 'success' ? 'success' : 'failed'} />
+                 </td>
++                <td className={`max-w-md px-6 py-4 text-xs leading-5 ${item.status === 'success' ? 'text-slate-500' : 'font-semibold text-rose-700'}`}>
++                  <span className="line-clamp-3 break-words" title={item.message || ''}>{item.message || '-'}</span>
++                </td>
+                 <td className="px-6 py-4 font-mono text-[11px] text-slate-400">{item.ip || '-'}</td>
+               </tr>
+             )}
 diff --git a/frontend/src/pages/Backups.tsx b/frontend/src/pages/Backups.tsx
 index ea5df9c59a98395b2c13d74eaa717d765a5f6932..1f9183fbb67cb636a708133ca1b1b31ed6b3f895 100644
 --- a/frontend/src/pages/Backups.tsx
@@ -5172,6 +6387,127 @@ index 89c7f1129acb061bdd0c0256be4e80ec41c92816..1cca13b4d7852ea5142c3d2cd02f2f99
              </label>
              <label className="flex flex-col gap-2 text-xs font-bold text-slate-600">
                Model
+diff --git a/frontend/src/pages/Setup.tsx b/frontend/src/pages/Setup.tsx
+index 4c9ff45aaceacddc0f28f4571653d78c8d03cd58..14ad43332b96a977ef305d0980a863ab23eae7d3 100644
+--- a/frontend/src/pages/Setup.tsx
++++ b/frontend/src/pages/Setup.tsx
+@@ -10,6 +10,7 @@ import {
+   FolderOpen,
+   Gauge,
+   HardDriveDownload,
++  PackageCheck,
+   Play,
+   RefreshCw,
+   Save,
+@@ -75,6 +76,7 @@ const recoverableSetupJobTypes = new Set([
+   'update',
+   'smart_update',
+   'version_check',
++  'patch_hot_update',
+ ]);
+ 
+ const isRecoverableSetupJob = (job: Job) => recoverableSetupJobTypes.has(job.type) && !isJobDone(job);
+@@ -634,6 +636,7 @@ export const Setup: React.FC = () => {
+         }}
+         onCheckVersion={() => runJob(serverApi.checkVersion)}
+         onUpdateIfNeeded={() => runJob(serverApi.updateIfNeeded)}
++        onPatchUpdate={() => runJob(tasksApi.createPatchUpdateJob)}
+       />
+ 
+       <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-[0_2px_12px_-3px_rgba(15,23,42,0.02)]">
+@@ -1020,6 +1023,7 @@ const AdvancedSetupPanel: React.FC<{
+   onToggleMirrorScript: () => void;
+   onCheckVersion: () => void;
+   onUpdateIfNeeded: () => void;
++  onPatchUpdate: () => void;
+ }> = ({
+   open,
+   onToggle,
+@@ -1048,6 +1052,7 @@ const AdvancedSetupPanel: React.FC<{
+   onToggleMirrorScript,
+   onCheckVersion,
+   onUpdateIfNeeded,
++  onPatchUpdate,
+ }) => {
+   const canInstallDocker = Boolean(!dockerReady && !isJobRunning && dockerPlan?.supported && dockerPlan.can_auto_install);
+   const canConfigureMirrors = Boolean(
+@@ -1253,6 +1258,14 @@ const AdvancedSetupPanel: React.FC<{
+               <button type="button" onClick={onUpdateIfNeeded} className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-bold text-sky-700 hover:bg-sky-100">
+                 检查后更新
+               </button>
++              <button
++                type="button"
++                onClick={onPatchUpdate}
++                disabled={isJobRunning}
++                className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-40 sm:col-span-2 xl:col-span-1 2xl:col-span-2"
++              >
++                <PackageCheck size={13} className="mr-1 inline" />补丁热更新
++              </button>
+             </div>
+ 
+             <div className="mt-4 grid grid-cols-2 gap-3 text-xs font-semibold">
+diff --git a/frontend/src/pages/TaskQueue.tsx b/frontend/src/pages/TaskQueue.tsx
+index e77494bab84f08f05e4a1edfca8ae4669291db9c..e200798e70e96ec60210f1596f852f76b8fb3956 100644
+--- a/frontend/src/pages/TaskQueue.tsx
++++ b/frontend/src/pages/TaskQueue.tsx
+@@ -1,5 +1,5 @@
+ import React, { useEffect, useMemo, useState } from 'react';
+-import { AlertTriangle, Check, DownloadCloud, FolderDown, Play, RefreshCw, Trash2 } from 'lucide-react';
++import { AlertTriangle, Check, DownloadCloud, FolderDown, PackageCheck, Play, RefreshCw, Trash2 } from 'lucide-react';
+ import { useSearchParams } from 'react-router-dom';
+ import { getErrorMessage } from '../api/client';
+ import { schedulesApi } from '../api/schedules';
+@@ -29,6 +29,8 @@ const jobTypeLabel = (type: string) => {
+       return '检查后更新';
+     case 'install':
+       return '服务端安装';
++    case 'patch_hot_update':
++      return '补丁热更新';
+     case 'bootstrap':
+       return '开服初始化';
+     case 'docker_install':
+@@ -136,6 +138,7 @@ export const TaskQueue: React.FC = () => {
+   }, [jobs]);
+ 
+   const openAlerts = useMemo(() => alerts.filter((alert) => alert.status !== 'acked'), [alerts]);
++  const patchUpdateRunning = jobs.some((job) => job.type === 'patch_hot_update' && (job.status === 'waiting' || job.status === 'running'));
+ 
+   const createBackup = async () => {
+     try {
+@@ -157,6 +160,16 @@ export const TaskQueue: React.FC = () => {
+     }
+   };
+ 
++  const createPatchUpdate = async () => {
++    try {
++      await tasksApi.createPatchUpdateJob();
++      await fetchJobs();
++      setMessage('补丁热更新任务已提交');
++    } catch (actionError) {
++      setMessage(getErrorMessage(actionError));
++    }
++  };
++
+   const createSchedule = async () => {
+     try {
+       await schedulesApi.create({
+@@ -264,6 +277,16 @@ export const TaskQueue: React.FC = () => {
+           <DownloadCloud size={14} />
+           检查并更新服务端
+         </button>
++
++        <button
++          type="button"
++          onClick={createPatchUpdate}
++          disabled={patchUpdateRunning}
++          className="flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-45"
++        >
++          <PackageCheck size={14} />
++          {patchUpdateRunning ? '补丁更新中' : '补丁热更新'}
++        </button>
+       </div>
+ 
+       <section className="rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_2px_12px_-3px_rgba(15,23,42,0.02)] sm:p-6">
 diff --git a/frontend/src/types/index.ts b/frontend/src/types/index.ts
 index 11c05fe14ab49599bcd7d71d48e93d291fc3fda4..748787be891db7c92eff0cb006e9227af63d9a3d 100644
 --- a/frontend/src/types/index.ts

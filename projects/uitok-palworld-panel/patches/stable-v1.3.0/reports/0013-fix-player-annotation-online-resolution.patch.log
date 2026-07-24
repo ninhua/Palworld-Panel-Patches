@@ -1,4 +1,4 @@
-$ /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/apply-source-patch.sh /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track/source/0010-fix-missing-base-worker-handler.patch
+$ /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/apply-source-patch.sh /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track/source/0013-fix-player-annotation-online-resolution.patch
 [exit=0]
 $ git diff --check
 [exit=0]
@@ -12,10 +12,10 @@ $ git diff --check
 [exit=0]
 $ go test -run ^$ ./...
 ok  	palpanel/cmd/openapi-types	(cached) [no tests to run]
-ok  	palpanel/cmd/palpanel	0.033s [no tests to run]
+ok  	palpanel/cmd/palpanel	(cached) [no tests to run]
 ok  	palpanel/cmd/palpanel-launcher	(cached) [no tests to run]
 ok  	palpanel/internal/aitranslation	(cached) [no tests to run]
-ok  	palpanel/internal/api	0.032s [no tests to run]
+ok  	palpanel/internal/api	0.033s [no tests to run]
 ok  	palpanel/internal/appconfig	(cached) [no tests to run]
 ok  	palpanel/internal/astrbotclient	(cached) [no tests to run]
 ok  	palpanel/internal/auth	(cached) [no tests to run]
@@ -39,12 +39,4 @@ ok  	palpanel/internal/scheduler	(cached) [no tests to run]
 ok  	palpanel/internal/server	(cached) [no tests to run]
 ok  	palpanel/internal/steamcmd	(cached) [no tests to run]
 ok  	palpanel/internal/webui	(cached) [no tests to run]
-[exit=0]
-$ npm run lint
-
-> frontend@0.0.0 lint
-> oxlint
-
-Found 0 warnings and 0 errors.
-Finished in 29ms on 133 files with 103 rules using 4 threads.
 [exit=0]

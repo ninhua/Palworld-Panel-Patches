@@ -1,19 +1,21 @@
 {
   "schema_version": 2,
   "target_version": "v1.3.0",
-  "generated_at": "2026-07-24T09:10:21Z",
-  "state": "released",
+  "generated_at": "2026-07-24T12:44:43Z",
+  "state": "releasable",
   "required_features": [
     "base-custom-names",
     "patch-info-api"
   ],
   "preserved_features": [
+    "audit-log-response-display",
     "base-custom-names",
     "base-feed-box-summary",
     "base-storage-browser",
     "base-worker-browser",
     "guild-detail-browser",
     "insecure-endpoint-support",
+    "panel-patch-hot-update",
     "patch-info-api",
     "player-notes"
   ],
@@ -381,13 +383,112 @@
       "log": "reports/0012-restore-ai-translation-net-import.patch.log",
       "validated_at_checkpoint": "0012-restore-ai-translation-net-import.patch",
       "included_in_merged": true
+    },
+    {
+      "order": 13,
+      "file": "0013-fix-player-annotation-online-resolution.patch",
+      "sha256": "ebc7c6c90ead24d2244f57667e2e4d4197e52b235b10f224f72c4c18435df98b",
+      "feature": "player-notes",
+      "required": true,
+      "depends_on": [
+        "0006-add-player-notes.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/player_annotations.go",
+        "backend/internal/api/player_annotations_test.go"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0013-fix-player-annotation-online-resolution.patch.log",
+      "validated_at_checkpoint": "0013-fix-player-annotation-online-resolution.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 14,
+      "file": "0014-add-panel-patch-hot-update.patch",
+      "sha256": "f84ea6c3ee9b3d914a5175ee0e7b58a3ab62a47c6fdd2a74d1635c5f75f91ec5",
+      "feature": "panel-patch-hot-update",
+      "required": true,
+      "depends_on": [
+        "0001-add-patch-info-api.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/patch_info_test.go",
+        "backend/internal/api/patch_update.go",
+        "backend/internal/api/routes.go",
+        "backend/internal/server/manager.go",
+        "backend/internal/server/patch_update.go",
+        "backend/internal/server/patch_update_exec_linux.go",
+        "backend/internal/server/patch_update_exec_other.go",
+        "backend/internal/server/patch_update_test.go",
+        "frontend/src/api/tasks.ts",
+        "frontend/src/pages/Setup.tsx",
+        "frontend/src/pages/TaskQueue.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0014-add-panel-patch-hot-update.patch.log",
+      "validated_at_checkpoint": "0014-add-panel-patch-hot-update.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 15,
+      "file": "0015-add-audit-log-response-display.patch",
+      "sha256": "d72099bc6ec2cc6618d303ba393382fad61b6442ecf5fa8ba16617a1fc3ef173",
+      "feature": "audit-log-response-display",
+      "required": true,
+      "depends_on": [
+        "0001-add-patch-info-api.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/patch_info_test.go",
+        "frontend/src/pages/AuditLogs.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0015-add-audit-log-response-display.patch.log",
+      "validated_at_checkpoint": "0015-add-audit-log-response-display.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 16,
+      "file": "0016-fix-panel-patch-update-openapi-contract.patch",
+      "sha256": "1db378b2faf472c059e6d29d84d8a5bcf74867560170175d5f4d59617b53fc1a",
+      "feature": "panel-patch-hot-update",
+      "required": true,
+      "depends_on": [
+        "0014-add-panel-patch-hot-update.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/router_contract_test.go",
+        "docs/openapi.yaml"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0016-fix-panel-patch-update-openapi-contract.patch.log",
+      "validated_at_checkpoint": "0016-fix-panel-patch-update-openapi-contract.patch",
+      "included_in_merged": true
     }
   ],
   "adaptations": [
     {
       "name": "retarget-stable-source",
       "status": "applied",
-      "details": "Retargeted patch metadata to v1.3.0 / 0.8.1"
+      "details": "Retargeted patch metadata to v1.3.0 / 0.8.4"
     },
     {
       "name": "frontend-axios-test-fixture-adapter",
@@ -396,27 +497,29 @@
     }
   ],
   "summary": {
-    "adapted": 1,
+    "compatible": 15,
     "blocked": 0,
-    "pending": 0,
     "superseded": 0,
+    "adapted": 1,
     "incompatible": 0,
-    "compatible": 11
+    "pending": 0
   },
   "excluded_features": [],
   "effective_features": [
+    "audit-log-response-display",
     "base-custom-names",
     "base-feed-box-summary",
     "base-storage-browser",
     "base-worker-browser",
     "guild-detail-browser",
     "insecure-endpoint-support",
+    "panel-patch-hot-update",
     "patch-info-api",
     "player-notes"
   ],
   "merged_patch": {
-    "file": "merged/stable-v1.3.0-patch-0.8.1.patch",
-    "sha256": "5b577e02c8350db4cf926ff5c63f0ef719d6fc661711e2266c2150f91afe714e",
+    "file": "merged/stable-v1.3.0-patch-0.8.4.patch",
+    "sha256": "e118727eccd465c03db9499f79e8fedc114400c8b62f47d60ba8d68df6a53c53",
     "base_commit": "3c8d698abf1d9c4e271e3e62dcc736960f27e8eb"
   },
   "verified": true,
