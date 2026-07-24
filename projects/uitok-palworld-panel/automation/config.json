@@ -8,7 +8,9 @@
     "patch-info-api",
     "base-custom-names"
   ],
-  "optional_features": [],
+  "optional_features": [
+    "player-presence-history"
+  ],
   "bootstrap_source_track": "projects/uitok-palworld-panel/patches/bootstrap-v1.3.0",
   "workspace_root": "projects/uitok-palworld-panel/patches",
   "migration_branch_prefix": "migration/",

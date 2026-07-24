@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.13`
+仓库版本：`v0.12.14`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -46,7 +46,7 @@ base-feed-box-summary
 insecure-endpoint-support
 panel-patch-hot-update
 audit-log-response-display
-player-presence-history
+player-presence-history（候选可选功能，迁移失败时不阻断 stable Release）
 ```
 
 `player-presence-history` 提供：
@@ -101,6 +101,10 @@ DELETE /api/bases/{id}/name
 
 `panel-patch-hot-update` 提供：
 
+- 优先读取仓库中 `stable-vX.Y.Z/workspace.json` 的 released/verified 发布状态，不再把 GitHub REST API 作为唯一发现路径；
+- 由已验证的 Release tag 构造确定性的补丁包、manifest 和 SHA256SUMS 下载地址；
+- GitHub REST API 仅作为兼容回退，避免共享出口 IP 的匿名 API 限额导致热更新不可用；
+- 同时识别 `PALWORLD_LINUX_PANEL_PATCH_GITHUB_TOKEN`、`PALPANEL_PANEL_PATCH_GITHUB_TOKEN`、`PALPANEL_PATCH_GITHUB_TOKEN`、`GITHUB_TOKEN` 和 `GH_TOKEN`；
 - 在任务队列和开服向导的服务端更新区域提供统一“补丁热更新”按钮；
 - 只选择与当前 PalPanel 正式版本完全一致的 stable patch Release；
 - 校验 Release `SHA256SUMS`、exact/verified manifest、平台、功能声明和补丁二进制 SHA-256；
@@ -224,6 +228,13 @@ GET /api/bases/{id}/feed-boxes
 - 数据源失败时不推进状态，恢复后限制最大补记间隔；
 - 仅当前服务器存档源显示该统计。
 
+`0019-avoid-github-api-rate-limit.patch` 修复补丁热更新的 Release 发现：
+
+- 优先读取已发布 stable 工作区元数据，绕过匿名 GitHub REST API 共享 IP 限额；
+- 仅接受 `state=released`、`verified=true` 且目标版本与 Release tag 精确匹配的工作区；
+- 继续对 manifest、SHA256SUMS 和补丁二进制执行原有完整校验；
+- REST API 保留为回退路径，并兼容一键部署脚本使用的补丁 GitHub Token 变量。
+
 ## 补丁结构
 
 当前活动轨道：
@@ -251,6 +262,7 @@ projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/
 │   ├── 0016-fix-panel-patch-update-openapi-contract.patch
 │   ├── 0017-add-audit-log-response-detail-dialog.patch
 │   ├── 0018-add-player-presence-history.patch
+│   ├── 0019-avoid-github-api-rate-limit.patch
 │   └── SHA256SUMS
 ├── build/
 │   ├── build.sh

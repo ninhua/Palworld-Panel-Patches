@@ -32,3 +32,9 @@ Patch `0018` adds `player-presence-history`. It reuses the existing 15-second
 monitor loop to sample the official REST players endpoint, stores bounded
 sessions and totals in SQLite KV, caps recovery accrual after outages, and
 attaches history only to the live server save source.
+
+Patch `0019` fixes `panel-patch-hot-update` release discovery on shared hosting
+networks. It reads the repository's released and verified stable workspace from
+`raw.githubusercontent.com` first, constructs deterministic Release asset URLs,
+and only falls back to the GitHub REST API. It also accepts the deployment token
+aliases used by the one-click launcher.

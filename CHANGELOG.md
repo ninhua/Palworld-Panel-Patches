@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.12.14
+
+### Fixed
+
+- 新增 `0019-avoid-github-api-rate-limit.patch`，修复补丁热更新因共享出口 IP 命中 GitHub 匿名 REST API 限额而返回 `403 Forbidden`。
+- Release 发现优先读取仓库 `stable-vX.Y.Z/workspace.json` 中的 `released`、`verified` 和 `release_tag`，并据此构造确定性的 Release 资产 URL；GitHub REST API 仅保留为兼容回退。
+- 补丁请求现在识别一键部署侧的 `PALWORLD_LINUX_PANEL_PATCH_GITHUB_TOKEN`、`PALPANEL_PANEL_PATCH_GITHUB_TOKEN` 和 `PALPANEL_PATCH_GITHUB_TOKEN`，同时继续兼容 `GITHUB_TOKEN` 与 `GH_TOKEN`。
+- `player-presence-history` 暂列为 optional feature；其 v1.3.0 迁移失败不会继续阻断包含热更新修复的 stable Release。
+- stable patch version 保持 `0.8.6`；此前 blocked workflow 未创建对应 immutable Release。
+
+### Validation
+
+- 增加 released/verified workspace 选择、未验证工作区拒绝和部署 Token 别名回归测试。
+- 保留 manifest exact/verified、平台、功能声明、SHA256SUMS 和补丁二进制哈希的原有安装校验。
+
 ## v0.12.13
 
 ### Added
