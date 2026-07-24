@@ -1,204 +1,29 @@
-# PalPanel QwenPaw 插件
+# Palworld Panel Patches
 
-这是 `astrbot_plugin_palpanel` 的 QwenPaw 后端插件移植版。插件同时支持 QwenPaw 的 QQ 官方频道与 OneBot/NapCat，并在原有 HMAC 集成协议之外接入 PalPanel 管理 API 和 `ninhua/Palworld-Panel-Patches` 补丁接口。
+仓库版本：`v0.12.5`
 
-## 0.2.4 接口架构
+用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
+一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
 
-插件使用三类接口：
-
-1. **AstrBot 兼容 HMAC 接口**：状态、在线、房间、开关服、绑定和快捷配种。
-2. **PalPanel 管理 API**：版本、存档索引、玩家、公会、基地、仓库、帕鲁及服务器生命周期。
-3. **补丁 API**：补丁能力探测、基地自定义名称、玩家备注、增强公会详情、工作帕鲁和饲料箱汇总。
-
-状态、在线、房间和开关服默认先调用 HMAC 接口；HMAC 接口失败且已配置 `panel_api_key` 时，自动回退到 PalPanel 管理 API。
-
-插件通过公开接口自动探测补丁能力：
+## 当前维护基线
 
 ```text
-GET /api/patch/info
+上游项目：uitok/palworld-panel
+当前维护目标：v1.3.0
+仓库轨道：patches/candidate-v1.3.0
+稳定补丁版本：0.8.1
+候选状态：candidate / 未发布前 verified=false
 ```
 
-补丁功能不存在时会返回明确提示，不会把 404 当成通用故障。
+`candidate-v1.3.0` 是当前日常维护入口，并且是自包含轨道。它拥有自己的 `source/`、
+`build/`、manifest 和许可文件；所有补丁应用、测试和构建均以官方 `v1.3.0` tag 为基线。只有完整 stable Workflow
+通过后，Release manifest 才会写入 `mode=exact`、`target_version=v1.3.0` 和
+`verified=true`。
 
-## 命令
+旧 `dev-v1.2.2` 仅作为历史归档保留，不再参与 validation、build 或 release。首个可用
+`v1.3.0` stable Release 发布后，后续版本从最新的较旧 stable Release 源码包派生。
 
-### 基础与诊断
-
-```text
-/palhelp
-/palhelp 补丁    # 全部补丁 Feature、API 路径和对应命令
-/palid
-/面板信息
-/接口诊断
-/表格模式
-/服状态
-/在线
-/房间 [关键词]
-/游戏版本
-/存档索引
-```
-
-### PalPanel 管理 API
-
-```text
-/玩家 [关键词]
-/玩家详情 <昵称|PlayerUID|SteamID>
-/背包 <昵称|PlayerUID|SteamID>
-
-/公会 [关键词]
-/公会详情 <名称|ID>
-
-/基地 [关键词]
-/基地详情 <名称|ID>
-/仓库 <名称|ID>
-
-/帕鲁 [关键词]
-/帕鲁详情 <名称|实例ID>
-```
-
-### `ninhua/Palworld-Panel-Patches` 补丁命令
-
-```text
-/工作帕鲁 <基地名称|ID>
-/饲料箱 <基地名称|ID>
-
-/基地改名 <基地名称|ID> | <新名称>
-/基地恢复名 <基地名称|ID>
-
-/玩家备注 <玩家名称|ID> | <备注> | 标签1,标签2
-/玩家清备注 <玩家名称|ID>
-```
-
-补丁写操作同时要求：
-
-- 当前 QQ/OpenID 位于 `admin_qq_ids`；
-- `panel_api_key` 有相应 PalPanel 权限；
-- 补丁能力列表中包含对应 feature。
-
-### 原有功能
-
-```text
-/开服
-/关服 [5-300 秒]
-/重启 [5-300 秒]
-/强关
-
-/bd <游戏昵称>
-/bdqr <验证码>
-/qd
-/jf
-/pz <目标帕鲁> [被动词条...]
-/paladmin ...
-```
-
-## 安装
-
-ZIP 根目录必须直接包含 `plugin.json` 和 `plugin.py`：
-
-```text
-设置 → 插件管理 → 上传 ZIP → 安装 → 完整重启 QwenPaw
-```
-
-首次启动生成：
-
-```text
-~/.qwenpaw/data/palpanel/config.json
-```
-
-## 配置
-
-推荐配置：
-
-```json
-{
-  "panel_url": "http://127.0.0.1:8080",
-  "panel_public_url": "http://你的局域网或公网地址:8080",
-  "panel_id": "palpanel",
-  "shared_secret": "与 PalPanel AstrBot 集成完全相同的密钥",
-  "panel_api_key": "ppk_开头的PalPanel开发密钥",
-  "allowed_group_ids": ["QQ群号、群OpenID或频道ID"],
-  "admin_qq_ids": ["管理员QQ号或用户OpenID"],
-  "allowed_agent_ids": ["default"],
-  "listen_host": "127.0.0.1",
-  "listen_port": 8092,
-  "table_mode": "markdown",
-  "require_qq_channel": true
-}
-```
-
-### `shared_secret`
-
-用于以下 HMAC 签名接口：
-
-```text
-/api/integrations/astrbot/server-status
-/api/integrations/astrbot/community-servers
-/api/integrations/astrbot/server-control
-/api/integrations/astrbot/binding-challenges
-/api/integrations/astrbot/quick-solves
-```
-
-### `panel_api_key`
-
-用于标准 PalPanel 管理 API。密钥格式通常为：
-
-```text
-ppk_...
-```
-
-在 PalPanel 管理员账户下创建开发密钥，完整 token 只在创建时返回一次。按用途授予权限：
-
-| 用途 | PalPanel 权限 |
-| --- | --- |
-| 版本、索引、玩家、公会、基地、仓库、帕鲁、补丁只读接口 | `read` |
-| 开关服、基地改名 | `server:control` |
-| 玩家备注和标签 | `players:write` |
-
-只读部署可仅授予 `read`。需要完整插件功能时，开发密钥至少需要 `read`、`server:control`、`players:write`。
-
-所有配置项都可通过 `PALPANEL_QWENPAW_<大写字段名>` 覆盖，例如：
-
-```bash
-PALPANEL_QWENPAW_PANEL_URL=http://127.0.0.1:8080
-PALPANEL_QWENPAW_PANEL_API_KEY='ppk_...'
-PALPANEL_QWENPAW_SHARED_SECRET='replace-me'
-PALPANEL_QWENPAW_ALLOWED_GROUP_IDS=123456789
-PALPANEL_QWENPAW_ADMIN_QQ_IDS=987654321
-```
-
-兼容环境变量：
-
-```text
-PALPANEL_SHARED_SECRET
-PALPANEL_ASTRBOT_SHARED_SECRET
-PALPANEL_API_KEY
-PALPANEL_DEVELOPMENT_KEY
-```
-
-## QQ 官方频道与 OneBot
-
-支持：
-
-- `qq`：QwenPaw 内置 QQ 官方机器人频道；
-- `onebot`：NapCat、Lagrange、go-cqhttp 等 OneBot v11 通道。
-
-发送：
-
-```text
-/palid
-```
-
-将返回值填入访问名单：
-
-| 通道 | `admin_qq_ids` | `allowed_group_ids` |
-| --- | --- | --- |
-| OneBot/NapCat | 实际 QQ 号 | 实际 QQ 群号 |
-| QQ 官方群机器人 | 用户 OpenID | `group_openid` |
-| QQ 官方频道机器人 | 用户 OpenID | `channel_id` |
-
-## 补丁接口覆盖
-
-0.2.4 已适配以下 feature：
+## 当前功能
 
 ```text
 patch-info-api
@@ -211,123 +36,225 @@ base-feed-box-summary
 insecure-endpoint-support
 ```
 
-对应的新接口和增强接口：
+`base-custom-names` 提供：
 
-```text
-GET    /api/patch/info
-GET    /api/bases
-GET    /api/bases/{id}
-PUT    /api/bases/{id}/name
+- 基地列表与详情返回自定义名称元数据；
+- 按自定义名称搜索；
+- 基地页面编辑名称和恢复原名；
+- SQLite 持久化；
+- 按当前存档源隔离；
+- 不修改 Palworld `.sav` 文件。
+
+API：
+
+```http
+PUT /api/bases/{id}/name
 DELETE /api/bases/{id}/name
-GET    /api/bases/{id}/storage
-GET    /api/players
-GET    /api/players/{id}
-PUT    /api/players/{id}/annotation
+```
+
+写操作要求 `server:control` 权限。
+
+`base-storage-browser` 提供：
+
+- 基地页面“查看仓库”入口；
+- 容器数、占用格和物品总量汇总；
+- 按容器中文名、容器类型、本地化物品名或内部 ID 搜索；
+- 显示容器类型和本地化容器名称；
+- 使用内置 WebP 物品图标，缺图时显示 SVG 占位图标；
+- 按容器展示槽位、数量和耐久；
+- 存档索引过期提示与失败重试；
+- 调用只读 `GET /api/bases/{id}/storage`，并兼容通过基地 `containers` 关联的地图对象容器；
+- 不写入存档。
+
+`player-notes` 提供：
+
+- 在玩家详情中保存最多 500 字的管理备注；
+- 为玩家添加最多 8 个标签，每个标签最多 24 个字符；
+- 玩家列表显示标签，移动端卡片显示备注摘要；
+- 玩家搜索支持备注和标签；
+- 数据按存档源隔离并持久化在 PalPanel SQLite KV 中；
+- 写操作要求 `players:write` 权限；
+- 不修改 Palworld 玩家存档。
+
+API：
+
+```http
+PUT /api/players/{id}/annotation
 DELETE /api/players/{id}/annotation
-GET    /api/guilds/{id}
-GET    /api/bases/{id}/workers
-GET    /api/bases/{id}/feed-boxes
 ```
 
-在 QQ 中发送 `/palhelp 补丁` 或 `/palhelp api`，可查看同一份完整列表及每个接口对应的插件命令。`insecure-endpoint-support` 是地址校验行为补丁，没有独立 HTTP API。
+`guild-detail-browser` 提供：
 
-`/仓库` 与 `/公会详情` 在未安装补丁时仍调用上游接口；安装补丁后会自动展示增强字段。
+- 公会列表增加桌面端和移动端“查看详情”入口；
+- 公会详情展示会长、成员在线状态、等级、最后在线时间；
+- 复用 `player-notes` 展示成员备注和标签；
+- 展示公会关联基地、自定义基地名称、坐标、建筑数和工作帕鲁数；
+- 详情数据来自只读存档索引与 PalPanel 元数据，不修改游戏存档。
 
-## 内部回调 API
+API：
 
-继续兼容原 AstrBot 插件协议：
+```http
+GET /api/guilds/{id}
+```
+
+`base-worker-browser` 提供：
+
+- 基地页面增加桌面端图标和移动端“工作帕鲁”入口；
+- 调用只读 `GET /api/bases/{id}/workers`；
+- 按实例 ID 合并工作帕鲁与存档索引中的详细帕鲁数据；
+- 展示帕鲁种类、昵称、等级、性别、Rank、状态、远征状态和被动词条；
+- 提供总数、平均等级、最高等级和种类数统计；
+- 支持按昵称、种类、内部 ID、实例 ID 或被动词条搜索；
+- 仅显示索引真实提供的数据，不伪造饱食度、SAN 或工作适性；
+- 不修改帕鲁或基地存档。
+
+API：
+
+```http
+GET /api/bases/{id}/workers
+```
+
+
+`base-feed-box-summary` 提供：
+
+- 基地页面增加桌面端苹果图标和移动端“饲料箱”入口；
+- 调用只读 `GET /api/bases/{id}/feed-boxes`；
+- 识别普通饲料箱与低温保鲜饲料箱，排除普通仓库和冰箱；
+- 汇总相同物品在多个饲料箱中的总数量和分布箱数；
+- 展示饲料箱数、空箱数、占用格、物品种类和物品总量；
+- 支持按物品、饲料箱名称、类型或内部 ID 搜索；
+- 使用内置物品图标并保留按箱查看；
+- 不推断当前索引未提供的腐败时间、营养或保质期数据；
+- 不修改容器或 Palworld 存档。
+
+API：
+
+```http
+GET /api/bases/{id}/feed-boxes
+```
+
+
+## HTTP/HTTPS 兼容性
+
+`insecure-endpoint-support` 统一取消以下地址的“公网必须 HTTPS”限制：
+
+- PalPanel 调用 AstrBot 插件的 `PALPANEL_ASTRBOT_PLUGIN_URL`；
+- AstrBot 插件调用 PalPanel 的 `panel_url`；
+- WebDAV 备份地址；
+- OpenAI-compatible AI 翻译 Base URL；
+- Steam API、社区服务器 API、SteamCMD 与 UE4SS 等可配置下载地址；
+- 公共远程 Mod ZIP 和 Steam Workshop URL。
+
+以上地址均接受 `http://` 或 `https://`。仍保留绝对 URL、协议类型、嵌入凭据、查询参数、WebDAV 远程路径、Mod 下载目标公网地址、重定向次数和文件大小等校验。HTTP 不提供传输加密，跨公网使用时由部署者自行承担明文传输风险。
+
+`0012-restore-ai-translation-net-import.patch` 是编译修复补丁，只恢复 AI 翻译错误分类仍需使用的 Go `net` 导入，不改变 feature 或运行行为。
+
+## 补丁结构
+
+当前活动轨道：
 
 ```text
-GET  /v1/health
-POST /v1/catalog/sync
-POST /v1/tickets/exchange
-POST /v1/credits/reserve
-POST /v1/credits/commit
-POST /v1/credits/release
+projects/uitok-palworld-panel/patches/candidate-v1.3.0/
+├── track.json
+├── manifest.template.json
+├── source/
+│   ├── 0001-add-patch-info-api.patch
+│   ├── 0002-add-base-custom-names.patch
+│   ├── 0003-add-base-storage-browser.patch
+│   ├── 0004-fix-base-storage-container-resolution.patch
+│   ├── 0005-enhance-base-storage-display.patch
+│   ├── 0006-add-player-notes.patch
+│   ├── 0007-add-guild-detail-browser.patch
+│   ├── 0008-add-base-worker-browser.patch
+│   ├── 0009-add-base-feed-box-summary.patch
+│   ├── 0010-fix-missing-base-worker-handler.patch
+│   ├── 0011-allow-http-service-endpoints.patch
+│   ├── 0012-restore-ai-translation-net-import.patch
+│   └── SHA256SUMS
+├── build/
+│   ├── build.sh
+│   └── build-palpanel.sh
+├── LICENSE
+└── LICENSE-NOTICE.md
 ```
 
-PalPanel 回调地址默认：
+该目录是自包含的 v1.3.0 stable candidate。构建脚本按文件名顺序应用全部
+`source/*.patch`，先校验 `source/SHA256SUMS`，再以官方 `v1.3.0` 源码执行
+迁移、检查点编译和 clean-room 复验。
+
+历史 `dev-v1.2.2` 目录不再是配置入口，也不再由任何 GitHub Actions workflow 调用。
+
+## 稳定版自动发布
+
+每天检查一次上游正式 Release，或通过 `workflow_dispatch` 指定正式版本。
 
 ```text
-http://127.0.0.1:8092
+创建 candidate 工作区
+→ 从最新更旧 stable Release 导入 source-chain
+→ 逐补丁应用、编译检测和状态记录
+→ 生成 active-source 与 merged patch
+→ 在全新官方源码上只应用 merged patch
+→ 全量测试、构建和运行时 smoke
+→ 固化 stable 工作区
+→ 发布五文件 immutable Release
 ```
 
-跨主机时将 `listen_host` 改为 `0.0.0.0`，并通过防火墙只允许 PalPanel 主机访问。
+失败时不创建 Release、PR 或 Issue；兼容报告与日志写入 `migration/vX.Y.Z` 分支。成功后 main 保留 `stable-vX.Y.Z` 审计工作区。
 
-## 测试顺序
+后续版本优先从上一个 stable 源码包内的 `.palpatch/source-track` 派生。只有首次 stable 或 legacy 迁移才使用 bootstrap/旧 merged patch。
 
-```text
-/palid
-/接口诊断
-/面板信息
-/服状态
-/玩家
-/基地
-/工作帕鲁 <基地ID>
-/饲料箱 <基地ID>
-```
-
-日志中应出现：
-
-```text
-PalPanel runtime slash command injection complete: workspaces=1 installed=75
-```
-
-## 数据迁移
-
-数据库表结构保持兼容。停止 AstrBot 和 QwenPaw 后，可复制旧数据库：
-
-```bash
-cp data/plugin_data/astrbot_plugin_palpanel/palpanel.sqlite3 \
-  ~/.qwenpaw/data/palpanel/palpanel.sqlite3
-```
-
-不要让 AstrBot 插件和 QwenPaw 插件同时写同一个 SQLite 文件。
-
-## 安全
-
-- `panel_api_key` 等同于其拥有的 PalPanel 权限，应只保存在 QwenPaw 配置文件或受保护环境变量中。
-- `shared_secret` 与 `panel_api_key` 会在日志配置输出中自动脱敏。
-- HTTP 可用但不加密；跨公网部署应使用 HTTPS 或受控专网。
-- `/强关` 可能造成未保存进度丢失。
-- QQ 官方接口可能过滤普通文本 URL，`/pz` 链接场景优先启用 Markdown 或使用 OneBot。
+Release 顶层严格限制为安装包、源码包、`manifest.json`、`compatibility-report.json` 和 `SHA256SUMS`。全部补丁与审计文件保留在包内。
 
 ## 验证
 
 ```bash
-python -m compileall plugin.py qwenpaw_palpanel
+python3 -m pip install -r requirements-ci.txt
+bash common/scripts/validate-repository.sh
 ```
 
-```bash
-curl http://127.0.0.1:8092/v1/health
-```
-
-## 许可证
-
-本移植版基于 GPL-3.0 项目代码，按 GPL-3.0-or-later 分发。
+完整 Go、前端和二进制冒烟测试在 GitHub Actions 的 Go 1.25.12 / Node 22 环境执行。
 
 
-## 双表格模式
+## v1.3.0 stable 校验修复
 
-0.2.4 起可在两种格式间切换：
-
-- `markdown`：标准 Markdown 管道表格，适合已启用 Markdown 的 QQ 官方频道。
-- `ascii`：带边框的等宽字符表格，并放在 `text` 代码块中，适合 OneBot 或不渲染 Markdown 的客户端。
-
-配置文件：
-
-```json
-{
-  "table_mode": "markdown"
-}
-```
-
-管理员也可在 QQ 中即时切换并写回配置文件：
+稳定版发布配置当前为：
 
 ```text
-/表格模式
-/表格模式 markdown
-/表格模式 ascii
+目标上游：v1.3.0
+稳定补丁版本：0.8.1
+预期 Release：uitok-stable-v1.3.0-p0.8.1
 ```
 
-环境变量 `PALPANEL_QWENPAW_TABLE_MODE` 可覆盖配置文件。
+`manifest.files["bin/palpanel"].original_sha256` 现在直接取自上游正式 Release
+`palpanel_v1.3.0_linux_amd64.tar.gz` 内的 `bin/palpanel`。构建过程仍会从源码重建
+未打补丁二进制用于编译验证，但该重建值只记录在 `build-metadata.json` 的
+`rebuilt_original_palpanel_sha256`，不再用于生产安装前置校验。
+
+这样可以避免上游正式 Release 与二次源码构建因构建时间、前端产物或工具链差异而产生
+不同 SHA-256，导致一键部署正确地拒绝安装并回滚。
+
+## v0.12 稳定版更新链路
+
+上游正式 Release 更新后，自动化按状态机迁移补丁：
+
+```text
+detected
+→ workspace-created
+→ patches-imported
+→ testing
+→ merged
+→ releasable
+→ released
+```
+
+核心规则：
+
+- 为目标版本创建 `candidate-vX.Y.Z` 工作区；
+- 从最新且更旧的 verified stable Release 导入补丁链，首次 stable 才使用 bootstrap；
+- 按补丁顺序记录 `compatible`、`adapted`、`incompatible`、`blocked`、`superseded`；
+- 任一必需功能失败即禁止 Release，并把 candidate 工作区写入 `migration/vX.Y.Z` 分支；
+- 可用补丁生成一个 merged patch，再在全新的官方源码上只应用 merged patch 完整复验；
+- 成功后固化 `stable-vX.Y.Z` 工作区并发布不可变 Release；
+- Release 顶层固定为安装包、源码包、manifest、兼容报告和 SHA256SUMS 五个文件。
+
+完整补丁链、merged patch、构建元数据、smoke 日志和派生信息保留在安装包及源码包内部。
