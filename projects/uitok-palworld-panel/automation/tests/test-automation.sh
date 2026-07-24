@@ -172,4 +172,6 @@ grep -Fq 'const: v1.3.0' "${tmp}/docs/openapi.yaml"
 grep -Fq 'const: true' "${tmp}/docs/openapi.yaml"
 grep -Fq 'const: 0.8.0' "${tmp}/docs/openapi.yaml"
 
+python3 "${automation_dir}/test-migration-tracking.py"
+
 echo "Stable automation tests passed."

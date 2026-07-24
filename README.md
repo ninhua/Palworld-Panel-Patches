@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.5`
+仓库版本：`v0.12.6`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -22,6 +22,19 @@
 
 旧 `dev-v1.2.2` 仅作为历史归档保留，不再参与 validation、build 或 release。首个可用
 `v1.3.0` stable Release 发布后，后续版本从最新的较旧 stable Release 源码包派生。
+
+## 迁移失败跟踪
+
+`Auto release uitok stable patch` 将补丁不兼容、编译失败或 clean-room 验证失败视为“blocked migration”，而不是 GitHub Actions 运行失败：
+
+- 输出首个失败补丁、阶段和完整原因；
+- 将 candidate 工作区写入 `migration/vX.Y.Z`；
+- 创建或更新同版本 Issue；
+- candidate 持久化成功时创建或更新 Draft PR；
+- 跳过 Release 步骤并以成功状态正常结束，避免发送失败 workflow 通知；
+- 后续迁移成功、无需发布或 Release 已存在时，自动关闭对应 Issue 和 Draft PR。
+
+仓库配置、权限、依赖安装或 Release 上传等基础设施错误仍保持失败状态，避免静默掩盖发布系统故障。
 
 ## 当前功能
 

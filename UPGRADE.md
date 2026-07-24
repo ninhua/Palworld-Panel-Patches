@@ -1,43 +1,61 @@
-# Upgrade v0.12.3 → v0.12.5
+# Upgrade v0.12.5 → v0.12.6
 
-本次增量更新修复 PalPanel `v1.3.0` stable Release 在迁移 `0009-add-base-feed-box-summary.patch` 时被错误阻断的问题。
+本次增量更新改变 `Auto release uitok stable patch` 的 blocked migration 处理方式。
 
-## 根因
+## 新行为
 
-旧迁移器在每个源码补丁应用后立即执行 Axios mock 适配器。`0008` 和 `0009` 都修改 `frontend/src/api/bases.test.ts`；适配器提前改写 `0008` 的结果后，`0009` 仍按原始补丁上下文应用，因此出现：
-
-```text
-patch failed: frontend/src/api/bases.test.ts
-patch does not apply
-```
-
-## 修复结果
+当源码补丁无法迁移、检查点编译失败或 clean-room 验证失败时：
 
 ```text
-源码补丁：保持原始顺序累计应用
-检查点适配：仅用于临时 lint/compile 验证，验证后恢复
-最终适配：全部补丁完成后统一执行并进入 merged patch
-Release：继续执行 clean-room 验证和五文件发布
+记录 migration_failed=true
+→ 持久化 candidate 到 migration/vX.Y.Z
+→ 创建或更新 Issue
+→ 创建或更新 Draft PR（candidate 已成功持久化时）
+→ 跳过 Release
+→ workflow 以 success 正常结束
 ```
+
+Actions Summary 和 Issue 中会包含首个失败补丁、失败阶段、完整原因、candidate 分支以及本次运行链接。
+
+重复运行同一目标版本不会重复创建跟踪项。迁移成功、无需发布或 Release 已存在时，workflow 会自动关闭对应 Issue 和 Draft PR。
+
+## 权限
+
+workflow 使用：
+
+```yaml
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+```
+
+GitHub 仓库还需要允许 Actions 创建 Pull Request：
+
+```text
+Settings → Actions → General
+→ Workflow permissions
+→ Allow GitHub Actions to create and approve pull requests
+```
+
+如果该选项未启用，Issue 和 candidate 分支仍会正常生成，Draft PR 创建失败只会写入 Summary，不会让 workflow 失败。
 
 ## 覆盖方式
 
-增量 ZIP 根目录与仓库根目录一一对应，不包含 `payload/`。在仓库根目录直接解压覆盖：
+增量 ZIP 根目录与仓库根目录一一对应，不包含 `payload/`：
 
 ```bash
-unzip -o Palworld-Panel-Patches-overlay-v0.12.3-to-v0.12.5.zip \
+unzip -o Palworld-Panel-Patches-overlay-v0.12.5-to-v0.12.6.zip \
   -d /path/to/Palworld-Panel-Patches
 ```
 
-然后验证并提交：
+验证并提交：
 
 ```bash
 cd /path/to/Palworld-Panel-Patches
 python3 -m pip install -r requirements-ci.txt
 bash common/scripts/validate-all.sh
 git add -A
-git commit -m "v0.12.5: preserve patch context during checkpoint adaptation"
+git commit -m "v0.12.6: report blocked migrations without failing workflow"
 git push origin main
 ```
-
-重新运行 `Auto release uitok stable patch`，输入 `v1.3.0`。

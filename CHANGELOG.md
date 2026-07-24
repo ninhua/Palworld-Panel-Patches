@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.12.6
+
+### Changed
+
+- stable 补丁迁移、编译或 clean-room 验证被阻断时，不再通过 `exit 1` 把整个 GitHub Actions 运行标记为失败；构建步骤改为输出 `migration_failed=true`，后续 Release 步骤按状态跳过，workflow 正常结束。
+- blocked candidate 继续持久化到 `migration/vX.Y.Z`，并创建或更新按目标版本唯一的 Issue。
+- candidate 分支持久化成功时，创建或更新从 `migration/vX.Y.Z` 指向 `main` 的 Draft PR，便于直接审查工作区、报告和日志。
+- 重复运行只更新既有 Issue 和 Draft PR；迁移成功、无需 Release 或对应 Release 已存在时自动关闭跟踪项。
+- 增加 `issues: write` 与 `pull-requests: write` 权限；Issue/PR 跟踪失败不会反向阻断 Release workflow。
+
+### Validation
+
+- 新增 migration tracking 报告生成回归，验证失败位置、HTML 转义、候选分支和缺失报告降级行为。
+- 仓库 validator 明确要求 soft-fail 输出、Issue/Draft PR 跟踪和成功后的自动关闭逻辑，并拒绝恢复 `Fail after candidate persistence` 或 `continue-on-error` 模式。
+
 ## v0.12.5
 
 ### Fixed

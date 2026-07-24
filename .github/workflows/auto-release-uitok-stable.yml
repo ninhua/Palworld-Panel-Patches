@@ -12,6 +12,8 @@ on:
 
 permissions:
   contents: write
+  issues: write
+  pull-requests: write
 
 concurrency:
   group: auto-release-uitok-stable
@@ -230,10 +232,11 @@ jobs:
           cache-dependency-path: .work/upstream/frontend/package-lock.json
 
       # build-stable-release invokes migrate-patch-workspace.py and then clean-room verification.
+      # Exit code 20 means no Release is required. Any other non-zero result is
+      # recorded as a blocked migration without failing the workflow run.
       - name: Migrate, merge and clean-room test patches
         id: build
         if: steps.gate.outputs.skip != 'true'
-        continue-on-error: true
         env:
           TARGET_VERSION: ${{ steps.detect.outputs.version }}
           SOURCE_TRACK: ${{ steps.source.outputs.source_track }}
@@ -248,54 +251,177 @@ jobs:
             "${SOURCE_TRACK}"
           status=$?
           set -e
+
+          echo "build_status=${status}" >>"${GITHUB_OUTPUT}"
           if [[ ${status} -eq 20 ]]; then
             echo "no_release=true" >>"${GITHUB_OUTPUT}"
+            echo "migration_failed=false" >>"${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          if [[ ${status} -ne 0 ]]; then
+            echo "no_release=false" >>"${GITHUB_OUTPUT}"
+            echo "migration_failed=true" >>"${GITHUB_OUTPUT}"
+            echo "稳定补丁迁移被阻断；将记录报告并正常结束 workflow。"
             exit 0
           fi
           echo "no_release=false" >>"${GITHUB_OUTPUT}"
-          exit "${status}"
+          echo "migration_failed=false" >>"${GITHUB_OUTPUT}"
 
       - name: Persist blocked candidate workspace
-        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'failure'
+        id: persist_candidate
+        if: steps.gate.outputs.skip != 'true' && steps.build.outputs.migration_failed == 'true'
         env:
           TARGET_VERSION: ${{ steps.detect.outputs.version }}
           BRANCH_PREFIX: ${{ steps.config.outputs.migration_branch_prefix }}
         shell: bash
         run: |
-          set -Eeuo pipefail
+          set -uo pipefail
           workspace=".work/output/workspace/candidate-${TARGET_VERSION}"
-          if [[ ! -f "${workspace}/workspace.json" ]]; then
-            echo "构建在候选工作区创建前失败，无法持久化兼容报告。" >&2
-            exit 1
-          fi
-          "${AUTOMATION_DIR}/persist-workspace.sh" \
-            candidate "${workspace}" "${TARGET_VERSION}" "${BRANCH_PREFIX}"
+          branch="${BRANCH_PREFIX}${TARGET_VERSION}"
+          echo "branch=${branch}" >>"${GITHUB_OUTPUT}"
 
-      - name: Fail after candidate persistence
-        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'failure'
+          if [[ ! -f "${workspace}/workspace.json" ]]; then
+            echo "persisted=false" >>"${GITHUB_OUTPUT}"
+            echo "构建在候选工作区创建前失败，无法持久化兼容报告；将继续创建 Issue。"
+            exit 0
+          fi
+
+          set +e
+          "${AUTOMATION_DIR}/persist-workspace.sh" \
+            candidate "${workspace}" "${TARGET_VERSION}" "${BRANCH_PREFIX}" \
+            2>&1 | tee .work/persist-candidate.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [[ ${status} -ne 0 ]]; then
+            echo "persisted=false" >>"${GITHUB_OUTPUT}"
+            echo "candidate 工作区持久化失败（exit=${status}）；错误将写入 Issue。"
+            exit 0
+          fi
+          echo "persisted=true" >>"${GITHUB_OUTPUT}"
+
+      - name: Prepare blocked migration report
+        id: migration_report
+        if: steps.gate.outputs.skip != 'true' && steps.build.outputs.migration_failed == 'true'
         env:
           TARGET_VERSION: ${{ steps.detect.outputs.version }}
+          PATCH_VERSION: ${{ steps.release_meta.outputs.patch_version }}
+          CANDIDATE_BRANCH: ${{ steps.persist_candidate.outputs.branch }}
+          CANDIDATE_PERSISTED: ${{ steps.persist_candidate.outputs.persisted }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         shell: bash
         run: |
           set -Eeuo pipefail
           report=".work/output/workspace/candidate-${TARGET_VERSION}/compatibility-report.json"
-          echo "稳定补丁迁移失败；candidate 工作区已写入 migration 分支。" >&2
-          if [[ -f "${report}" ]]; then
-            python3 - "${report}" <<'PY'
-          from pathlib import Path
+          python3 "${AUTOMATION_DIR}/migration-tracking.py" \
+            --report "${report}" \
+            --output-dir .work/migration-tracking \
+            --target-version "${TARGET_VERSION}" \
+            --patch-version "${PATCH_VERSION}" \
+            --branch "${CANDIDATE_BRANCH}" \
+            --persisted "${CANDIDATE_PERSISTED}" \
+            --run-url "${RUN_URL}" \
+            --repository "${GITHUB_REPOSITORY}"
+          cat .work/migration-tracking/summary.md >>"${GITHUB_STEP_SUMMARY}"
+
+      - name: Create or update migration Issue and Draft PR
+        id: tracking
+        if: steps.gate.outputs.skip != 'true' && steps.build.outputs.migration_failed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_VERSION: ${{ steps.detect.outputs.version }}
+          ISSUE_TITLE: ${{ steps.migration_report.outputs.issue_title }}
+          PR_TITLE: ${{ steps.migration_report.outputs.pr_title }}
+          CANDIDATE_BRANCH: ${{ steps.migration_report.outputs.candidate_branch }}
+          CANDIDATE_PERSISTED: ${{ steps.persist_candidate.outputs.persisted }}
+        shell: bash
+        run: |
+          set +e
+          issue_body=.work/migration-tracking/issue-body.md
+          pr_body=.work/migration-tracking/pr-body.md
+
+          issue_json="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state all --limit 100 --json number,title,state,url 2>/dev/null || printf '[]')"
+          printf '%s' "${issue_json}" >.work/migration-tracking/issues.json
+          issue_number="$(python3 - "${ISSUE_TITLE}" .work/migration-tracking/issues.json <<'PY'
           import json, sys
-          data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-          blocked = data.get("blocked_reason") or {}
-          patch = blocked.get("patch") or data.get("failed_stage") or "unknown"
-          reason = blocked.get("reason") or data.get("failure_reason") or "see compatibility report"
-          print(f"首个失败位置：{patch}", file=sys.stderr)
-          print(f"失败原因：{reason}", file=sys.stderr)
+          title = sys.argv[1]
+          try:
+              items = json.load(open(sys.argv[2], encoding="utf-8"))
+          except Exception:
+              items = []
+          for item in items:
+              if item.get("title") == title:
+                  print(item.get("number", ""))
+                  break
           PY
+          )"
+
+          issue_url=""
+          if [[ -n "${issue_number}" ]]; then
+            gh issue reopen "${issue_number}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1 || true
+            gh issue edit "${issue_number}" --repo "${GITHUB_REPOSITORY}" \
+              --title "${ISSUE_TITLE}" --body-file "${issue_body}" >/dev/null 2>&1
+            issue_url="${{ github.server_url }}/${GITHUB_REPOSITORY}/issues/${issue_number}"
+          else
+            issue_url="$(gh issue create --repo "${GITHUB_REPOSITORY}" \
+              --title "${ISSUE_TITLE}" --body-file "${issue_body}" 2>/dev/null || true)"
+            issue_number="${issue_url##*/}"
           fi
-          exit 1
+          echo "issue_url=${issue_url}" >>"${GITHUB_OUTPUT}"
+
+          pr_url=""
+          if [[ "${CANDIDATE_PERSISTED}" == "true" && -n "${CANDIDATE_BRANCH}" ]]; then
+            cp "${pr_body}" .work/migration-tracking/pr-body-linked.md
+            if [[ -n "${issue_url}" ]]; then
+              printf '\nRelated issue: %s\n' "${issue_url}" >>.work/migration-tracking/pr-body-linked.md
+            fi
+
+            pr_json="$(gh pr list --repo "${GITHUB_REPOSITORY}" --state all --base main \
+              --head "${CANDIDATE_BRANCH}" --limit 100 --json number,state,url,isDraft 2>/dev/null || printf '[]')"
+            printf '%s' "${pr_json}" >.work/migration-tracking/prs.json
+            pr_number="$(python3 - .work/migration-tracking/prs.json <<'PY'
+          import json, sys
+          try:
+              items = json.load(open(sys.argv[1], encoding="utf-8"))
+          except Exception:
+              items = []
+          if items:
+              print(items[0].get("number", ""))
+          PY
+          )"
+            if [[ -n "${pr_number}" ]]; then
+              gh pr reopen "${pr_number}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1 || true
+              gh pr edit "${pr_number}" --repo "${GITHUB_REPOSITORY}" \
+                --title "${PR_TITLE}" --body-file .work/migration-tracking/pr-body-linked.md >/dev/null 2>&1
+              gh pr ready "${pr_number}" --repo "${GITHUB_REPOSITORY}" --undo >/dev/null 2>&1 || true
+              pr_url="${{ github.server_url }}/${GITHUB_REPOSITORY}/pull/${pr_number}"
+            else
+              pr_url="$(gh pr create --repo "${GITHUB_REPOSITORY}" --draft \
+                --base main --head "${CANDIDATE_BRANCH}" --title "${PR_TITLE}" \
+                --body-file .work/migration-tracking/pr-body-linked.md 2>/dev/null || true)"
+            fi
+          fi
+          echo "pr_url=${pr_url}" >>"${GITHUB_OUTPUT}"
+
+          {
+            echo
+            echo "### Migration tracking"
+            if [[ -n "${issue_url}" ]]; then
+              echo "- Issue: ${issue_url}"
+            else
+              echo "- Issue: creation/update failed; inspect token permissions"
+            fi
+            if [[ -n "${pr_url}" ]]; then
+              echo "- Draft PR: ${pr_url}"
+            elif [[ "${CANDIDATE_PERSISTED}" == "true" ]]; then
+              echo "- Draft PR: creation/update failed; enable Actions PR creation in repository settings"
+            else
+              echo "- Draft PR: skipped because candidate persistence failed"
+            fi
+          } >>"${GITHUB_STEP_SUMMARY}"
+          exit 0
 
       - name: Persist no-change candidate workspace
-        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success' && steps.build.outputs.no_release == 'true'
+        if: steps.gate.outputs.skip != 'true' && steps.build.outputs.migration_failed != 'true' && steps.build.outputs.no_release == 'true'
         env:
           TARGET_VERSION: ${{ steps.detect.outputs.version }}
           BRANCH_PREFIX: ${{ steps.config.outputs.migration_branch_prefix }}
@@ -307,7 +433,7 @@ jobs:
             "${TARGET_VERSION}" "${BRANCH_PREFIX}"
 
       - name: Write no-release summary
-        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success' && steps.build.outputs.no_release == 'true'
+        if: steps.gate.outputs.skip != 'true' && steps.build.outputs.migration_failed != 'true' && steps.build.outputs.no_release == 'true'
         env:
           TARGET_VERSION: ${{ steps.detect.outputs.version }}
         shell: bash
@@ -321,7 +447,7 @@ jobs:
           } >>"${GITHUB_STEP_SUMMARY}"
 
       - name: Verify five-file release allowlist
-        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success' && steps.build.outputs.no_release != 'true'
+        if: steps.gate.outputs.skip != 'true' && steps.build.outputs.migration_failed != 'true' && steps.build.outputs.no_release != 'true'
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -344,7 +470,7 @@ jobs:
           PY
 
       - name: Create release notes
-        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success' && steps.build.outputs.no_release != 'true'
+        if: steps.gate.outputs.skip != 'true' && steps.build.outputs.migration_failed != 'true' && steps.build.outputs.no_release != 'true'
         env:
           TARGET_VERSION: ${{ steps.detect.outputs.version }}
           PATCH_VERSION: ${{ steps.release_meta.outputs.patch_version }}
@@ -387,7 +513,7 @@ jobs:
           PY
 
       - name: Upload verified build artifact
-        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success' && steps.build.outputs.no_release != 'true'
+        if: steps.gate.outputs.skip != 'true' && steps.build.outputs.migration_failed != 'true' && steps.build.outputs.no_release != 'true'
         uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.release_meta.outputs.artifact_name }}
@@ -398,7 +524,7 @@ jobs:
 
       - name: Persist releasable stable workspace
         id: persist
-        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success' && steps.build.outputs.no_release != 'true'
+        if: steps.gate.outputs.skip != 'true' && steps.build.outputs.migration_failed != 'true' && steps.build.outputs.no_release != 'true'
         env:
           TARGET_VERSION: ${{ steps.detect.outputs.version }}
           BRANCH_PREFIX: ${{ steps.config.outputs.migration_branch_prefix }}
@@ -410,7 +536,7 @@ jobs:
             "${TARGET_VERSION}" "${BRANCH_PREFIX}"
 
       - name: Create immutable stable Release
-        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success' && steps.build.outputs.no_release != 'true'
+        if: steps.gate.outputs.skip != 'true' && steps.build.outputs.migration_failed != 'true' && steps.build.outputs.no_release != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release_meta.outputs.release_tag }}
@@ -435,7 +561,7 @@ jobs:
             --repo "${GITHUB_REPOSITORY}"
 
       - name: Mark stable workspace released
-        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success' && steps.build.outputs.no_release != 'true'
+        if: steps.gate.outputs.skip != 'true' && steps.build.outputs.migration_failed != 'true' && steps.build.outputs.no_release != 'true'
         env:
           TARGET_VERSION: ${{ steps.detect.outputs.version }}
           RELEASE_TAG: ${{ steps.release_meta.outputs.release_tag }}
@@ -461,7 +587,7 @@ jobs:
             stable "${workspace}" "${TARGET_VERSION}" "${BRANCH_PREFIX}"
 
       - name: Write release summary
-        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success' && steps.build.outputs.no_release != 'true'
+        if: steps.gate.outputs.skip != 'true' && steps.build.outputs.migration_failed != 'true' && steps.build.outputs.no_release != 'true'
         env:
           RELEASE_TAG: ${{ steps.release_meta.outputs.release_tag }}
           TARGET_VERSION: ${{ steps.detect.outputs.version }}
@@ -476,3 +602,67 @@ jobs:
             echo "- Tag: \`${RELEASE_TAG}\`"
             echo "- Release assets: 5"
           } >>"${GITHUB_STEP_SUMMARY}"
+
+      - name: Resolve completed migration tracking
+        if: success() && (steps.gate.outputs.reason == 'already-released' || (steps.gate.outputs.skip != 'true' && steps.build.outputs.migration_failed != 'true'))
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_VERSION: ${{ steps.detect.outputs.version }}
+          PATCH_VERSION: ${{ steps.release_meta.outputs.patch_version }}
+          RELEASE_TAG: ${{ steps.release_meta.outputs.release_tag }}
+          BRANCH_PREFIX: ${{ steps.config.outputs.migration_branch_prefix }}
+          NO_RELEASE: ${{ steps.build.outputs.no_release }}
+        shell: bash
+        run: |
+          set +e
+          issue_title="[PalPanel ${TARGET_VERSION}] stable patch migration blocked"
+          branch="${BRANCH_PREFIX}${TARGET_VERSION}"
+
+          if [[ "${{ steps.gate.outputs.reason }}" == "already-released" ]]; then
+            resolution="Release ${RELEASE_TAG} already exists."
+          elif [[ "${NO_RELEASE}" == "true" ]]; then
+            resolution="Migration completed with no source delta; no Release is required."
+          else
+            resolution="Release ${RELEASE_TAG} was published successfully."
+          fi
+
+          issue_json="$(gh issue list --repo "${GITHUB_REPOSITORY}" --state open --limit 100 --json number,title 2>/dev/null || printf '[]')"
+          mkdir -p .work/migration-tracking
+          printf '%s' "${issue_json}" >.work/migration-tracking/open-issues.json
+          issue_number="$(python3 - "${issue_title}" .work/migration-tracking/open-issues.json <<'PY'
+          import json, sys
+          title = sys.argv[1]
+          try:
+              items = json.load(open(sys.argv[2], encoding="utf-8"))
+          except Exception:
+              items = []
+          for item in items:
+              if item.get("title") == title:
+                  print(item.get("number", ""))
+                  break
+          PY
+          )"
+          if [[ -n "${issue_number}" ]]; then
+            gh issue close "${issue_number}" --repo "${GITHUB_REPOSITORY}" \
+              --comment "${resolution}" >/dev/null 2>&1 || true
+          fi
+
+          pr_json="$(gh pr list --repo "${GITHUB_REPOSITORY}" --state open --base main \
+            --head "${branch}" --limit 100 --json number 2>/dev/null || printf '[]')"
+          printf '%s' "${pr_json}" >.work/migration-tracking/open-prs.json
+          pr_number="$(python3 - .work/migration-tracking/open-prs.json <<'PY'
+          import json, sys
+          try:
+              items = json.load(open(sys.argv[1], encoding="utf-8"))
+          except Exception:
+              items = []
+          if items:
+              print(items[0].get("number", ""))
+          PY
+          )"
+          if [[ -n "${pr_number}" ]]; then
+            gh pr close "${pr_number}" --repo "${GITHUB_REPOSITORY}" \
+              --comment "${resolution}" >/dev/null 2>&1 || true
+          fi
+          exit 0
+

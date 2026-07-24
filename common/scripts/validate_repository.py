@@ -316,6 +316,8 @@ def validate_stable_automation() -> None:
         automation / "persist-workspace.sh",
         automation / "build-stable-release.sh",
         automation / "release-checksums.py",
+        automation / "migration-tracking.py",
+        automation / "test-migration-tracking.py",
         automation / "test-apply-source-patch.sh",
         automation / "test-resolve-official-palpanel.sh",
         automation / "test-adapt-frontend-api-tests.py",
@@ -349,6 +351,15 @@ def validate_stable_automation() -> None:
         "migrate-patch-workspace",
         "Persist blocked candidate workspace",
         "migration_branch_prefix",
+        "migration_failed=true",
+        "Prepare blocked migration report",
+        "Create or update migration Issue and Draft PR",
+        "Resolve completed migration tracking",
+        "gh issue create",
+        "gh pr create",
+        "--draft",
+        "issues: write",
+        "pull-requests: write",
         "Verify five-file release allowlist",
         "Persist releasable stable workspace",
         "Create immutable stable Release",
@@ -359,10 +370,13 @@ def validate_stable_automation() -> None:
     ):
         if marker not in workflow_text:
             fail(f"稳定版 Workflow 缺少状态机标记：{marker}")
-    if "pull_request" in workflow_text or "gh pr " in workflow_text:
-        fail("稳定版自动化不得创建 PR")
-    if "gh issue " in workflow_text:
-        fail("稳定版自动化不得创建 Issue")
+    if "Fail after candidate persistence" in workflow_text:
+        fail("blocked migration 不得再通过 exit 1 终止 workflow")
+    if "continue-on-error: true" in workflow_text:
+        fail("迁移结果必须通过显式输出建模，不得依赖 continue-on-error")
+    build_block = workflow_text.split("- name: Migrate, merge and clean-room test patches", 1)[-1].split("- name: Persist blocked candidate workspace", 1)[0]
+    if 'echo "migration_failed=true"' not in build_block or 'exit "${status}"' in build_block:
+        fail("迁移步骤必须把非零结果转换为 migration_failed 输出并正常结束")
     if ".work/output/release/*" in workflow_text:
         fail("Release 创建不得使用通配符上传全部文件")
     release_create_block = workflow_text.split("gh release create", 1)[-1]
