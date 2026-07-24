@@ -36,3 +36,6 @@ patches/v1.2.2/
 ```
 
 并将兼容性标记设为 `exact`。
+
+
+自动稳定版构建不要求把每个版本目录提交进仓库。`projects/uitok-palworld-panel/automation/` 会从当前维护补丁轨道生成经过完整测试的稳定 Release；Release manifest 使用 `mode=exact`、`verified=true` 和目标版本号。

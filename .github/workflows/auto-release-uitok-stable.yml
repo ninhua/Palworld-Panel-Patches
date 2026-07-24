@@ -1,0 +1,314 @@
+name: Auto release uitok stable patch
+
+on:
+  schedule:
+    - cron: "17 1 * * *"
+  workflow_dispatch:
+    inputs:
+      upstream_version:
+        description: "可选：指定上游稳定版本，例如 v1.3.0；留空则自动选择最高正式 Release"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-release-uitok-stable
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    env:
+      AUTOMATION_DIR: projects/uitok-palworld-panel/automation
+
+    steps:
+      - name: Checkout patch repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Read automation configuration
+        id: config
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - "${AUTOMATION_DIR}/config.json" >> "${GITHUB_OUTPUT}" <<'PY'
+          from pathlib import Path
+          import json
+          import sys
+
+          data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          print(f'upstream_repository={data["upstream_repository"]}')
+          print(f'source_track={data["source_track"]}')
+          print(f'release_tag_prefix={data["release_tag_prefix"]}')
+          PY
+
+      - name: Detect latest stable upstream release
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_REPOSITORY: ${{ steps.config.outputs.upstream_repository }}
+          MANUAL_VERSION: ${{ inputs.upstream_version }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if [[ -n "${MANUAL_VERSION:-}" ]]; then
+            version="$(printf '%s\n' "${MANUAL_VERSION}" | "${AUTOMATION_DIR}/select-latest-version.py")"
+          else
+            version="$(
+              gh api --paginate \
+                -H 'Accept: application/vnd.github+json' \
+                "repos/${UPSTREAM_REPOSITORY}/releases?per_page=100" \
+                --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' |
+              "${AUTOMATION_DIR}/select-latest-version.py"
+            )"
+          fi
+
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "检测到上游稳定版：${version}"
+
+      - name: Resolve patch version and release tag
+        id: release_meta
+        env:
+          TARGET_VERSION: ${{ steps.detect.outputs.version }}
+          SOURCE_TRACK: ${{ steps.config.outputs.source_track }}
+          TAG_PREFIX: ${{ steps.config.outputs.release_tag_prefix }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - \
+            "${SOURCE_TRACK}/manifest.template.json" \
+            "${TARGET_VERSION}" \
+            "${TAG_PREFIX}" >> "${GITHUB_OUTPUT}" <<'PY'
+          from pathlib import Path
+          import json
+          import re
+          import sys
+
+          manifest_path, target, prefix = sys.argv[1:]
+          source = json.loads(Path(manifest_path).read_text(encoding="utf-8"))["patch_version"]
+          patch = source.split("-", 1)[0].split("+", 1)[0]
+          if not re.fullmatch(r"\d+\.\d+\.\d+", patch):
+              raise SystemExit(f"无法从 {source!r} 推导稳定补丁版本")
+          print(f"patch_version={patch}")
+          print(f"release_tag={prefix}{target}-p{patch}")
+          print(f"artifact_name=uitok-stable-{target}-patch-{patch}")
+          PY
+
+      - name: Check compatibility blocklist and existing release
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_VERSION: ${{ steps.detect.outputs.version }}
+          RELEASE_TAG: ${{ steps.release_meta.outputs.release_tag }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          blocked_reason="$(
+            python3 - \
+              "${AUTOMATION_DIR}/incompatible-versions.json" \
+              "${TARGET_VERSION}" <<'PY'
+          from pathlib import Path
+          import json
+          import sys
+          data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          print(data.get("versions", {}).get(sys.argv[2], ""))
+          PY
+          )"
+
+          if [[ -n "${blocked_reason}" ]]; then
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            echo "reason=explicitly-incompatible" >> "${GITHUB_OUTPUT}"
+            {
+              echo "## Stable patch skipped"
+              echo
+              echo "- Version: \`${TARGET_VERSION}\`"
+              echo "- Reason: ${blocked_reason}"
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+
+          if gh release view "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            echo "reason=already-released" >> "${GITHUB_OUTPUT}"
+            {
+              echo "## Stable patch already exists"
+              echo
+              echo "- Tag: \`${RELEASE_TAG}\`"
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+
+          echo "skip=false" >> "${GITHUB_OUTPUT}"
+          echo "reason=build-required" >> "${GITHUB_OUTPUT}"
+
+      - name: Checkout upstream stable source
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ steps.config.outputs.upstream_repository }}
+          ref: ${{ steps.detect.outputs.version }}
+          path: .work/upstream
+          fetch-depth: 1
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Set up Go
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: .work/upstream/backend/go.mod
+          cache-dependency-path: .work/upstream/backend/go.sum
+
+      - name: Set up Node.js
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: .work/upstream/frontend/package-lock.json
+
+      - name: Build and test stable patch
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          TARGET_VERSION: ${{ steps.detect.outputs.version }}
+          SOURCE_TRACK: ${{ steps.config.outputs.source_track }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          "${AUTOMATION_DIR}/build-stable-release.sh" \
+            .work/upstream \
+            .work/output \
+            "${TARGET_VERSION}" \
+            "${SOURCE_TRACK}"
+
+      - name: Verify release files
+        if: steps.gate.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd .work/output/release
+          sha256sum -c SHA256SUMS
+          test -s manifest.json
+          test -s upstream-lock.json
+          test -s build-metadata.json
+          test -s smoke-test.log
+          grep -Fq "Stable patch API smoke test passed." smoke-test.log
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          manifest = json.loads(Path("manifest.json").read_text(encoding="utf-8"))
+          assert manifest["compatibility"]["mode"] == "exact"
+          assert manifest["compatibility"]["verified"] is True
+          metadata = json.loads(Path("build-metadata.json").read_text(encoding="utf-8"))
+          for key in ("binary_package", "source_package"):
+              path = Path(metadata[key])
+              assert path.is_file() and path.stat().st_size > 0, path
+          PY
+
+      - name: Create release notes
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          TARGET_VERSION: ${{ steps.detect.outputs.version }}
+          PATCH_VERSION: ${{ steps.release_meta.outputs.patch_version }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - \
+            .work/output/release/manifest.json \
+            .work/output/release/build-metadata.json \
+            .work/release-notes.md <<'PY'
+          from pathlib import Path
+          import json
+          import sys
+
+          manifest_path, metadata_path, output_path = sys.argv[1:]
+          manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+          metadata = json.loads(Path(metadata_path).read_text(encoding="utf-8"))
+          features = "\n".join(f"- `{value}`" for value in manifest["features"])
+          text = f"""## PalPanel {metadata['target_version']} stable patch
+
+          This Release was generated automatically from the official stable tag.
+
+          Compatibility:
+
+          - Target version: `{metadata['target_version']}`
+          - Patch version: `{metadata['patch_version']}`
+          - Mode: `exact`
+          - Verified: `true`
+          - Source commit: `{metadata['source_commit']}` (traceability only; installation matching is version-based)
+
+          Features:
+
+          {features}
+
+          The workflow applied the maintained feature patch chain, retargeted patch metadata,
+          regenerated API contracts, ran Go tests, built the frontend and embedded binary,
+          executed `/api/patch/info` smoke validation, and generated SHA-256 checksums.
+
+          No Release is created when patch application, tests, build, or smoke validation fails.
+          """
+          Path(output_path).write_text(text, encoding="utf-8")
+          PY
+
+      - name: Upload stable build artifact
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.release_meta.outputs.artifact_name }}
+          path: .work/output/release/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Create immutable stable Release
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release_meta.outputs.release_tag }}
+          TARGET_VERSION: ${{ steps.detect.outputs.version }}
+          PATCH_VERSION: ${{ steps.release_meta.outputs.patch_version }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          if gh release view "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "Release 在构建期间已由其他任务创建：${RELEASE_TAG}" >&2
+            exit 1
+          fi
+
+          gh release create "${RELEASE_TAG}" \
+            .work/output/release/* \
+            --target "${GITHUB_SHA}" \
+            --title "PalPanel ${TARGET_VERSION} stable patch ${PATCH_VERSION}" \
+            --notes-file .work/release-notes.md \
+            --repo "${GITHUB_REPOSITORY}"
+
+      - name: Write release summary
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          RELEASE_TAG: ${{ steps.release_meta.outputs.release_tag }}
+          TARGET_VERSION: ${{ steps.detect.outputs.version }}
+          PATCH_VERSION: ${{ steps.release_meta.outputs.patch_version }}
+        shell: bash
+        run: |
+          {
+            echo "## Stable patch published"
+            echo
+            echo "- Target: \`${TARGET_VERSION}\`"
+            echo "- Patch: \`${PATCH_VERSION}\`"
+            echo "- Tag: \`${RELEASE_TAG}\`"
+            echo
+            echo '```json'
+            cat .work/output/release/build-metadata.json
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"

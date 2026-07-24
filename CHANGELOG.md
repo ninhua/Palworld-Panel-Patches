@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.11.0
+
+### Added
+
+- 新增每日一次的 `Auto release uitok stable patch` Workflow。
+- 自动选择上游最高正式 `vMAJOR.MINOR[.PATCH]` Release。
+- 自动应用当前完整功能补丁链，并把 PatchInfo、OpenAPI 和生成契约重定向到目标稳定版本。
+- 自动执行 Go 测试、前端构建、嵌入式二进制构建和 `/api/patch/info` 冒烟测试。
+- 构建通过后直接创建 `uitok-stable-vX.Y.Z-pA.B.C` 稳定 Release。
+- 新增明确不兼容版本列表 `automation/incompatible-versions.json`。
+
+### Behavior
+
+- 不创建 PR。
+- 不创建 Issue。
+- 不自动提交稳定轨道目录到 `main`；GitHub Release 是生产脚本的唯一可安装发布信号。
+- 补丁冲突、测试失败、构建失败或冒烟失败时，Workflow 直接失败，不创建 Release。
+- 稳定兼容按 `target_version`、`verified=true`、SHA256SUMS、包结构和 feature 包含关系判断；上游 commit 仅用于追踪。
+
+### Validation
+
+- 新增稳定版本排序测试，支持 `v1.3` 与 `v1.3.0`。
+- 新增 PatchInfo 稳定版重定向测试。
+- 仓库校验确认自动化每天只调度一次、不得创建 PR/Issue，并必须直接创建 Release。
+
 ## v0.10.3
 
 ### Fixed

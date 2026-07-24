@@ -1,24 +1,39 @@
-# Upgrade v0.10.2 → v0.10.3
+# Upgrade v0.10.3 → v0.11.0
 
-本次升级新增：
+本次升级新增上游稳定版每日自动发布能力。
 
-```text
-0012-restore-ai-translation-net-import.patch
-```
-
-修复原因：`0011-allow-http-service-endpoints.patch` 放宽 AI 翻译 Base URL 协议限制时删除了 Go `net` 导入，但 `classifyProviderRequestError` 仍使用 `net.Error` 判断超时，导致 Build/Release 报错：
+## 行为
 
 ```text
-internal/aitranslation/service.go:791:13: undefined: net
+每天检查一次上游正式 Release
+→ 选择最高稳定版本
+→ 若已有同名稳定补丁 Release，则跳过
+→ 若版本在明确不兼容列表中，则跳过
+→ 应用当前完整补丁链并运行完整构建验证
+→ 成功后直接创建稳定 Release
 ```
 
-本修复只恢复 `import "net"`，不改变接口、运行行为、feature 或补丁版本。
+不会创建 PR 或 Issue。失败时只保留 GitHub Actions 日志，不提交仓库变更，也不发布资产。
+
+新增文件：
+
+```text
+.github/workflows/auto-release-uitok-stable.yml
+projects/uitok-palworld-panel/automation/README.md
+projects/uitok-palworld-panel/automation/config.json
+projects/uitok-palworld-panel/automation/incompatible-versions.json
+projects/uitok-palworld-panel/automation/select-latest-version.py
+projects/uitok-palworld-panel/automation/retarget-stable-source.py
+projects/uitok-palworld-panel/automation/build-stable-release.sh
+projects/uitok-palworld-panel/automation/smoke-stable.sh
+projects/uitok-palworld-panel/automation/tests/test-automation.sh
+```
 
 覆盖升级：
 
 ```bash
-unzip Palworld-Panel-Patches-upgrade-v0.10.2-to-v0.10.3.zip
-cp -a Palworld-Panel-Patches-upgrade-v0.10.2-to-v0.10.3/. /path/to/Palworld-Panel-Patches/
+unzip Palworld-Panel-Patches-upgrade-v0.10.3-to-v0.11.0.zip
+cp -a Palworld-Panel-Patches-upgrade-v0.10.3-to-v0.11.0/. /path/to/Palworld-Panel-Patches/
 cd /path/to/Palworld-Panel-Patches
 bash common/scripts/validate-repository.sh
 ```
@@ -27,16 +42,17 @@ bash common/scripts/validate-repository.sh
 
 ```bash
 git add .
-git commit -m "fix: restore AI translation net import"
+git commit -m "feat: automate stable patch releases"
 git push origin main
 ```
 
-发布契约保持：
+仓库设置必须允许 GitHub Actions 使用读写权限创建 Release：
 
 ```text
-补丁版本：0.8.0-dev.1
-Release tag：uitok-dev-v1.2.2-p0.8.0-dev.1
-Artifact：uitok-dev-v1.2.2-patch-0.8.0-dev.1-5e3c0bce9d33
+Settings → Actions → General → Workflow permissions
+→ Read and write permissions
 ```
 
-失败的 Build/Release 未创建正式 Release，因此无需提升功能补丁版本。启动脚本无需更新。
+无需允许 Actions 创建 Pull Request。
+
+首次推送后，可以在 Actions 中手动运行 `Auto release uitok stable patch`，留空版本即自动选择最新稳定版；之后每天自动检查一次。

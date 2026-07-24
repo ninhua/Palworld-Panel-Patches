@@ -164,6 +164,73 @@ def validate_known_import_contracts() -> None:
             "service.go 仍使用 net.Error 进行超时分类"
         )
 
+
+
+def validate_stable_automation() -> None:
+    automation = (
+        ROOT
+        / "projects"
+        / "uitok-palworld-panel"
+        / "automation"
+    )
+    if not automation.exists():
+        return
+
+    config_path = automation / "config.json"
+    incompatible_path = automation / "incompatible-versions.json"
+    workflow_path = ROOT / ".github" / "workflows" / "auto-release-uitok-stable.yml"
+    for path in (config_path, incompatible_path, workflow_path):
+        if not path.is_file():
+            fail(f"稳定版自动化缺少文件：{path}")
+
+    config = load_json(config_path)
+    if not isinstance(config, dict) or config.get("schema_version") != 1:
+        fail("稳定版自动化 config.json 格式错误")
+
+    source_track_value = config.get("source_track")
+    if not isinstance(source_track_value, str) or not source_track_value:
+        fail("稳定版自动化 source_track 无效")
+    source_track = ROOT / source_track_value
+    manifest_path = source_track / "manifest.template.json"
+    if not manifest_path.is_file():
+        fail(f"稳定版自动化源补丁轨道不存在：{source_track}")
+
+    manifest = load_json(manifest_path)
+    if not isinstance(manifest, dict):
+        fail(f"源补丁 manifest 必须是对象：{manifest_path}")
+    manifest_features = set(manifest.get("features", []))
+    required_features = config.get("required_features")
+    if not isinstance(required_features, list) or not all(
+        isinstance(value, str) for value in required_features
+    ):
+        fail("稳定版自动化 required_features 格式错误")
+    missing = sorted(set(required_features) - manifest_features)
+    if missing:
+        fail("稳定版自动化必需 feature 不在源补丁 manifest 中：" + ", ".join(missing))
+
+    incompatible = load_json(incompatible_path)
+    if not isinstance(incompatible, dict) or incompatible.get("schema_version") != 1:
+        fail("incompatible-versions.json 格式错误")
+    versions = incompatible.get("versions")
+    if not isinstance(versions, dict):
+        fail("incompatible-versions.json versions 必须是对象")
+    version_pattern = re.compile(r"^v\d+\.\d+(?:\.\d+)?$")
+    for version, reason in versions.items():
+        if not isinstance(version, str) or not version_pattern.fullmatch(version):
+            fail(f"明确不兼容版本格式错误：{version!r}")
+        if not isinstance(reason, str) or not reason.strip():
+            fail(f"明确不兼容版本缺少原因：{version}")
+
+    workflow_text = workflow_path.read_text(encoding="utf-8")
+    if 'cron: "17 1 * * *"' not in workflow_text:
+        fail("稳定版自动化 Workflow 必须保持每天一次调度")
+    if "pull_request" in workflow_text or "gh pr " in workflow_text:
+        fail("稳定版自动化不得创建 PR")
+    if "gh issue " in workflow_text:
+        fail("稳定版自动化不得创建 Issue")
+    if "gh release create" not in workflow_text:
+        fail("稳定版自动化缺少直接 Release 发布步骤")
+
 def validate_placeholders() -> None:
     # 模板目录允许占位值，正式补丁目录不允许。
     for path in (ROOT / "projects" / "uitok-palworld-panel" / "patches").rglob("manifest.json"):
@@ -181,6 +248,7 @@ def main() -> None:
     validate_executable_scripts()
     validate_patch_route_handlers()
     validate_known_import_contracts()
+    validate_stable_automation()
     validate_placeholders()
     print("Repository validation passed.")
 

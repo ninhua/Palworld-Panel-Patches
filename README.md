@@ -1,9 +1,33 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.10.3`
+仓库版本：`v0.11.0`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
+
+
+## 上游稳定版自动发布
+
+仓库每天自动检查一次 `uitok/palworld-panel` 的正式 Release。发现尚未发布补丁的最高稳定版本后，会直接：
+
+```text
+拉取官方稳定标签
+→ 应用当前完整功能补丁链
+→ 按目标版本重定向 PatchInfo
+→ 运行 Go 测试、前端构建和二进制冒烟测试
+→ 生成 exact / verified=true 的 manifest 与 SHA256SUMS
+→ 创建稳定 GitHub Release
+```
+
+不会创建 PR 或 Issue。任何补丁冲突、测试失败、构建失败或冒烟失败都会让 Workflow 失败，并且不会产生可供启动脚本安装的 Release。
+
+Workflow：
+
+```text
+.github/workflows/auto-release-uitok-stable.yml
+```
+
+稳定版安装按 `target_version` 匹配；上游 commit 仅用于源码追踪，不参与安装判断。
 
 ## 当前开发基线
 

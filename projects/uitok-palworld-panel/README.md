@@ -17,3 +17,7 @@
 - 简幻欢容器启动逻辑。
 
 以上内容属于 `projects/host-wine-aio/`。
+
+## 稳定版自动发布
+
+`automation/` 每天检查上游正式 Release，构建验证成功后直接创建稳定补丁 Release。不会创建 PR 或 Issue；失败时不发布。稳定版本匹配只使用 PalPanel 版本号，commit 仅保留用于源码追踪。
