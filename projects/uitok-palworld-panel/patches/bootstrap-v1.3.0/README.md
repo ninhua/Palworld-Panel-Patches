@@ -27,3 +27,8 @@ Patch `0017` extends `audit-log-response-display` with a click-through response
 detail dialog for desktop rows and mobile cards. It displays the complete
 already-redacted audit message and record metadata, pretty-prints JSON, supports keyboard controls
 and copying on secure or HTTP pages, and does not collect raw HTTP bodies.
+
+Patch `0018` adds `player-presence-history`. It reuses the existing 15-second
+monitor loop to sample the official REST players endpoint, stores bounded
+sessions and totals in SQLite KV, caps recovery accrual after outages, and
+attaches history only to the live server save source.

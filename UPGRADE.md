@@ -1,21 +1,24 @@
-# Upgrade v0.12.11 → v0.12.12
+# Upgrade v0.12.12 → v0.12.13
 
-本增量包增加操作审计响应详情弹窗，并将 stable patch version 提升到 `0.8.5`。
+本增量包新增玩家在线时长与在线历史，并将 stable patch version 提升到 `0.8.6`。
 
-新增 `0017-add-audit-log-response-detail-dialog.patch`：
+新增 `0018-add-player-presence-history.patch`：
 
-- 点击桌面操作审计表格行或移动端卡片查看完整响应；
-- 显示记录 ID、时间、操作者、角色、动作、对象、状态和来源 IP；
-- 完整响应继续读取后端已脱敏的 `message` 字段，JSON 内容自动格式化；
-- 支持 Enter/空格打开、Esc 或遮罩关闭；
-- 支持复制响应，并兼容非 HTTPS 面板页面；
-- 不记录未过滤的完整 HTTP 响应体，不修改审计数据库结构。
+- 复用 PalPanel 现有 15 秒监控采样；
+- 从官方 REST `/players` 读取在线玩家；
+- 按 PlayerUID/SteamID 合并身份并持久记录本次在线、累计在线、最近上线和最近下线；
+- 保存最近 20 次完整在线会话；
+- 玩家列表与玩家详情直接展示统计；
+- REST 暂时不可用时不误判全员下线；
+- 长时间中断恢复后最多补记 60 秒；
+- 仅当前服务器存档源显示实时历史；
+- 使用现有 SQLite KV，不修改 Palworld 存档和数据库 schema。
 
 ## 覆盖
 
 ```bash
 cd /path/to/Palworld-Panel-Patches
-unzip -o Palworld-Panel-Patches-overlay-v0.12.11-to-v0.12.12.zip -d .
+unzip -o Palworld-Panel-Patches-overlay-v0.12.12-to-v0.12.13.zip -d .
 ```
 
 ## 验证与提交
@@ -25,9 +28,9 @@ python3 -m pip install -r requirements-ci.txt
 bash common/scripts/validate-all.sh
 
 git add -A
-git commit -m "v0.12.12: add audit response detail dialog"
+git commit -m "v0.12.13: add player presence history"
 git push origin main
 ```
 
 随后运行 `Auto release uitok stable patch`，目标版本填写 `v1.3.0`。
-预期 Release tag 为 `uitok-stable-v1.3.0-p0.8.5`。
+预期 Release tag 为 `uitok-stable-v1.3.0-p0.8.6`。

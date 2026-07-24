@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.12`
+仓库版本：`v0.12.13`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -11,7 +11,7 @@
 上游项目：uitok/palworld-panel
 当前维护目标：v1.3.0
 bootstrap 源轨道：patches/bootstrap-v1.3.0
-稳定补丁版本：0.8.5
+稳定补丁版本：0.8.6
 候选状态：candidate / 未发布前 verified=false
 ```
 
@@ -46,7 +46,19 @@ base-feed-box-summary
 insecure-endpoint-support
 panel-patch-hot-update
 audit-log-response-display
+player-presence-history
 ```
+
+`player-presence-history` 提供：
+
+- 后台复用现有 15 秒监控采样，不依赖玩家页面打开；
+- 从官方 Palworld REST `/players` 读取在线玩家，并按 PlayerUID/SteamID 合并身份；
+- 持久记录本次在线、累计在线、最近上线、最近下线和最近 20 次完整会话；
+- 玩家列表显示本次/上次在线和累计时长，玩家详情显示时间点与最近会话；
+- REST 暂时不可用时保持上一状态，不把所有玩家误记为下线；
+- 下一次成功采样最多补记 60 秒，避免面板停机或网络中断形成虚假在线时长；
+- 只对当前服务器存档源展示实时历史，导入存档不复用服务器在线记录；
+- 数据保存在 PalPanel SQLite KV 中，不修改 Palworld 存档。
 
 `audit-log-response-display` 提供：
 
@@ -204,6 +216,14 @@ GET /api/bases/{id}/feed-boxes
 - 增加键盘操作、滚动锁定、遮罩关闭和复制响应；
 - 不新增后端响应体采集或数据库字段。
 
+`0018-add-player-presence-history.patch` 增加 `player-presence-history`：
+
+- 使用现有监控采样器周期读取官方 REST 玩家列表；
+- 按玩家身份持久累计在线时长并保存最近完成会话；
+- 将统计附加到玩家列表和玩家详情，不新增写操作或权限；
+- 数据源失败时不推进状态，恢复后限制最大补记间隔；
+- 仅当前服务器存档源显示该统计。
+
 ## 补丁结构
 
 当前活动轨道：
@@ -230,6 +250,7 @@ projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/
 │   ├── 0015-add-audit-log-response-display.patch
 │   ├── 0016-fix-panel-patch-update-openapi-contract.patch
 │   ├── 0017-add-audit-log-response-detail-dialog.patch
+│   ├── 0018-add-player-presence-history.patch
 │   └── SHA256SUMS
 ├── build/
 │   ├── build.sh
@@ -284,8 +305,8 @@ bash common/scripts/validate-repository.sh
 
 ```text
 目标上游：v1.3.0
-稳定补丁版本：0.8.5
-预期 Release：uitok-stable-v1.3.0-p0.8.5
+稳定补丁版本：0.8.6
+预期 Release：uitok-stable-v1.3.0-p0.8.6
 ```
 
 `manifest.files["bin/palpanel"].original_sha256` 现在直接取自上游正式 Release

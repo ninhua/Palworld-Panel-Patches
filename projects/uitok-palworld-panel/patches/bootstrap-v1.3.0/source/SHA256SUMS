@@ -15,3 +15,4 @@ f84ea6c3ee9b3d914a5175ee0e7b58a3ab62a47c6fdd2a74d1635c5f75f91ec5  0014-add-panel
 d72099bc6ec2cc6618d303ba393382fad61b6442ecf5fa8ba16617a1fc3ef173  0015-add-audit-log-response-display.patch
 1db378b2faf472c059e6d29d84d8a5bcf74867560170175d5f4d59617b53fc1a  0016-fix-panel-patch-update-openapi-contract.patch
 47ba3d3219592157572c955169526cdab399451af0f7b0469946f2f7d551651f  0017-add-audit-log-response-detail-dialog.patch
+ab1439f61413cf3f4551245906fbbcb8a9430d02b59c4b61b05af75f195812a2  0018-add-player-presence-history.patch

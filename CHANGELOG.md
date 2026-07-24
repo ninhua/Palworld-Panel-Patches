@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.12.13
+
+### Added
+
+- 新增 `0018-add-player-presence-history.patch` 和 `player-presence-history`。
+- 复用现有 15 秒监控采样，从官方 Palworld REST 玩家列表持久记录本次在线、累计在线、最近上线、最近下线和最近 20 次完成会话。
+- 玩家列表显示本次/上次在线及累计时长，玩家详情显示时间点和最近会话。
+- REST 数据不可用时不结算全员下线；恢复采样后最多补记 60 秒，避免长时间中断形成虚假在线时长。
+- 在线历史仅附加到当前服务器存档源；导入存档不会错误复用服务器玩家历史。
+- stable patch version 提升到 `0.8.6`，预期 Release 为 `uitok-stable-v1.3.0-p0.8.6`。
+
+### Validation
+
+- 增加在线持续、离线结算、重新上线、长间隔上限、UID/SteamID 别名合并、REST 解析、监控持久化和 API 存档源隔离回归测试。
+- 新增数据存储继续使用现有 SQLite KV，不修改数据库 schema 或 Palworld 存档。
+
 ## v0.12.12
 
 ### Added
