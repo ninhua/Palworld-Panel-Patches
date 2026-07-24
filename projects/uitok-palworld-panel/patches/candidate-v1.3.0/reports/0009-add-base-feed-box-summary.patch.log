@@ -1,0 +1,8 @@
+$ /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/apply-source-patch.sh /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track/source/0009-add-base-feed-box-summary.patch
+error: patch failed: frontend/src/api/bases.test.ts:107
+error: frontend/src/api/bases.test.ts: patch does not apply
+错误：已知测试路径必须在补丁中恰好出现一次，实际 0 次。
+错误：补丁无法直接应用，且不满足 PalPanel v1.3.0 的精确测试重定位规则。
+error: patch failed: frontend/src/api/bases.test.ts:107
+error: frontend/src/api/bases.test.ts: patch does not apply
+[exit=1]

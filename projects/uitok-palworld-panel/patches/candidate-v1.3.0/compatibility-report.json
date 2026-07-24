@@ -1,0 +1,405 @@
+{
+  "schema_version": 2,
+  "target_version": "v1.3.0",
+  "generated_at": "2026-07-24T08:42:26Z",
+  "state": "blocked",
+  "required_features": [
+    "base-custom-names",
+    "patch-info-api"
+  ],
+  "preserved_features": [
+    "base-custom-names",
+    "base-feed-box-summary",
+    "base-storage-browser",
+    "base-worker-browser",
+    "guild-detail-browser",
+    "insecure-endpoint-support",
+    "patch-info-api",
+    "player-notes"
+  ],
+  "optional_features": [],
+  "patches": [
+    {
+      "order": 1,
+      "file": "0001-add-patch-info-api.patch",
+      "sha256": "b833181d2532c8b639bdff5731a8efea6d60de4a235e34ac0473b98cadbfca46",
+      "feature": "patch-info-api",
+      "required": true,
+      "depends_on": [],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/patch_info_test.go",
+        "backend/internal/api/router_contract_test.go",
+        "backend/internal/api/routes.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/generated/contracts.ts"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "adapted",
+      "reason": null,
+      "log": "reports/0001-add-patch-info-api.patch.log",
+      "validated_at_checkpoint": "0001-add-patch-info-api.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 2,
+      "file": "0002-add-base-custom-names.patch",
+      "sha256": "4b7386af40482bfaab3644a8293f1dd60cd8b7ad06493d894ad6c495ac1daf89",
+      "feature": "base-custom-names",
+      "required": true,
+      "depends_on": [
+        "0001-add-patch-info-api.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/base_custom_names.go",
+        "backend/internal/api/base_custom_names_test.go",
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/patch_info_test.go",
+        "backend/internal/api/routes.go",
+        "backend/internal/api/save_index.go",
+        "backend/internal/api/save_index_localization_test.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/bases.test.ts",
+        "frontend/src/api/bases.ts",
+        "frontend/src/api/generated/contracts.ts",
+        "frontend/src/pages/Bases.tsx",
+        "frontend/src/types/index.ts"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "adapted",
+      "reason": null,
+      "log": "reports/0002-add-base-custom-names.patch.log",
+      "validated_at_checkpoint": "0002-add-base-custom-names.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 3,
+      "file": "0003-add-base-storage-browser.patch",
+      "sha256": "8ca7db28caef22fd9aa623ab82735d50ccc6d69e8a4986719f791c78236cebbb",
+      "feature": "base-storage-browser",
+      "required": true,
+      "depends_on": [
+        "0001-add-patch-info-api.patch",
+        "0002-add-base-custom-names.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/patch_info_test.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/bases.test.ts",
+        "frontend/src/api/bases.ts",
+        "frontend/src/api/generated/contracts.ts",
+        "frontend/src/pages/Bases.tsx",
+        "frontend/src/types/index.ts"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "adapted",
+      "reason": null,
+      "log": "reports/0003-add-base-storage-browser.patch.log",
+      "validated_at_checkpoint": "0003-add-base-storage-browser.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 4,
+      "file": "0004-fix-base-storage-container-resolution.patch",
+      "sha256": "967c39a288084433664f22b7cf68c02cd3052c78d3a42be965d5ea57c47ef75f",
+      "feature": "base-storage-browser",
+      "required": true,
+      "depends_on": [
+        "0003-add-base-storage-browser.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/base_storage_test.go",
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/save_index.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/generated/contracts.ts"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0004-fix-base-storage-container-resolution.patch.log",
+      "validated_at_checkpoint": "0004-fix-base-storage-container-resolution.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 5,
+      "file": "0005-enhance-base-storage-display.patch",
+      "sha256": "10070b79885c8b0cf6c6aed7f2549703a5b923048702a3ff13ddb1dd5674cd64",
+      "feature": "base-storage-browser",
+      "required": true,
+      "depends_on": [
+        "0003-add-base-storage-browser.patch",
+        "0004-fix-base-storage-container-resolution.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/base_storage_test.go",
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/save_index.go",
+        "backend/internal/api/save_index_localization_test.go",
+        "backend/internal/pallocalize/localize.go",
+        "backend/internal/pallocalize/localize_test.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/bases.test.ts",
+        "frontend/src/api/bases.ts",
+        "frontend/src/api/generated/contracts.ts",
+        "frontend/src/pages/Bases.tsx",
+        "frontend/src/types/index.ts"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "adapted",
+      "reason": null,
+      "log": "reports/0005-enhance-base-storage-display.patch.log",
+      "validated_at_checkpoint": "0005-enhance-base-storage-display.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 6,
+      "file": "0006-add-player-notes.patch",
+      "sha256": "57dc1d07e0ea93eae5eb85e6d2c871f27f609e384565772b9cd0b8dd8c6038be",
+      "feature": "player-notes",
+      "required": true,
+      "depends_on": [
+        "0001-add-patch-info-api.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/patch_info_test.go",
+        "backend/internal/api/player_annotations.go",
+        "backend/internal/api/player_annotations_test.go",
+        "backend/internal/api/router_contract_test.go",
+        "backend/internal/api/routes.go",
+        "backend/internal/api/save_index.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/generated/contracts.ts",
+        "frontend/src/api/players.test.ts",
+        "frontend/src/api/players.ts",
+        "frontend/src/pages/Players.tsx",
+        "frontend/src/types/index.ts"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0006-add-player-notes.patch.log",
+      "validated_at_checkpoint": "0006-add-player-notes.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 7,
+      "file": "0007-add-guild-detail-browser.patch",
+      "sha256": "1bf00b8505586014f196211884b417d2c1b8a7f00fd5c3106e02e3ca59431d48",
+      "feature": "guild-detail-browser",
+      "required": true,
+      "depends_on": [
+        "0002-add-base-custom-names.patch",
+        "0006-add-player-notes.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/guild_detail.go",
+        "backend/internal/api/guild_detail_test.go",
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/patch_info_test.go",
+        "backend/internal/api/save_index.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/generated/contracts.ts",
+        "frontend/src/api/guilds.test.ts",
+        "frontend/src/api/guilds.ts",
+        "frontend/src/pages/Guilds.tsx",
+        "frontend/src/types/index.ts"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0007-add-guild-detail-browser.patch.log",
+      "validated_at_checkpoint": "0007-add-guild-detail-browser.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 8,
+      "file": "0008-add-base-worker-browser.patch",
+      "sha256": "651549e385b2e2d5d7b11a03103f320b6bbd07085c2898652cf8fa16b8f83732",
+      "feature": "base-worker-browser",
+      "required": true,
+      "depends_on": [
+        "0002-add-base-custom-names.patch"
+      ],
+      "validation_checkpoint": false,
+      "touched_files": [
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/patch_info_test.go",
+        "backend/internal/api/router_contract_test.go",
+        "backend/internal/api/routes.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/bases.test.ts",
+        "frontend/src/api/bases.ts",
+        "frontend/src/api/generated/contracts.ts",
+        "frontend/src/pages/Bases.tsx",
+        "frontend/src/types/index.ts"
+      ],
+      "apply_status": "passed",
+      "compile_status": "pending-checkpoint",
+      "final_status": "adapted",
+      "reason": null,
+      "log": "reports/0008-add-base-worker-browser.patch.log",
+      "included_in_merged": true
+    },
+    {
+      "order": 9,
+      "file": "0009-add-base-feed-box-summary.patch",
+      "sha256": "73660fb2c8024b066a77f5206e131fe16b0f15c54c008bfd730379240c97731e",
+      "feature": "base-feed-box-summary",
+      "required": true,
+      "depends_on": [
+        "0003-add-base-storage-browser.patch",
+        "0004-fix-base-storage-container-resolution.patch"
+      ],
+      "validation_checkpoint": false,
+      "touched_files": [
+        "backend/internal/api/base_feed_boxes.go",
+        "backend/internal/api/base_feed_boxes_test.go",
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/patch_info_test.go",
+        "backend/internal/api/router_contract_test.go",
+        "backend/internal/api/routes.go",
+        "backend/internal/api/save_index.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/bases.test.ts",
+        "frontend/src/api/bases.ts",
+        "frontend/src/api/generated/contracts.ts",
+        "frontend/src/pages/Bases.tsx",
+        "frontend/src/types/index.ts"
+      ],
+      "apply_status": "failed",
+      "compile_status": "not-run",
+      "final_status": "incompatible",
+      "reason": "命令失败（exit=1）：/home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/apply-source-patch.sh /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track/source/0009-add-base-feed-box-summary.patch\nerror: patch failed: frontend/src/api/bases.test.ts:107\nerror: frontend/src/api/bases.test.ts: patch does not apply\n错误：已知测试路径必须在补丁中恰好出现一次，实际 0 次。\n错误：补丁无法直接应用，且不满足 PalPanel v1.3.0 的精确测试重定位规则。\nerror: patch failed: frontend/src/api/bases.test.ts:107\nerror: frontend/src/api/bases.test.ts: patch does not apply\n",
+      "log": "reports/0009-add-base-feed-box-summary.patch.log",
+      "included_in_merged": false
+    },
+    {
+      "order": 10,
+      "file": "0010-fix-missing-base-worker-handler.patch",
+      "sha256": "a7249681d29fb2aebbde231f441a6c5d905a4419a41e75bef4be7fa3b15f0cbb",
+      "feature": "base-worker-browser",
+      "required": true,
+      "depends_on": [
+        "0008-add-base-worker-browser.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/base_workers.go",
+        "backend/internal/api/base_workers_test.go"
+      ],
+      "apply_status": "not-run",
+      "compile_status": "not-run",
+      "final_status": "blocked",
+      "reason": "migration stopped after required failure: 0009-add-base-feed-box-summary.patch",
+      "log": "reports/0010-fix-missing-base-worker-handler.patch.log",
+      "included_in_merged": false
+    },
+    {
+      "order": 11,
+      "file": "0011-allow-http-service-endpoints.patch",
+      "sha256": "1b8dde723c9488c7f8a3e29d0ba680c752dbdbc44c77533486c32d9c5349897d",
+      "feature": "insecure-endpoint-support",
+      "required": true,
+      "depends_on": [
+        "0001-add-patch-info-api.patch"
+      ],
+      "validation_checkpoint": false,
+      "touched_files": [
+        "README.md",
+        "astrbot_plugin_palpanel/_conf_schema.json",
+        "astrbot_plugin_palpanel/main.py",
+        "astrbot_plugin_palpanel/security.py",
+        "astrbot_plugin_palpanel/tests/test_security.py",
+        "backend/README.md",
+        "backend/internal/aitranslation/service.go",
+        "backend/internal/aitranslation/service_test.go",
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/patch_info_test.go",
+        "backend/internal/appconfig/config.go",
+        "backend/internal/appconfig/config_test.go",
+        "backend/internal/astrbotclient/client.go",
+        "backend/internal/astrbotclient/client_test.go",
+        "backend/internal/mods/downloader.go",
+        "backend/internal/mods/downloader_test.go",
+        "backend/internal/mods/importer.go",
+        "backend/internal/mods/importer_test.go",
+        "backend/internal/server/webdav.go",
+        "backend/internal/server/webdav_test.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/generated/contracts.ts",
+        "frontend/src/i18n/index.tsx",
+        "frontend/src/pages/Backups.tsx",
+        "frontend/src/pages/Mods.test.tsx",
+        "frontend/src/pages/Mods.tsx",
+        "frontend/src/pages/Settings.tsx"
+      ],
+      "apply_status": "not-run",
+      "compile_status": "not-run",
+      "final_status": "blocked",
+      "reason": "migration stopped after required failure: 0009-add-base-feed-box-summary.patch",
+      "log": "reports/0011-allow-http-service-endpoints.patch.log",
+      "included_in_merged": false
+    },
+    {
+      "order": 12,
+      "file": "0012-restore-ai-translation-net-import.patch",
+      "sha256": "d6c74c5fbb0552bb974c50e663198d47b978ea7ae1d4c1b0ddc5cf99cec067f8",
+      "feature": "insecure-endpoint-support",
+      "required": true,
+      "depends_on": [
+        "0011-allow-http-service-endpoints.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/aitranslation/service.go"
+      ],
+      "apply_status": "not-run",
+      "compile_status": "not-run",
+      "final_status": "blocked",
+      "reason": "migration stopped after required failure: 0009-add-base-feed-box-summary.patch",
+      "log": "reports/0012-restore-ai-translation-net-import.patch.log",
+      "included_in_merged": false
+    }
+  ],
+  "adaptations": [],
+  "summary": {
+    "pending": 0,
+    "blocked": 3,
+    "adapted": 5,
+    "incompatible": 1,
+    "superseded": 0,
+    "compatible": 3
+  },
+  "excluded_features": [],
+  "effective_features": [
+    "base-custom-names",
+    "base-feed-box-summary",
+    "base-storage-browser",
+    "base-worker-browser",
+    "guild-detail-browser",
+    "insecure-endpoint-support",
+    "patch-info-api",
+    "player-notes"
+  ],
+  "blocked_reason": {
+    "patch": "0009-add-base-feed-box-summary.patch",
+    "reason": "命令失败（exit=1）：/home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/apply-source-patch.sh /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track/source/0009-add-base-feed-box-summary.patch\nerror: patch failed: frontend/src/api/bases.test.ts:107\nerror: frontend/src/api/bases.test.ts: patch does not apply\n错误：已知测试路径必须在补丁中恰好出现一次，实际 0 次。\n错误：补丁无法直接应用，且不满足 PalPanel v1.3.0 的精确测试重定位规则。\nerror: patch failed: frontend/src/api/bases.test.ts:107\nerror: frontend/src/api/bases.test.ts: patch does not apply\n"
+  }
+}

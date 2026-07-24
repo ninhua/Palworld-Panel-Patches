@@ -1,0 +1,26 @@
+{
+  "schema_version": 2,
+  "target_version": "v1.3.0",
+  "state": "blocked",
+  "verified": false,
+  "created_at": "2026-07-24T08:42:26Z",
+  "updated_at": "2026-07-24T08:43:18Z",
+  "source_track": "/home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track",
+  "derivation": {
+    "schema_version": 2,
+    "mode": "bootstrap-track",
+    "source_track": "/home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/patches/candidate-v1.3.0",
+    "source_track_base": "/home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/patches/candidate-v1.3.0",
+    "derived_from_release": null,
+    "derived_from_target_version": null,
+    "derived_from_patch_version": null,
+    "derived_source_package": null,
+    "release_patch_version": "0.8.1"
+  },
+  "release_tag": null,
+  "failed_stage": "per-patch-compatibility",
+  "failure_reason": {
+    "patch": "0009-add-base-feed-box-summary.patch",
+    "reason": "命令失败（exit=1）：/home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/apply-source-patch.sh /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track/source/0009-add-base-feed-box-summary.patch\nerror: patch failed: frontend/src/api/bases.test.ts:107\nerror: frontend/src/api/bases.test.ts: patch does not apply\n错误：已知测试路径必须在补丁中恰好出现一次，实际 0 次。\n错误：补丁无法直接应用，且不满足 PalPanel v1.3.0 的精确测试重定位规则。\nerror: patch failed: frontend/src/api/bases.test.ts:107\nerror: frontend/src/api/bases.test.ts: patch does not apply\n"
+  }
+}

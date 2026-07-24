@@ -1,0 +1,8 @@
+$ /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/apply-source-patch.sh /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track/source/0008-add-base-worker-browser.patch
+[exit=0]
+$ /opt/hostedtoolcache/Python/3.12.13/x64/bin/python3 /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/adapt-frontend-api-tests.py /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active
+已适配 Axios mock：frontend/src/api/bases.test.ts（1 处）
+前端 API 测试 Axios mock 适配完成，共 1 处。
+[exit=0]
+$ git diff --check
+[exit=0]
