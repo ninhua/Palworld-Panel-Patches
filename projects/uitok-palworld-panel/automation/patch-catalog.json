@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "notes": "Patch ordering remains lexical. Dependencies describe hard prerequisites. validation_checkpoint=false keeps cumulative source state until a later corrective patch closes the group; 0008/0009 are validated after 0010, and 0011 is validated after 0012. 0013 fixes player annotation lookup for online-only players merged into the server view.",
+  "notes": "Patch ordering remains lexical. Dependencies describe hard prerequisites. validation_checkpoint=false keeps cumulative source state until a later corrective patch closes the group; 0008/0009 are validated after 0010, and 0011 is validated after 0012. 0013 fixes player annotation lookup for online-only players. 0014 adds verified, exact-version panel patch hot update through the existing job queue.",
   "patches": [
     {
       "file": "0001-add-patch-info-api.patch",
@@ -105,6 +105,14 @@
       "feature": "player-notes",
       "depends_on": [
         "0006-add-player-notes.patch"
+      ],
+      "validation_checkpoint": true
+    },
+    {
+      "file": "0014-add-panel-patch-hot-update.patch",
+      "feature": "panel-patch-hot-update",
+      "depends_on": [
+        "0001-add-patch-info-api.patch"
       ],
       "validation_checkpoint": true
     }

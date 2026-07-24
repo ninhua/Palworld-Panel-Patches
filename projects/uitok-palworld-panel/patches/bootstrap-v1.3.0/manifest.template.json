@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "uitok-palworld-panel",
-  "patch_version": "0.8.2",
+  "patch_version": "0.8.3",
   "patch_type": "source-build",
   "upstream": {
     "repository": "uitok/palworld-panel",
@@ -31,7 +31,8 @@
     "guild-detail-browser",
     "base-worker-browser",
     "base-feed-box-summary",
-    "insecure-endpoint-support"
+    "insecure-endpoint-support",
+    "panel-patch-hot-update"
   ],
   "notes": "Self-contained v1.3.0 stable maintenance source track. No Palworld save files are modified."
 }

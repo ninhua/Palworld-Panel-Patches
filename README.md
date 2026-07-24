@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.8`
+仓库版本：`v0.12.9`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -11,7 +11,7 @@
 上游项目：uitok/palworld-panel
 当前维护目标：v1.3.0
 bootstrap 源轨道：patches/bootstrap-v1.3.0
-稳定补丁版本：0.8.2
+稳定补丁版本：0.8.3
 候选状态：candidate / 未发布前 verified=false
 ```
 
@@ -44,6 +44,7 @@ guild-detail-browser
 base-worker-browser
 base-feed-box-summary
 insecure-endpoint-support
+panel-patch-hot-update
 ```
 
 `base-custom-names` 提供：
@@ -75,6 +76,26 @@ DELETE /api/bases/{id}/name
 - 存档索引过期提示与失败重试；
 - 调用只读 `GET /api/bases/{id}/storage`，并兼容通过基地 `containers` 关联的地图对象容器；
 - 不写入存档。
+
+`panel-patch-hot-update` 提供：
+
+- 在任务队列和开服向导的服务端更新区域提供统一“补丁热更新”按钮；
+- 只选择与当前 PalPanel 正式版本完全一致的 stable patch Release；
+- 校验 Release `SHA256SUMS`、exact/verified manifest、平台、功能声明和补丁二进制 SHA-256；
+- 备份当前 PalPanel 二进制后进行同目录原子替换；
+- Linux 上通过 `exec` 保持原进程 PID 重启，避免启动脚本退出导致容器停止；
+- 新进程初始化时复验已激活二进制，失败时恢复备份并重新执行旧二进制；
+- 更新过程进入现有任务队列，任务类型为 `patch_hot_update`。
+
+API：
+
+```http
+GET /api/patch/update/status
+POST /api/patch/update/check
+POST /api/patch/update
+```
+
+写操作要求 `server:control` 权限。
 
 `player-notes` 提供：
 

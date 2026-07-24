@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.12.9
+
+### Added
+
+- 新增 `panel-patch-hot-update` 功能和 `0014-add-panel-patch-hot-update.patch`。
+- 任务队列在“检查并更新服务端”旁增加“补丁热更新”按钮；开服向导高级设置的服务端更新区域增加同一入口。
+- 新增 `GET /api/patch/update/status`、`POST /api/patch/update/check` 和 `POST /api/patch/update`，统一使用现有 Job 队列并以 `patch_hot_update` 展示进度。
+
+### Security and recovery
+
+- 只接受与当前 PalPanel 正式版本完全一致的 `uitok-stable-vX.Y.Z-pA.B.C` Release，并按补丁版本选择最新版本。
+- 下载并校验顶层 `SHA256SUMS`、manifest 的 `mode=exact`、`verified=true`、目标版本、`linux-amd64` 平台、`panel-patch-hot-update` 功能和包内二进制 SHA-256。
+- 更新前备份当前二进制，使用同目录临时文件和原子重命名激活新版本。
+- Linux 热更新使用 `exec` 替换当前进程并保持 PID；新进程初始化时通过重启 marker 复验二进制，校验失败时恢复备份并重新执行旧版本。
+- 没有更高补丁版本时任务正常完成，不报错、不重启。
+- stable patch version 提升到 `0.8.3`，预期 Release 为 `uitok-stable-v1.3.0-p0.8.3`。
+
+### Validation
+
+- 增加补丁版本比较、GNU SHA256SUMS 标记、exact manifest 和 tar.gz 二进制提取回归测试。
+
 ## v0.12.8
 
 ### Fixed
