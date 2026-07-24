@@ -1,11 +1,12 @@
-# PalPanel v1.3.0 candidate track
+# PalPanel v1.3.0 stable candidate
 
-This is the active, self-contained stable maintenance track.
+This is the sole active and self-contained patch track.
 
-It owns its own `source/`, `build/`, licenses and manifest. The archived
-`dev-v1.2.2` directory is historical only and is not resolved by validation,
-build or release workflows.
+Contents:
 
-Compatibility remains `verified=false` until the official v1.3.0 source passes
-patch migration, clean-room merged-patch verification, full tests, Linux amd64
-build and `/api/patch/info` smoke validation.
+- `source/`: ordered feature patch chain and SHA-256 list;
+- `build/build-palpanel.sh`: deterministic Linux amd64 builder;
+- `manifest.template.json`: exact v1.3.0 candidate manifest;
+- license and notice files.
+
+Validation, migration, clean-room build and Release workflows all resolve this directory directly.

@@ -44,68 +44,24 @@ def main() -> None:
     patch_test = root / "backend/internal/api/patch_info_test.go"
     router_test = root / "backend/internal/api/router_contract_test.go"
     openapi = root / "docs/openapi.yaml"
-
     for path in (patch_info, patch_test, router_test, openapi):
         if not path.is_file():
             raise SystemExit(f"缺少稳定版重定向目标文件：{path}")
 
-    replace_regex(
-        patch_info,
-        r'^(\s*patchSourceRef\s*=\s*)"[^"]+"$',
-        rf'\g<1>"{target}"',
-    )
-    replace_regex(
-        patch_info,
-        r'^(\s*patchTargetVersion\s*=\s*)"[^"]+"$',
-        rf'\g<1>"{target}"',
-    )
-    replace_regex(
-        patch_info,
-        r'^(\s*patchVersion\s*=\s*)"[^"]+"$',
-        rf'\g<1>"{patch}"',
-    )
+    replace_regex(patch_info, r'^(\s*patchSourceRef\s*=\s*)"[^"]+"$', rf'\g<1>"{target}"')
+    replace_regex(patch_info, r'^(\s*patchTargetVersion\s*=\s*)"[^"]+"$', rf'\g<1>"{target}"')
+    replace_regex(patch_info, r'^(\s*patchVersion\s*=\s*)"[^"]+"$', rf'\g<1>"{patch}"')
     replace_exact(patch_info, '"verified":       false,', '"verified":       true,')
-
-    replace_regex(
-        patch_test,
-        r'buildinfo\.Version = "[^"]+-test"',
-        f'buildinfo.Version = "{target}-test"',
-    )
-    replace_exact(
-        patch_test,
+    replace_regex(patch_test, r'buildinfo\.Version = "[^"]+-test"', f'buildinfo.Version = "{target}-test"')
+    replace_exact(patch_test,
         "response.Data.Compatibility.TargetVersion != patchTargetVersion || response.Data.Compatibility.Verified",
-        "response.Data.Compatibility.TargetVersion != patchTargetVersion || !response.Data.Compatibility.Verified",
-    )
-
-    replace_regex(
-        router_test,
-        r'`"target_version":"v\d+\.\d+(?:\.\d+)?"`',
-        f'`"target_version":"{target}"`',
-    )
-
-    replace_regex(
-        openapi,
-        r'^(\s+ref: \{type: string, const: )[^}]+(\})$',
-        rf'\g<1>{target}\g<2>',
-    )
-    replace_regex(
-        openapi,
-        r'^(\s+target_version: \{type: string, const: )[^}]+(\})$',
-        rf'\g<1>{target}\g<2>',
-    )
-    replace_regex(
-        openapi,
-        r'^(\s+verified: \{type: boolean, const: )(?:true|false)(\})$',
-        r'\g<1>true\g<2>',
-    )
-    replace_regex(
-        openapi,
-        r'^(\s+version: \{type: string, const: )\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?(\})$',
-        rf'\g<1>{patch}\g<2>',
-    )
-
+        "response.Data.Compatibility.TargetVersion != patchTargetVersion || !response.Data.Compatibility.Verified")
+    replace_regex(router_test, r'`"target_version":"v\d+\.\d+(?:\.\d+)?"`', f'`"target_version":"{target}"`')
+    replace_regex(openapi, r'^(\s+ref: \{type: string, const: )[^}]+(\})$', rf'\g<1>{target}\g<2>')
+    replace_regex(openapi, r'^(\s+target_version: \{type: string, const: )[^}]+(\})$', rf'\g<1>{target}\g<2>')
+    replace_regex(openapi, r'^(\s+verified: \{type: boolean, const: )(?:true|false)(\})$', r'\g<1>true\g<2>')
+    replace_regex(openapi, r'^(\s+version: \{type: string, const: )\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?(\})$', rf'\g<1>{patch}\g<2>')
     print(f"Retargeted patch metadata to {target} / {patch}")
-
 
 if __name__ == "__main__":
     main()
