@@ -177,6 +177,7 @@ Behavior:
 0009-add-base-feed-box-summary.patch
 0010-fix-missing-base-worker-handler.patch
 0011-allow-http-service-endpoints.patch
+0012-restore-ai-translation-net-import.patch
 ```
 
 All patches are applied in lexical order and verified against `source/SHA256SUMS` before build.
@@ -184,6 +185,8 @@ All patches are applied in lexical order and verified against `source/SHA256SUMS
 `0010` is a corrective source patch that restores the base-worker handler and its tests omitted from the generated `0008` patch. It does not change patch version or feature identifiers.
 
 `0011` adds the top-level `insecure-endpoint-support` capability and relaxes HTTPS-only endpoint rules to HTTP/HTTPS compatibility for AstrBot, WebDAV, AI provider, configured upstream/download endpoints, and public remote Mod ZIP imports. It changes patch version to `0.8.0-dev.1`.
+
+`0012` restores the Go `net` import still required by AI provider timeout classification after `0011`; it is a compile-only corrective patch and does not change patch version or feature identifiers.
 
 ## Build scope
 

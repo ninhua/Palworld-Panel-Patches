@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.10.2`
+仓库版本：`v0.10.3`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -140,6 +140,8 @@ GET /api/bases/{id}/feed-boxes
 
 以上地址均接受 `http://` 或 `https://`。仍保留绝对 URL、协议类型、嵌入凭据、查询参数、WebDAV 远程路径、Mod 下载目标公网地址、重定向次数和文件大小等校验。HTTP 不提供传输加密，跨公网使用时由部署者自行承担明文传输风险。
 
+`0012-restore-ai-translation-net-import.patch` 是编译修复补丁，只恢复 AI 翻译错误分类仍需使用的 Go `net` 导入，不改变 feature 或运行行为。
+
 ## 补丁结构
 
 ```text
@@ -158,6 +160,7 @@ projects/uitok-palworld-panel/patches/dev-v1.2.2/
 │   ├── 0009-add-base-feed-box-summary.patch
 │   ├── 0010-fix-missing-base-worker-handler.patch
 │   ├── 0011-allow-http-service-endpoints.patch
+│   ├── 0012-restore-ai-translation-net-import.patch
 │   └── SHA256SUMS
 ├── build/
 │   ├── build.sh

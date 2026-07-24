@@ -129,6 +129,41 @@ def validate_patch_route_handlers() -> None:
                 + ", ".join(missing)
             )
 
+def validate_known_import_contracts() -> None:
+    """Catch known import regressions that can be inferred from the patch chain."""
+    source_dir = (
+        ROOT
+        / "projects"
+        / "uitok-palworld-panel"
+        / "patches"
+        / "dev-v1.2.2"
+        / "source"
+    )
+    if not source_dir.exists():
+        return
+
+    target = "backend/internal/aitranslation/service.go"
+    net_import_delta = 0
+    for patch_file in sorted(source_dir.glob("*.patch")):
+        current_path = ""
+        for line in patch_file.read_text(encoding="utf-8").splitlines():
+            match = re.match(r"diff --git a/(.+?) b/(.+)$", line)
+            if match:
+                current_path = match.group(2)
+                continue
+            if current_path != target:
+                continue
+            if line == '+\t"net"':
+                net_import_delta += 1
+            elif line == '-\t"net"':
+                net_import_delta -= 1
+
+    if net_import_delta < 0:
+        fail(
+            "AI 翻译补丁链删除了 Go net 导入但没有恢复；"
+            "service.go 仍使用 net.Error 进行超时分类"
+        )
+
 def validate_placeholders() -> None:
     # 模板目录允许占位值，正式补丁目录不允许。
     for path in (ROOT / "projects" / "uitok-palworld-panel" / "patches").rglob("manifest.json"):
@@ -145,6 +180,7 @@ def main() -> None:
     validate_line_endings()
     validate_executable_scripts()
     validate_patch_route_handlers()
+    validate_known_import_contracts()
     validate_placeholders()
     print("Repository validation passed.")
 

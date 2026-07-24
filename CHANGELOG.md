@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.10.3
+
+### Fixed
+
+- 新增 `0012-restore-ai-translation-net-import.patch`。
+- 修复 `0011-allow-http-service-endpoints.patch` 删除 `net` 导入后，`classifyProviderRequestError` 仍使用 `net.Error`，导致 Build/Release 编译失败。
+- 功能补丁版本保持 `0.8.0-dev.1`，feature、Release tag、Artifact 命名和启动脚本接入规则均不变化。
+
+### Validation
+
+- 在真实 `0001–0011` 补丁链后的源码上复现 `undefined: net`。
+- 应用 `0012` 后恢复 `net` 导入并通过 `gofmt`。
+- 仓库校验增加 AI 翻译补丁链的 `net` 导入净变化检查，防止后续再次出现同类遗漏。
+
 ## v0.10.2
 
 ### Changed

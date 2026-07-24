@@ -9,3 +9,4 @@ b833181d2532c8b639bdff5731a8efea6d60de4a235e34ac0473b98cadbfca46  0001-add-patch
 73660fb2c8024b066a77f5206e131fe16b0f15c54c008bfd730379240c97731e  0009-add-base-feed-box-summary.patch
 a7249681d29fb2aebbde231f441a6c5d905a4419a41e75bef4be7fa3b15f0cbb  0010-fix-missing-base-worker-handler.patch
 1b8dde723c9488c7f8a3e29d0ba680c752dbdbc44c77533486c32d9c5349897d  0011-allow-http-service-endpoints.patch
+d6c74c5fbb0552bb974c50e663198d47b978ea7ae1d4c1b0ddc5cf99cec067f8  0012-restore-ai-translation-net-import.patch
