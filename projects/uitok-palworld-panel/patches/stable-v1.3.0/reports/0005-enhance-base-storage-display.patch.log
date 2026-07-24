@@ -1,0 +1,53 @@
+$ /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/apply-source-patch.sh /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track/source/0005-enhance-base-storage-display.patch
+error: patch failed: backend/internal/pallocalize/localize_test.go:55
+error: backend/internal/pallocalize/localize_test.go: patch does not apply
+已精确重定位 PalPanel v1.3.0 的 pallocalize 测试 hunk：backend/internal/pallocalize/localize_test.go → backend/internal/pallocalize/patch_storage_localize_test.go
+[exit=0]
+$ git diff --check
+[exit=0]
+$ /opt/hostedtoolcache/Python/3.12.13/x64/bin/python3 /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/adapt-frontend-api-tests.py /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active
+已适配 Axios mock：frontend/src/api/bases.test.ts（3 处）
+已适配 Axios mock：frontend/src/api/networkProxy.test.ts（1 处）
+已适配 Axios mock：frontend/src/api/saveSources.test.ts（3 处）
+前端 API 测试 Axios mock 适配完成，共 7 处。
+[exit=0]
+$ git diff --check
+[exit=0]
+$ go test -run ^$ ./...
+ok  	palpanel/cmd/openapi-types	(cached) [no tests to run]
+ok  	palpanel/cmd/palpanel	0.030s [no tests to run]
+ok  	palpanel/cmd/palpanel-launcher	(cached) [no tests to run]
+ok  	palpanel/internal/aitranslation	(cached) [no tests to run]
+ok  	palpanel/internal/api	0.038s [no tests to run]
+ok  	palpanel/internal/appconfig	(cached) [no tests to run]
+ok  	palpanel/internal/astrbotclient	(cached) [no tests to run]
+ok  	palpanel/internal/auth	(cached) [no tests to run]
+ok  	palpanel/internal/breeding	0.039s [no tests to run]
+?   	palpanel/internal/buildinfo	[no test files]
+ok  	palpanel/internal/communityservers	(cached) [no tests to run]
+ok  	palpanel/internal/db	(cached) [no tests to run]
+ok  	palpanel/internal/debuglog	(cached) [no tests to run]
+ok  	palpanel/internal/docker	(cached) [no tests to run]
+?   	palpanel/internal/id	[no test files]
+ok  	palpanel/internal/jobs	(cached) [no tests to run]
+ok  	palpanel/internal/mods	(cached) [no tests to run]
+ok  	palpanel/internal/monitor	(cached) [no tests to run]
+ok  	palpanel/internal/networkproxy	(cached) [no tests to run]
+ok  	palpanel/internal/palconfig	(cached) [no tests to run]
+ok  	palpanel/internal/paldefender	(cached) [no tests to run]
+ok  	palpanel/internal/pallocalize	0.039s [no tests to run]
+ok  	palpanel/internal/palrest	(cached) [no tests to run]
+ok  	palpanel/internal/saveindex	(cached) [no tests to run]
+ok  	palpanel/internal/scheduler	(cached) [no tests to run]
+ok  	palpanel/internal/server	(cached) [no tests to run]
+ok  	palpanel/internal/steamcmd	(cached) [no tests to run]
+ok  	palpanel/internal/webui	(cached) [no tests to run]
+[exit=0]
+$ npm run lint
+
+> frontend@0.0.0 lint
+> oxlint
+
+Found 0 warnings and 0 errors.
+Finished in 28ms on 132 files with 103 rules using 4 threads.
+[exit=0]

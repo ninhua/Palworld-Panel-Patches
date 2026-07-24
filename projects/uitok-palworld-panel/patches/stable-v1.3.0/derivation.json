@@ -1,0 +1,11 @@
+{
+  "schema_version": 2,
+  "mode": "bootstrap-track",
+  "source_track": "/home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/patches/candidate-v1.3.0",
+  "source_track_base": "/home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/patches/candidate-v1.3.0",
+  "derived_from_release": null,
+  "derived_from_target_version": null,
+  "derived_from_patch_version": null,
+  "derived_source_package": null,
+  "release_patch_version": "0.8.1"
+}

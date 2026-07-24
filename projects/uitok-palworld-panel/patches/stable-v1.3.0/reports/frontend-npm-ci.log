@@ -1,0 +1,9 @@
+$ npm ci
+
+added 222 packages, and audited 223 packages in 21s
+
+47 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities
+[exit=0]

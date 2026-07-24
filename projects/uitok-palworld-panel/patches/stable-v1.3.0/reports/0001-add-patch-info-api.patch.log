@@ -1,0 +1,49 @@
+$ /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/apply-source-patch.sh /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track/source/0001-add-patch-info-api.patch
+[exit=0]
+$ git diff --check
+[exit=0]
+$ /opt/hostedtoolcache/Python/3.12.13/x64/bin/python3 /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/adapt-frontend-api-tests.py /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active
+已适配 Axios mock：frontend/src/api/networkProxy.test.ts（1 处）
+已适配 Axios mock：frontend/src/api/saveSources.test.ts（3 处）
+前端 API 测试 Axios mock 适配完成，共 4 处。
+[exit=0]
+$ git diff --check
+[exit=0]
+$ go test -run ^$ ./...
+ok  	palpanel/cmd/openapi-types	0.002s [no tests to run]
+ok  	palpanel/cmd/palpanel	0.032s [no tests to run]
+ok  	palpanel/cmd/palpanel-launcher	0.003s [no tests to run]
+ok  	palpanel/internal/aitranslation	0.004s [no tests to run]
+ok  	palpanel/internal/api	0.034s [no tests to run]
+ok  	palpanel/internal/appconfig	0.004s [no tests to run]
+ok  	palpanel/internal/astrbotclient	0.005s [no tests to run]
+ok  	palpanel/internal/auth	0.004s [no tests to run]
+ok  	palpanel/internal/breeding	0.046s [no tests to run]
+?   	palpanel/internal/buildinfo	[no test files]
+ok  	palpanel/internal/communityservers	0.003s [no tests to run]
+ok  	palpanel/internal/db	0.008s [no tests to run]
+ok  	palpanel/internal/debuglog	0.009s [no tests to run]
+ok  	palpanel/internal/docker	0.005s [no tests to run]
+?   	palpanel/internal/id	[no test files]
+ok  	palpanel/internal/jobs	0.008s [no tests to run]
+ok  	palpanel/internal/mods	0.006s [no tests to run]
+ok  	palpanel/internal/monitor	0.009s [no tests to run]
+ok  	palpanel/internal/networkproxy	0.004s [no tests to run]
+ok  	palpanel/internal/palconfig	0.003s [no tests to run]
+ok  	palpanel/internal/paldefender	0.006s [no tests to run]
+ok  	palpanel/internal/pallocalize	0.033s [no tests to run]
+ok  	palpanel/internal/palrest	0.006s [no tests to run]
+ok  	palpanel/internal/saveindex	0.005s [no tests to run]
+ok  	palpanel/internal/scheduler	0.004s [no tests to run]
+ok  	palpanel/internal/server	0.004s [no tests to run]
+ok  	palpanel/internal/steamcmd	0.004s [no tests to run]
+ok  	palpanel/internal/webui	0.002s [no tests to run]
+[exit=0]
+$ npm run lint
+
+> frontend@0.0.0 lint
+> oxlint
+
+Found 0 warnings and 0 errors.
+Finished in 34ms on 131 files with 103 rules using 4 threads.
+[exit=0]
