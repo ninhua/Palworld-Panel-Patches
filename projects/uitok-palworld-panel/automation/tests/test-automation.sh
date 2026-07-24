@@ -89,7 +89,7 @@ cat >"${previous_release}/build-metadata.json" <<'EOF'
 EOF
 (
     cd "${previous_release}"
-    sha256sum "${merged_name}" >SHA256SUMS
+    sha256sum "${merged_name}" manifest.json >SHA256SUMS
 )
 
 "${automation_dir}/prepare-source-track.sh" \
