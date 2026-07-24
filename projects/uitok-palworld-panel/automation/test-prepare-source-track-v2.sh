@@ -13,6 +13,7 @@ candidate="${repo}/projects/uitok-palworld-panel/patches/candidate-v1.1.0"
 mkdir -p "${automation}" "${bootstrap}/source" "${bootstrap}/build" "${candidate}"
 cp "${source_script}" "${automation}/prepare-source-track.sh"
 cp "${source_config}" "${automation}/config.json"
+cp "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/release-checksums.py" "${automation}/release-checksums.py"
 python3 - "${automation}/config.json" <<'PY'
 from pathlib import Path
 import json, sys
@@ -55,7 +56,10 @@ JSON
 tar -czf "${release}/uitok-palworld-panel_stable-v1.2.3_patch-0.8.1_source.tar.gz" -C "${work}/embedded" .
 (
   cd "${release}"
-  sha256sum manifest.json uitok-palworld-panel_stable-v1.2.3_patch-0.8.1_source.tar.gz >SHA256SUMS
+  {
+    sha256sum manifest.json | sed 's/  / */'
+    sha256sum uitok-palworld-panel_stable-v1.2.3_patch-0.8.1_source.tar.gz
+  } >SHA256SUMS
 )
 "${automation}/prepare-source-track.sh" \
   "${work}/derived-output" "${candidate}" "${release}" "uitok-stable-v1.2.3-p0.8.1"

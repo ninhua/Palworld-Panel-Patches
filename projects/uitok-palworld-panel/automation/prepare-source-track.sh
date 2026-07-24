@@ -20,6 +20,8 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../../.." && pwd)"
 patches_root="${repo_root}/projects/uitok-palworld-panel/patches"
 config="${script_dir}/config.json"
+release_checksums="${script_dir}/release-checksums.py"
+[[ -f "${release_checksums}" ]] || { echo "缺少校验脚本：${release_checksums}" >&2; exit 1; }
 output="$(realpath -m "$1")"
 bootstrap_requested="$(realpath "$2")"
 previous_dir=""
@@ -140,22 +142,14 @@ copy_track() {
 
 verify_asset() {
     local name="$1"
-    local path="${previous_dir}/${name}"
-    local expected actual
-    [[ -f "${path}" ]] || {
+    [[ -f "${previous_dir}/${name}" ]] || {
         echo "上一个稳定 Release 缺少资产：${name}" >&2
         exit 1
     }
-    expected="$(awk -v file="${name}" '$2 == file || $2 == "./" file {print tolower($1)}' "${previous_dir}/SHA256SUMS")"
-    [[ "${expected}" =~ ^[0-9a-f]{64}$ ]] || {
-        echo "SHA256SUMS 中找不到 ${name}" >&2
-        exit 1
-    }
-    actual="$(sha256sum "${path}" | awk '{print $1}')"
-    [[ "${actual}" == "${expected}" ]] || {
-        echo "上一个稳定 Release 资产 SHA-256 不匹配：${name}" >&2
-        exit 1
-    }
+    python3 "${release_checksums}" verify \
+        "${previous_dir}" \
+        "${previous_dir}/SHA256SUMS" \
+        "${name}" >/dev/null
 }
 
 if [[ -z "${previous_dir}" ]]; then

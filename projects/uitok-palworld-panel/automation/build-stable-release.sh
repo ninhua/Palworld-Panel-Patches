@@ -69,6 +69,7 @@ workspace_state="${script_dir}/workspace-state.py"
 patch_catalog="${script_dir}/patch-catalog.json"
 retarget_source="${script_dir}/retarget-stable-source.py"
 adapt_frontend="${script_dir}/adapt-frontend-api-tests.py"
+release_checksums="${script_dir}/release-checksums.py"
 
 for path in \
     "${manifest_template}" \
@@ -83,7 +84,8 @@ for path in \
     "${workspace_state}" \
     "${patch_catalog}" \
     "${retarget_source}" \
-    "${adapt_frontend}"; do
+    "${adapt_frontend}" \
+    "${release_checksums}"; do
     [[ -f "${path}" ]] || {
         echo "缺少稳定构建输入：${path}" >&2
         exit 1
@@ -154,6 +156,12 @@ python3 "${migrate_workspace}" \
     "${apply_source_patch}" \
     "${retarget_source}" \
     "${adapt_frontend}"
+
+if [[ -f "${candidate_workspace}/NO_RELEASE" ]]; then
+    trap - ERR
+    echo "No stable Release required: $(cat "${candidate_workspace}/NO_RELEASE")"
+    exit 20
+fi
 
 merged_patch="$(find "${candidate_workspace}/merged" -maxdepth 1 -type f -name '*.patch' -print -quit)"
 [[ -s "${merged_patch}" ]] || {
@@ -471,17 +479,25 @@ tar \
     --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner \
     -czf "${source_archive}" -C "${cleanroom}" .
 
-# Release top level is an explicit five-file allowlist.
-(
-    cd "${output}/release"
-    rm -f SHA256SUMS
-    sha256sum \
-        "$(basename "${archive}")" \
-        "$(basename "${source_archive}")" \
-        manifest.json \
-        compatibility-report.json \
-        >SHA256SUMS
-)
+# Release top level is an explicit five-file allowlist. Generate checksums only
+# after both archives and both JSON assets have reached their final state.
+release_binary="$(basename "${archive}")"
+release_source="$(basename "${source_archive}")"
+rm -f "${output}/release/SHA256SUMS"
+python3 "${release_checksums}" write \
+    "${output}/release" \
+    "${output}/release/SHA256SUMS" \
+    "${release_binary}" \
+    "${release_source}" \
+    manifest.json \
+    compatibility-report.json
+python3 "${release_checksums}" verify --exact \
+    "${output}/release" \
+    "${output}/release/SHA256SUMS" \
+    "${release_binary}" \
+    "${release_source}" \
+    manifest.json \
+    compatibility-report.json
 
 mapfile -t release_files < <(find "${output}/release" -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
 expected_files=(

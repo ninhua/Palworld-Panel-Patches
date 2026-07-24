@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.12.2
+
+### Fixed
+
+- 修复逐补丁迁移器在 `0008-add-base-worker-browser.patch` 应用后立即编译，因后置纠正补丁 `0010-fix-missing-base-worker-handler.patch` 尚未到达而错误回滚整段累计上下文。
+- `0008`、`0009` 现在保持累计应用状态并在 `0010` 后统一执行后端编译与前端 lint；`0011` 在 `0012` 恢复 Go `net` 导入后统一验证。
+- 修复前置补丁被回滚后导致 `0009`、`0011` 出现连锁 `patch does not apply` 的误判；这些冲突不再被错误标记为独立的 v1.3.0 rebase 失败。
+- 修复旧 stable Release 的 `SHA256SUMS` 使用 `*filename` 或 `./filename` 格式时，`prepare-source-track.sh` 误报“找不到 manifest.json”。
+- 最终 Release 的 `SHA256SUMS` 改为在两个归档、manifest 和 compatibility report 全部定稿后统一生成，并立即按严格五文件集合复验。
+
+### Changed
+
+- `patch-catalog.json` 新增显式 `validation_checkpoint`；补丁仍逐个应用和记录，但允许一组源补丁在纠正补丁到达前处于临时不可编译状态。
+- 无实际源码差异的补丁标记为 `superseded`，不写入 active source；整条链最终无差异时以 `no-release-needed` 成功结束，不创建空 Release。
+- 失败汇总步骤直接输出 compatibility report 中的首个失败补丁和原因，不再只显示通用的 candidate 持久化错误。
+- stable Release workflow 在版本检测和构建前运行与 Validate workflow 相同的统一 preflight。
+
+### Validation
+
+- 新增“先引用缺失 handler、后置补丁补齐 handler”的真实 Go 编译检查点回归。
+- 新增 GNU SHA256SUMS 文本标记、二进制标记、`./` 前缀、缺失资产和哈希不匹配回归。
+- 五文件布局测试会同时验证生成端校验表和消费端解析器。
+
 ## v0.12.1
 
 ### Fixed
@@ -11,11 +34,6 @@
 
 - 新增统一入口 `common/scripts/validate-all.sh`，集中执行仓库静态验证、相对输出路径回归和 stable 自动化测试。
 - `.github/workflows/validate.yml` 与 stable Release workflow 改为调用同一校验入口；发布前置检查失败时不会进入版本检测、构建或发布阶段。
-
-### Release impact
-
-- 已发布的 `uitok-stable-v1.3.0-p0.8.1` 不受影响，无需删除或重建。
-- stable patch version 保持 `0.8.1`；本次仅修复补丁仓库验证链路。
 
 ## v0.12.0
 

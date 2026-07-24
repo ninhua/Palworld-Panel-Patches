@@ -239,12 +239,21 @@ jobs:
           SOURCE_TRACK: ${{ steps.source.outputs.source_track }}
         shell: bash
         run: |
-          set -Eeuo pipefail
+          set -uo pipefail
+          set +e
           "${AUTOMATION_DIR}/build-stable-release.sh" \
             .work/upstream \
             .work/output \
             "${TARGET_VERSION}" \
             "${SOURCE_TRACK}"
+          status=$?
+          set -e
+          if [[ ${status} -eq 20 ]]; then
+            echo "no_release=true" >>"${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          echo "no_release=false" >>"${GITHUB_OUTPUT}"
+          exit "${status}"
 
       - name: Persist blocked candidate workspace
         if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'failure'
@@ -264,13 +273,55 @@ jobs:
 
       - name: Fail after candidate persistence
         if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'failure'
+        env:
+          TARGET_VERSION: ${{ steps.detect.outputs.version }}
         shell: bash
         run: |
+          set -Eeuo pipefail
+          report=".work/output/workspace/candidate-${TARGET_VERSION}/compatibility-report.json"
           echo "稳定补丁迁移失败；candidate 工作区已写入 migration 分支。" >&2
+          if [[ -f "${report}" ]]; then
+            python3 - "${report}" <<'PY'
+          from pathlib import Path
+          import json, sys
+          data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          blocked = data.get("blocked_reason") or {}
+          patch = blocked.get("patch") or data.get("failed_stage") or "unknown"
+          reason = blocked.get("reason") or data.get("failure_reason") or "see compatibility report"
+          print(f"首个失败位置：{patch}", file=sys.stderr)
+          print(f"失败原因：{reason}", file=sys.stderr)
+          PY
+          fi
           exit 1
 
+      - name: Persist no-change candidate workspace
+        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success' && steps.build.outputs.no_release == 'true'
+        env:
+          TARGET_VERSION: ${{ steps.detect.outputs.version }}
+          BRANCH_PREFIX: ${{ steps.config.outputs.migration_branch_prefix }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          "${AUTOMATION_DIR}/persist-workspace.sh" \
+            candidate ".work/output/workspace/candidate-${TARGET_VERSION}" \
+            "${TARGET_VERSION}" "${BRANCH_PREFIX}"
+
+      - name: Write no-release summary
+        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success' && steps.build.outputs.no_release == 'true'
+        env:
+          TARGET_VERSION: ${{ steps.detect.outputs.version }}
+        shell: bash
+        run: |
+          {
+            echo "## Stable patch not required"
+            echo
+            echo "- Target: \`${TARGET_VERSION}\`"
+            echo "- Result: \`no-release-needed\`"
+            echo "- Reason: patch chain produced no source delta"
+          } >>"${GITHUB_STEP_SUMMARY}"
+
       - name: Verify five-file release allowlist
-        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success'
+        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success' && steps.build.outputs.no_release != 'true'
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -293,7 +344,7 @@ jobs:
           PY
 
       - name: Create release notes
-        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success'
+        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success' && steps.build.outputs.no_release != 'true'
         env:
           TARGET_VERSION: ${{ steps.detect.outputs.version }}
           PATCH_VERSION: ${{ steps.release_meta.outputs.patch_version }}
@@ -336,7 +387,7 @@ jobs:
           PY
 
       - name: Upload verified build artifact
-        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success'
+        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success' && steps.build.outputs.no_release != 'true'
         uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.release_meta.outputs.artifact_name }}
@@ -347,7 +398,7 @@ jobs:
 
       - name: Persist releasable stable workspace
         id: persist
-        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success'
+        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success' && steps.build.outputs.no_release != 'true'
         env:
           TARGET_VERSION: ${{ steps.detect.outputs.version }}
           BRANCH_PREFIX: ${{ steps.config.outputs.migration_branch_prefix }}
@@ -359,7 +410,7 @@ jobs:
             "${TARGET_VERSION}" "${BRANCH_PREFIX}"
 
       - name: Create immutable stable Release
-        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success'
+        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success' && steps.build.outputs.no_release != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release_meta.outputs.release_tag }}
@@ -384,7 +435,7 @@ jobs:
             --repo "${GITHUB_REPOSITORY}"
 
       - name: Mark stable workspace released
-        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success'
+        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success' && steps.build.outputs.no_release != 'true'
         env:
           TARGET_VERSION: ${{ steps.detect.outputs.version }}
           RELEASE_TAG: ${{ steps.release_meta.outputs.release_tag }}
@@ -410,7 +461,7 @@ jobs:
             stable "${workspace}" "${TARGET_VERSION}" "${BRANCH_PREFIX}"
 
       - name: Write release summary
-        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success'
+        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success' && steps.build.outputs.no_release != 'true'
         env:
           RELEASE_TAG: ${{ steps.release_meta.outputs.release_tag }}
           TARGET_VERSION: ${{ steps.detect.outputs.version }}

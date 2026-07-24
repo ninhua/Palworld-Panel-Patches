@@ -53,15 +53,15 @@ git add -A -- "projects/uitok-palworld-panel/patches"
 if git diff --cached --quiet; then
     echo "工作区没有变化：${destination}"
 else
-    if [[ "${mode}" == "candidate" ]]; then
-        message="migration: record blocked ${target_version} candidate workspace"
-    else
-        state="$(python3 - "${destination}/workspace.json" <<'PY'
+    state="$(python3 - "${destination}/workspace.json" <<'PY'
 from pathlib import Path
 import json, sys
 print(json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["state"])
 PY
 )"
+    if [[ "${mode}" == "candidate" ]]; then
+        message="migration: persist ${target_version} candidate workspace (${state})"
+    else
         message="migration: persist ${target_version} stable workspace (${state})"
     fi
     git commit -m "${message}"

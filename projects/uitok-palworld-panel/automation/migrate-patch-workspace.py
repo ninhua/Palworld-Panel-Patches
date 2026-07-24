@@ -246,7 +246,6 @@ def main() -> None:
     run(["git", "config", "user.email", "actions@users.noreply.github.com"], cwd=active)
 
     validate_commands = os.environ.get("PALPATCH_MIGRATION_VALIDATE_COMMANDS", "1") != "0"
-    per_patch_compile = os.environ.get("PALPATCH_PER_PATCH_COMPILE", "1") != "0"
     if validate_commands and (active / "frontend" / "package-lock.json").is_file():
         run(["npm", "ci"], cwd=active / "frontend", log=workspace / "reports" / "frontend-npm-ci.log")
 
@@ -257,11 +256,84 @@ def main() -> None:
     statuses: dict[str, str] = {}
     required_failure = False
     first_failure: tuple[str, str] | None = None
+    pending_validation: list[dict[str, Any]] = []
+    checkpoint_base = run(["git", "rev-parse", "HEAD"], cwd=active).stdout.strip()
+    stop_after_failure = False
+
+    def mark_remaining_blocked(start_index: int, reason: str) -> None:
+        for remaining_index, remaining_patch in enumerate(patches[start_index:], start_index + 1):
+            meta = catalog_entry(catalog, remaining_patch.name)
+            feature = str(meta.get("feature") or "unclassified")
+            required = feature in preserved_features or feature in required_features or feature in {
+                "derived-stable-bundle",
+                "unclassified",
+            }
+            entry = {
+                "order": remaining_index,
+                "file": remaining_patch.name,
+                "sha256": sha256(remaining_patch),
+                "feature": feature,
+                "required": required,
+                "depends_on": [str(value) for value in meta.get("depends_on", [])],
+                "validation_checkpoint": bool(meta.get("validation_checkpoint", True)),
+                "touched_files": patch_files_touched(remaining_patch),
+                "apply_status": "not-run",
+                "compile_status": "not-run",
+                "final_status": "blocked",
+                "reason": reason,
+                "log": f"reports/{remaining_patch.name}.log",
+                "included_in_merged": False,
+            }
+            report["patches"].append(entry)
+            statuses[remaining_patch.name] = "blocked"
+
+    def validate_pending(checkpoint_name: str, log: Path) -> None:
+        nonlocal pending_validation, checkpoint_base, required_failure, first_failure, stop_after_failure
+        if not pending_validation:
+            checkpoint_base = run(["git", "rev-parse", "HEAD"], cwd=active).stdout.strip()
+            return
+        touched = {
+            str(path)
+            for item in pending_validation
+            for path in item.get("touched_files", [])
+        }
+        try:
+            if any(path.startswith("backend/") and path.endswith(".go") for path in touched):
+                run(["go", "test", "-run", "^$", "./..."], cwd=active / "backend", log=log)
+            if any(path.startswith("frontend/") for path in touched):
+                run(["npm", "run", "lint"], cwd=active / "frontend", log=log)
+            for item in pending_validation:
+                item["compile_status"] = "passed"
+                item["validated_at_checkpoint"] = checkpoint_name
+            pending_validation = []
+            checkpoint_base = run(["git", "rev-parse", "HEAD"], cwd=active).stdout.strip()
+        except MigrationFailure as exc:
+            reason = f"validation checkpoint {checkpoint_name} failed: {exc}"
+            run(["git", "reset", "--hard", checkpoint_base], cwd=active)
+            run(["git", "clean", "-fd"], cwd=active)
+            group_has_required = False
+            for pos, item in enumerate(pending_validation):
+                patch_name = str(item["file"])
+                item["compile_status"] = "failed" if pos == len(pending_validation) - 1 else "blocked"
+                item["final_status"] = "incompatible" if pos == len(pending_validation) - 1 else "blocked"
+                item["reason"] = reason
+                item["included_in_merged"] = False
+                statuses[patch_name] = str(item["final_status"])
+                (workspace / "active-source" / patch_name).unlink(missing_ok=True)
+                if item["required"]:
+                    required_failure = True
+                    group_has_required = True
+            if group_has_required:
+                first_failure = first_failure or (checkpoint_name, reason)
+            pending_validation = []
+            checkpoint_base = run(["git", "rev-parse", "HEAD"], cwd=active).stdout.strip()
+            stop_after_failure = group_has_required
 
     for index, patch in enumerate(patches, 1):
         meta = catalog_entry(catalog, patch.name)
         feature = str(meta.get("feature") or "unclassified")
         depends_on = [str(value) for value in meta.get("depends_on", [])]
+        validation_checkpoint = bool(meta.get("validation_checkpoint", True))
         required = feature in preserved_features or feature in required_features or feature in {
             "derived-stable-bundle",
             "unclassified",
@@ -273,6 +345,7 @@ def main() -> None:
             "feature": feature,
             "required": required,
             "depends_on": depends_on,
+            "validation_checkpoint": validation_checkpoint,
             "touched_files": patch_files_touched(patch),
             "apply_status": "pending",
             "compile_status": "pending",
@@ -295,6 +368,11 @@ def main() -> None:
             if required:
                 required_failure = True
                 first_failure = first_failure or (patch.name, entry["reason"])
+                stop_after_failure = True
+            write_json(workspace / "compatibility-report.json", report)
+            if stop_after_failure:
+                mark_remaining_blocked(index, f"migration stopped after required failure: {patch.name}")
+                break
             continue
 
         try:
@@ -310,24 +388,28 @@ def main() -> None:
             adapter_changed = "已适配 Axios mock" in adapter_result.stdout
             run(["git", "diff", "--check"], cwd=active, log=log)
 
-            touched = entry["touched_files"]
-            if validate_commands and per_patch_compile:
-                if any(str(path).startswith("backend/") and str(path).endswith(".go") for path in touched):
-                    run(["go", "test", "-run", "^$", "./..."], cwd=active / "backend", log=log)
-                if any(str(path).startswith("frontend/") for path in touched):
-                    run(["npm", "run", "lint"], cwd=active / "frontend", log=log)
-            entry["compile_status"] = "passed" if validate_commands and per_patch_compile else "deferred-to-clean-room"
-
-            status = "adapted" if adapter_changed or "重定位" in apply_result.stdout or "relocat" in apply_result.stdout.lower() else "compatible"
-            entry["final_status"] = status
-            statuses[patch.name] = status
-            shutil.copy2(patch, workspace / "active-source" / patch.name)
-            git_commit(active, f"migrate {patch.name} to {target}")
+            changed = bool(run(["git", "status", "--porcelain"], cwd=active).stdout.strip())
+            if not changed:
+                entry["compile_status"] = "not-required"
+                entry["final_status"] = "superseded"
+                entry["reason"] = "patch produced no source delta on the target version"
+                statuses[patch.name] = "superseded"
+            else:
+                status = "adapted" if adapter_changed or "重定位" in apply_result.stdout or "relocat" in apply_result.stdout.lower() else "compatible"
+                entry["compile_status"] = "pending-checkpoint" if validate_commands else "deferred-to-clean-room"
+                entry["final_status"] = status
+                statuses[patch.name] = status
+                shutil.copy2(patch, workspace / "active-source" / patch.name)
+                git_commit(active, f"migrate {patch.name} to {target}")
+                if validate_commands:
+                    pending_validation.append(entry)
+                    if validation_checkpoint:
+                        validate_pending(patch.name, log)
         except MigrationFailure as exc:
             reset_trial(active)
             entry.update({
                 "apply_status": "failed" if entry["apply_status"] == "pending" else entry["apply_status"],
-                "compile_status": "failed" if entry["apply_status"] == "passed" else "not-run",
+                "compile_status": "not-run",
                 "final_status": "incompatible",
                 "reason": str(exc),
             })
@@ -335,8 +417,15 @@ def main() -> None:
             if required:
                 required_failure = True
                 first_failure = first_failure or (patch.name, str(exc))
+                stop_after_failure = True
 
         write_json(workspace / "compatibility-report.json", report)
+        if stop_after_failure:
+            mark_remaining_blocked(index, f"migration stopped after required failure: {patch.name}")
+            break
+
+    if validate_commands and pending_validation and not required_failure:
+        validate_pending("final", workspace / "reports" / "final-checkpoint.log")
 
     excluded_features = {
         str(entry["feature"])
@@ -375,7 +464,7 @@ def main() -> None:
     else:
         for entry in report["patches"]:
             entry["included_in_merged"] = entry["final_status"] in {
-                "compatible", "adapted", "superseded"
+                "compatible", "adapted"
             }
 
     active_patches = sorted((workspace / "active-source").glob("*.patch"))
@@ -437,7 +526,21 @@ def main() -> None:
     )
     merged_path.write_text(merged_result.stdout, encoding="utf-8")
     if merged_path.stat().st_size == 0:
-        raise SystemExit("没有生成 merged patch")
+        merged_path.unlink(missing_ok=True)
+        report["state"] = "no-change"
+        report["verified"] = False
+        report["no_release_reason"] = "patch chain produced no source delta on the target version"
+        state.update({
+            "state": "no-change",
+            "verified": False,
+            "updated_at": utc_now(),
+            "no_release_reason": report["no_release_reason"],
+        })
+        write_json(workspace / "compatibility-report.json", report)
+        write_json(workspace / "workspace.json", state)
+        (workspace / "NO_RELEASE").write_text(report["no_release_reason"] + "\n", encoding="utf-8")
+        print("NO_RELEASE")
+        return
     (workspace / "merged" / "SHA256SUMS").write_text(
         f"{sha256(merged_path)}  {merged_name}\n", encoding="utf-8"
     )

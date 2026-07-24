@@ -1,40 +1,45 @@
-# Upgrade v0.12.0 → v0.12.1
+# Upgrade v0.12.0 / v0.12.1 → v0.12.2
 
-本次升级修复 stable Release 已成功、但仓库 Validate 随后失败的问题。
+本次升级同时修复 stable 迁移检查点和 Release SHA256SUMS 生成/消费链路。
 
-## 根因
+## 迁移检查点
 
-`build-palpanel.sh` 已执行完整前端命令链：
-
-```text
-npm ci --no-audit --no-fund
-npm run lint
-npm run test
-npm run build
-```
-
-但 `tests/test-relative-output-path.sh` 的 fake npm 仍只接受 `npm ci` 和
-`npm run build`，因此在 `npm run lint` 主动报错：
+现有补丁链包含后置纠正补丁：
 
 ```text
-unexpected npm arguments: run lint
+0008-add-base-worker-browser.patch
+0009-add-base-feed-box-summary.patch
+0010-fix-missing-base-worker-handler.patch
+
+0011-allow-http-service-endpoints.patch
+0012-restore-ai-translation-net-import.patch
 ```
 
-这是回归测试夹具过期，不是已发布 PalPanel 二进制或补丁功能失败。
+`0008` 单独应用后会暂时引用尚未由 `0010` 补齐的 handler；`0011` 单独应用后也需要 `0012` 恢复编译依赖。因此不能在每个补丁后都强制编译并回滚。
 
-## 修复
+v0.12.2 仍逐补丁执行 SHA-256、apply、diff 检查和状态记录，但只在 catalog 声明的检查点执行累计编译：
 
-- fake npm 现在接受并记录完整的 ci/lint/test/build 命令链；
-- 测试会校验命令参数和执行顺序，避免以后再次发生夹具漂移；
-- 新增 `common/scripts/validate-all.sh`；
-- 普通 Validate 与 stable Release 发布前均调用同一个统一校验入口；
-- 仓库或回归测试失败时，stable Release 工作流会在版本检测和发布前停止。
+```text
+0008 + 0009 + 0010 → compile/lint checkpoint
+0011 + 0012        → compile/lint checkpoint
+```
 
-## 应用升级
+最终仍必须通过 merged patch clean-room 全量测试，发布门槛没有降低。
+
+## Release 校验
+
+新增统一 `release-checksums.py`：
+
+- 生成端只在四个顶层资产全部定稿后写入 SHA256SUMS；
+- 消费端兼容 `hash  filename`、`hash *filename` 和 `./filename`；
+- 拒绝重复文件名、不安全路径、缺失文件和哈希不匹配；
+- 五文件集合必须严格一致。
+
+## 升级
 
 ```bash
-unzip Palworld-Panel-Patches-upgrade-v0.12.0-to-v0.12.1.zip
-cd Palworld-Panel-Patches-upgrade-v0.12.0-to-v0.12.1
+unzip Palworld-Panel-Patches-upgrade-v0.12.x-to-v0.12.2.zip
+cd Palworld-Panel-Patches-upgrade-v0.12.x-to-v0.12.2
 bash apply-upgrade.sh /path/to/Palworld-Panel-Patches
 ```
 
@@ -46,4 +51,4 @@ python3 -m pip install -r requirements-ci.txt
 bash common/scripts/validate-all.sh
 ```
 
-已经成功发布的 `uitok-stable-v1.3.0-p0.8.1` 不需要删除或重新构建。本次只修复补丁仓库的验证与发布前置检查，stable patch version 继续保持 `0.8.1`。
+stable patch version 继续使用 `0.8.1`。失败的 `migration/v1.3.0` 分支会在下一次运行时由新的 candidate 报告覆盖。若补丁链最终没有源码差异，Action 会持久化 `no-change` candidate 并以 `no-release-needed` 成功结束。

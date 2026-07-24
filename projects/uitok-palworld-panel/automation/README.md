@@ -42,6 +42,7 @@ candidate-vX.Y.Z/
    - `incompatible`
    - `blocked`
    - `superseded`
+   补丁可通过 `patch-catalog.json.validation_checkpoint` 延迟累计编译。逐补丁应用状态仍独立记录，但临时不完整的实现不会在后置纠正补丁到达前被错误回滚。
 5. `build-stable-release.sh` 生成 merged patch，并在全新的官方源码副本上仅应用该 merged patch。
 6. clean-room 完整执行：gofmt、OpenAPI 生成、Go 测试、前端 lint/Vitest/build、Linux amd64 构建、官方二进制校验和 `/api/patch/info` smoke test。
 7. `persist-workspace.sh`：
@@ -88,3 +89,26 @@ SHA256SUMS
 ```
 
 完整 source-chain、merged patch、workspace、derivation、build metadata、official-release metadata 和日志保留在包内。
+
+
+## 编译检查点
+
+源补丁链按顺序累计应用。`validation_checkpoint=false` 表示当前补丁不能单独代表可编译状态；迁移器保留其源码变化，直到后续 `validation_checkpoint=true` 补丁到达后对整组执行 Go compile-only 和前端 lint。
+
+当前分组：
+
+```text
+0008 + 0009 + 0010
+0011 + 0012
+```
+
+检查点只用于避免错误的中间态失败。最终 merged patch 仍在全新官方源码上执行完整 clean-room 测试。
+
+## SHA256SUMS
+
+`release-checksums.py` 是生成端和消费端的统一解析器。它兼容 GNU `sha256sum` 的文本/二进制标记和 `./` 前缀，严格拒绝重复名称、路径越界、缺失资产和哈希不匹配。Release 顶层校验表只在四个非校验资产全部定稿后生成。
+
+
+## 无变更目标
+
+补丁应用成功但最终没有源码差异时，各补丁标记为 `superseded`，candidate 状态写为 `no-change`。Workflow 持久化审计工作区后以 `no-release-needed` 成功结束，不生成空 merged patch 或空 Release。

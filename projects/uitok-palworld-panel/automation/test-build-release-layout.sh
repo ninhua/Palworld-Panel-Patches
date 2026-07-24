@@ -11,7 +11,7 @@ upstream="${work}/upstream"
 fakebin="${work}/fakebin"
 mkdir -p "${automation}" "${track}/source" "${track}/build" "${fakebin}"
 
-for file in build-stable-release.sh migrate-patch-workspace.py workspace-state.py adapt-frontend-api-tests.py patch-catalog.json; do
+for file in build-stable-release.sh migrate-patch-workspace.py workspace-state.py adapt-frontend-api-tests.py patch-catalog.json release-checksums.py; do
   cp "${script_dir}/${file}" "${automation}/${file}"
 done
 cp "${script_dir}/config.json" "${automation}/config.json"
@@ -118,5 +118,23 @@ test "$(find "${release}" -maxdepth 1 -name '*_linux-amd64.tar.gz' | wc -l)" -eq
 test "$(find "${release}" -maxdepth 1 -name '*_source.tar.gz' | wc -l)" -eq 1
 source_archive="$(find "${release}" -maxdepth 1 -name '*_source.tar.gz' -print -quit)"
 tar -tzf "${source_archive}" | grep -Fq './.palpatch/source-track/source/0001-layout.patch'
+
+# A target where every patch is already present must end cleanly without an empty Release.
+cat >"${automation}/apply-source-patch.sh" <<'EOF'
+#!/usr/bin/env bash
+set -e
+echo 'patch already present; no source delta'
+exit 0
+EOF
+chmod +x "${automation}/apply-source-patch.sh"
+set +e
+PATH="${fakebin}:${PATH}" PALPATCH_MIGRATION_VALIDATE_COMMANDS=0 \
+  "${automation}/build-stable-release.sh" \
+  "${upstream}" "${work}/no-change-output" v1.3.0 "${track}"
+status=$?
+set -e
+test "${status}" -eq 20
+test -f "${work}/no-change-output/workspace/candidate-v1.3.0/NO_RELEASE"
+test ! -e "${work}/no-change-output/release/SHA256SUMS"
 
 echo "build release layout regression tests passed."

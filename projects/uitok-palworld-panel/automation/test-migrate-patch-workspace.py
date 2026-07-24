@@ -135,6 +135,116 @@ def invoke(root: Path, invalid_second: bool = False, optional_group_failure: boo
     return result, upstream, workspace, active
 
 
+
+def checkpoint_fixture(root: Path) -> tuple[Path, Path, Path, Path, Path, Path, Path]:
+    upstream = root / "checkpoint-upstream"
+    upstream.mkdir()
+    run(["git", "init", "-q"], cwd=upstream)
+    run(["git", "config", "user.name", "Test"], cwd=upstream)
+    run(["git", "config", "user.email", "test@example.com"], cwd=upstream)
+    (upstream / "backend").mkdir()
+    (upstream / "backend" / "go.mod").write_text("module example.com/checkpoint\n\ngo 1.22\n", encoding="utf-8")
+    (upstream / "backend" / "base.go").write_text("package checkpoint\n\nfunc Base() int { return 1 }\n", encoding="utf-8")
+    run(["git", "add", "."], cwd=upstream)
+    run(["git", "commit", "-qm", "base"], cwd=upstream)
+    base = run(["git", "rev-parse", "HEAD"], cwd=upstream).stdout.strip()
+
+    source = root / "checkpoint-source"
+    patches = source / "source"
+    (source / "build").mkdir(parents=True)
+    patches.mkdir()
+
+    (upstream / "backend" / "feature.go").write_text(
+        "package checkpoint\n\nfunc Feature() int { return missingHandler() }\n",
+        encoding="utf-8",
+    )
+    run(["git", "add", "-N", "backend/feature.go"], cwd=upstream)
+    patch1 = run(["git", "diff", "--binary", "--full-index"], cwd=upstream).stdout
+    (patches / "0001-feature.patch").write_text(patch1, encoding="utf-8")
+    run(["git", "add", "."], cwd=upstream)
+    run(["git", "commit", "-qm", "feature"], cwd=upstream)
+
+    (upstream / "backend" / "handler.go").write_text(
+        "package checkpoint\n\nfunc missingHandler() int { return 2 }\n",
+        encoding="utf-8",
+    )
+    run(["git", "add", "-N", "backend/handler.go"], cwd=upstream)
+    patch2 = run(["git", "diff", "--binary", "--full-index"], cwd=upstream).stdout
+    (patches / "0002-handler.patch").write_text(patch2, encoding="utf-8")
+    run(["git", "reset", "--hard", base], cwd=upstream)
+
+    (patches / "SHA256SUMS").write_text(
+        "".join(f"{sha(path)}  {path.name}\n" for path in sorted(patches.glob("*.patch"))),
+        encoding="utf-8",
+    )
+    write_json(source / "manifest.template.json", {
+        "patch_version": "1.0.0",
+        "features": ["one"],
+        "files": {"bin/palpanel": {"original_sha256": "0" * 64, "patched_sha256": "0" * 64}},
+    })
+    write_json(source / "derivation.json", {"schema_version": 2, "mode": "bootstrap-track"})
+    (source / "build" / "build-palpanel.sh").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+
+    config = root / "checkpoint-config.json"
+    write_json(config, {
+        "schema_version": 2,
+        "stable_patch_version": "1.0.0",
+        "required_features": ["one"],
+        "optional_features": [],
+    })
+    catalog = root / "checkpoint-catalog.json"
+    write_json(catalog, {"schema_version": 1, "patches": [
+        {"file": "0001-feature.patch", "feature": "one", "depends_on": [], "validation_checkpoint": False},
+        {"file": "0002-handler.patch", "feature": "one", "depends_on": ["0001-feature.patch"], "validation_checkpoint": True},
+    ]})
+    apply = root / "checkpoint-apply.sh"
+    apply.write_text("#!/usr/bin/env bash\nset -e\ngit -C \"$1\" apply --check \"$2\"\ngit -C \"$1\" apply \"$2\"\n", encoding="utf-8")
+    apply.chmod(0o755)
+    retarget = root / "checkpoint-retarget.py"
+    retarget.write_text("print('retargeted')\n", encoding="utf-8")
+    adapter = root / "checkpoint-adapter.py"
+    adapter.write_text("print('frontend API mocks already compatible')\n", encoding="utf-8")
+    return upstream, source, config, catalog, apply, retarget, adapter
+
+
+def test_validation_checkpoint(root: Path) -> None:
+    upstream, source, config, catalog, apply, retarget, adapter = checkpoint_fixture(root)
+    workspace = root / "checkpoint-workspace"
+    active = root / "checkpoint-active"
+    result = run([
+        sys.executable, str(SCRIPT), str(upstream), str(source), str(workspace), str(active),
+        "v2.0.0", str(config), str(catalog), str(apply), str(retarget), str(adapter),
+    ], check=False, env={"PALPATCH_MIGRATION_VALIDATE_COMMANDS": "1"})
+    if result.returncode != 0:
+        raise AssertionError(result.stdout)
+    report = json.loads((workspace / "compatibility-report.json").read_text(encoding="utf-8"))
+    patches = report["patches"]
+    if [item["compile_status"] for item in patches] != ["passed", "passed"]:
+        raise AssertionError(report)
+    if {item.get("validated_at_checkpoint") for item in patches} != {"0002-handler.patch"}:
+        raise AssertionError(report)
+
+
+def test_no_change_result(root: Path) -> None:
+    upstream, source, config, catalog, apply, retarget, adapter = fixture(root)
+    apply.write_text("#!/usr/bin/env bash\nset -e\necho 'patch already present; no source delta'\nexit 0\n", encoding="utf-8")
+    apply.chmod(0o755)
+    workspace = root / "no-change-workspace"
+    active = root / "no-change-active"
+    result = run([
+        sys.executable, str(SCRIPT), str(upstream), str(source), str(workspace), str(active),
+        "v2.0.0", str(config), str(catalog), str(apply), str(retarget), str(adapter),
+    ], check=False, env={"PALPATCH_MIGRATION_VALIDATE_COMMANDS": "0"})
+    if result.returncode != 0:
+        raise AssertionError(result.stdout)
+    report = json.loads((workspace / "compatibility-report.json").read_text(encoding="utf-8"))
+    if report["state"] != "no-change" or not (workspace / "NO_RELEASE").is_file():
+        raise AssertionError(report)
+    if [item["final_status"] for item in report["patches"]] != ["superseded", "superseded"]:
+        raise AssertionError(report)
+    if list((workspace / "active-source").glob("*.patch")):
+        raise AssertionError("no-change migration must not retain active patches")
+
 def main() -> None:
     with tempfile.TemporaryDirectory(prefix="palpatch-migrate-pass-") as temp:
         result, upstream, workspace, _ = invoke(Path(temp))
@@ -182,6 +292,12 @@ def main() -> None:
         run(["git", "apply", str(merged)], cwd=clean)
         if (clean / "file.txt").read_text(encoding="utf-8") != "base\none\n":
             raise AssertionError("optional feature leaked into merged patch")
+
+    with tempfile.TemporaryDirectory(prefix="palpatch-migrate-checkpoint-") as temp:
+        test_validation_checkpoint(Path(temp))
+
+    with tempfile.TemporaryDirectory(prefix="palpatch-migrate-no-change-") as temp:
+        test_no_change_result(Path(temp))
 
     print("migrate-patch-workspace regression tests passed.")
 

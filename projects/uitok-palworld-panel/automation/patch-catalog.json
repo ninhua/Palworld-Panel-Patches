@@ -1,18 +1,20 @@
 {
   "schema_version": 1,
-  "notes": "Patch ordering remains lexical. Dependencies only describe hard prerequisites; every feature present in the previous stable manifest is preserved unless explicitly listed as optional in config.json.",
+  "notes": "Patch ordering remains lexical. Dependencies describe hard prerequisites. validation_checkpoint=false keeps cumulative source state until a later corrective patch closes the group; 0008/0009 are validated after 0010, and 0011 is validated after 0012.",
   "patches": [
     {
       "file": "0001-add-patch-info-api.patch",
       "feature": "patch-info-api",
-      "depends_on": []
+      "depends_on": [],
+      "validation_checkpoint": true
     },
     {
       "file": "0002-add-base-custom-names.patch",
       "feature": "base-custom-names",
       "depends_on": [
         "0001-add-patch-info-api.patch"
-      ]
+      ],
+      "validation_checkpoint": true
     },
     {
       "file": "0003-add-base-storage-browser.patch",
@@ -20,14 +22,16 @@
       "depends_on": [
         "0001-add-patch-info-api.patch",
         "0002-add-base-custom-names.patch"
-      ]
+      ],
+      "validation_checkpoint": true
     },
     {
       "file": "0004-fix-base-storage-container-resolution.patch",
       "feature": "base-storage-browser",
       "depends_on": [
         "0003-add-base-storage-browser.patch"
-      ]
+      ],
+      "validation_checkpoint": true
     },
     {
       "file": "0005-enhance-base-storage-display.patch",
@@ -35,14 +39,16 @@
       "depends_on": [
         "0003-add-base-storage-browser.patch",
         "0004-fix-base-storage-container-resolution.patch"
-      ]
+      ],
+      "validation_checkpoint": true
     },
     {
       "file": "0006-add-player-notes.patch",
       "feature": "player-notes",
       "depends_on": [
         "0001-add-patch-info-api.patch"
-      ]
+      ],
+      "validation_checkpoint": true
     },
     {
       "file": "0007-add-guild-detail-browser.patch",
@@ -50,14 +56,16 @@
       "depends_on": [
         "0002-add-base-custom-names.patch",
         "0006-add-player-notes.patch"
-      ]
+      ],
+      "validation_checkpoint": true
     },
     {
       "file": "0008-add-base-worker-browser.patch",
       "feature": "base-worker-browser",
       "depends_on": [
         "0002-add-base-custom-names.patch"
-      ]
+      ],
+      "validation_checkpoint": false
     },
     {
       "file": "0009-add-base-feed-box-summary.patch",
@@ -65,28 +73,32 @@
       "depends_on": [
         "0003-add-base-storage-browser.patch",
         "0004-fix-base-storage-container-resolution.patch"
-      ]
+      ],
+      "validation_checkpoint": false
     },
     {
       "file": "0010-fix-missing-base-worker-handler.patch",
       "feature": "base-worker-browser",
       "depends_on": [
         "0008-add-base-worker-browser.patch"
-      ]
+      ],
+      "validation_checkpoint": true
     },
     {
       "file": "0011-allow-http-service-endpoints.patch",
       "feature": "insecure-endpoint-support",
       "depends_on": [
         "0001-add-patch-info-api.patch"
-      ]
+      ],
+      "validation_checkpoint": false
     },
     {
       "file": "0012-restore-ai-translation-net-import.patch",
       "feature": "insecure-endpoint-support",
       "depends_on": [
         "0011-allow-http-service-endpoints.patch"
-      ]
+      ],
+      "validation_checkpoint": true
     }
   ]
 }

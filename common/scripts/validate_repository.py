@@ -270,6 +270,7 @@ def validate_stable_automation() -> None:
         filename = entry.get("file")
         feature = entry.get("feature")
         dependencies = entry.get("depends_on")
+        validation_checkpoint = entry.get("validation_checkpoint")
         if not isinstance(filename, str) or not filename.endswith(".patch"):
             fail(f"patch-catalog 文件名无效：{filename!r}")
         if filename in catalog_files:
@@ -281,6 +282,8 @@ def validate_stable_automation() -> None:
             isinstance(value, str) for value in dependencies
         ):
             fail(f"patch-catalog depends_on 无效：{filename}")
+        if not isinstance(validation_checkpoint, bool):
+            fail(f"patch-catalog validation_checkpoint 必须为布尔值：{filename}")
     bootstrap_patch_files = {path.name for path in source_dir.glob("*.patch")}
     uncatalogued = sorted(bootstrap_patch_files - catalog_files)
     if uncatalogued:
@@ -310,10 +313,12 @@ def validate_stable_automation() -> None:
         automation / "workspace-state.py",
         automation / "persist-workspace.sh",
         automation / "build-stable-release.sh",
+        automation / "release-checksums.py",
         automation / "test-apply-source-patch.sh",
         automation / "test-resolve-official-palpanel.sh",
         automation / "test-adapt-frontend-api-tests.py",
         automation / "test-migrate-patch-workspace.py",
+        automation / "test-release-checksums.py",
         automation / "test-persist-workspace.sh",
         automation / "test-prepare-source-track-v2.sh",
         automation / "test-build-release-layout.sh",
@@ -332,6 +337,9 @@ def validate_stable_automation() -> None:
         "Persist releasable stable workspace",
         "Create immutable stable Release",
         "Mark stable workspace released",
+        "Repository release preflight",
+        "Write no-release summary",
+        "no-release-needed",
     ):
         if marker not in workflow_text:
             fail(f"稳定版 Workflow 缺少状态机标记：{marker}")
@@ -355,6 +363,8 @@ def validate_stable_automation() -> None:
         "source-track/source",
         "Release top level is an explicit five-file allowlist",
         "runtime-smoke-test",
+        "release-checksums.py",
+        "NO_RELEASE",
     ):
         if marker not in build_text:
             fail(f"稳定版构建缺少更新链路标记：{marker}")
@@ -362,7 +372,7 @@ def validate_stable_automation() -> None:
         fail("Release 顶层不得单独上传每个源补丁")
 
     prepare_text = (automation / "prepare-source-track.sh").read_text(encoding="utf-8")
-    for marker in ("*_source.tar.gz", ".palpatch/source-track", "Legacy compatibility"):
+    for marker in ("*_source.tar.gz", ".palpatch/source-track", "Legacy compatibility", "release-checksums.py"):
         if marker not in prepare_text:
             fail(f"源轨道准备脚本缺少派生兼容标记：{marker}")
 
@@ -374,6 +384,8 @@ def validate_stable_automation() -> None:
         "blocked",
         "active-source",
         "merged_patch",
+        "validation_checkpoint",
+        "pending-checkpoint",
     ):
         if marker not in migrate_text:
             fail(f"逐补丁迁移器缺少状态标记：{marker}")
