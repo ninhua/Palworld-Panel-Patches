@@ -28,7 +28,7 @@ bootstrap_source_track
 
 ```text
 每天检查一次上游正式 Release
-→ 选择最高 vMAJOR.MINOR[.PATCH]
+→ 选择最高 vMAJOR.MINOR.PATCH
 → 检查显式不兼容列表
 → 查找最高的上一个已发布稳定补丁
 → 校验并准备稳定版派生源轨道
@@ -36,7 +36,7 @@ bootstrap_source_track
 → 应用上一个稳定 Release 的合并补丁
 → 将 PatchInfo 重定向到目标稳定版本
 → 重新生成 OpenAPI TypeScript 契约
-→ 执行 Go 测试、前端构建、嵌入式二进制构建和冒烟测试
+→ 执行 Go 测试、前端 lint、Vitest、前端构建、嵌入式二进制构建和冒烟测试
 → 生成 manifest、derivation、源码包、安装包和 SHA256SUMS
 → 直接创建稳定 GitHub Release
 ```
@@ -74,8 +74,8 @@ compatibility.verified == true
 迁移到新的上游稳定版但功能集未变化时，补丁功能版本保持不变：
 
 ```text
-uitok-stable-v1.3.0-p0.8.0
-→ uitok-stable-v1.4.0-p0.8.0
+uitok-stable-v1.3.0-p0.8.1
+→ uitok-stable-v1.4.0-p0.8.1
 ```
 
 每个稳定 Release 都包含：
@@ -117,3 +117,42 @@ incompatible-versions.json
 ```
 
 该规则不会忽略核心实现冲突，也不会使用 `.rej` 文件继续构建。
+
+
+## 官方二进制安装基线
+
+稳定补丁 manifest 中的：
+
+```text
+files.bin/palpanel.original_sha256
+```
+
+必须对应上游正式 GitHub Release 的 Linux 包内 `bin/palpanel`，不得使用本仓库从源码
+重新构建的未打补丁二进制代替。`resolve-official-palpanel.sh` 会：
+
+```text
+下载上游 Release SHA256SUMS 和 Linux 归档
+→ 校验归档 SHA-256
+→ 拒绝不安全路径、链接和特殊文件
+→ 校验归档内 checksums.txt
+→ 执行 palpanel --version 验证目标版本
+→ 输出官方二进制和 official-release.json
+```
+
+源码重建二进制仍用于编译验证，其 SHA-256 只记录为：
+
+```text
+build-metadata.json.rebuilt_original_palpanel_sha256
+```
+
+## stable 补丁发布版本
+
+`config.json` 的 `stable_patch_version` 控制本次 stable Release 补丁版本。修复发布资产或
+安装契约但功能集合不变时，也必须递增该版本。例如：
+
+```text
+uitok-stable-v1.3.0-p0.8.0  # 错误的官方 SHA 基线
+uitok-stable-v1.3.0-p0.8.1  # 修正后的重新发布
+```
+
+同一 PalPanel 版本下，一键部署选择补丁版本最高的 Release。

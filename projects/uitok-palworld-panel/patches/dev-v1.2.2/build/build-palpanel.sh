@@ -45,6 +45,8 @@ echo "输出文件：${output_binary}"
 (
     cd "${source_dir}/frontend"
     npm ci --no-audit --no-fund
+    npm run lint
+    npm run test
     npm run build
 )
 

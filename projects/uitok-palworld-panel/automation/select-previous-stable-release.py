@@ -5,7 +5,7 @@ import argparse
 import re
 import sys
 
-VERSION_RE = re.compile(r"^v(\d+)\.(\d+)(?:\.(\d+))?$", re.IGNORECASE)
+VERSION_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$", re.IGNORECASE)
 PATCH_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 
 
@@ -13,8 +13,7 @@ def parse_version(value: str) -> tuple[int, int, int] | None:
     match = VERSION_RE.fullmatch(value.strip())
     if not match:
         return None
-    major, minor, patch = match.groups()
-    return int(major), int(minor), int(patch or 0)
+    return tuple(int(part) for part in match.groups())
 
 
 def parse_patch(value: str) -> tuple[int, int, int] | None:
@@ -36,7 +35,7 @@ def main() -> None:
 
     pattern = re.compile(
         rf"^{re.escape(args.tag_prefix)}"
-        r"(v\d+\.\d+(?:\.\d+)?)-p(\d+\.\d+\.\d+)$",
+        r"(v\d+\.\d+\.\d+)-p(\d+\.\d+\.\d+)$",
         re.IGNORECASE,
     )
     candidates: list[
@@ -53,8 +52,8 @@ def main() -> None:
         patch = parse_patch(patch_text)
         if version is None or patch is None:
             continue
-        # Upstream migration must derive from the newest older stable target.
-        # A Release for the same target is not a migration source.
+        # Upstream migration derives only from the newest older stable target.
+        # A Release for the same target is a correction/rebuild, not a migration source.
         if version >= target:
             continue
         candidates.append((version, patch, tag))

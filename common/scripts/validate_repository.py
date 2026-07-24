@@ -1,4 +1,3 @@
-\
 #!/usr/bin/env python3
 from __future__ import annotations
 
@@ -187,6 +186,12 @@ def validate_stable_automation() -> None:
     if not isinstance(config, dict) or config.get("schema_version") != 1:
         fail("稳定版自动化 config.json 格式错误")
 
+    stable_patch_version = config.get("stable_patch_version")
+    if not isinstance(stable_patch_version, str) or not re.fullmatch(
+        r"\d+\.\d+\.\d+", stable_patch_version
+    ):
+        fail("稳定版自动化 stable_patch_version 必须是 MAJOR.MINOR.PATCH")
+
     source_track_value = config.get("bootstrap_source_track")
     if not isinstance(source_track_value, str) or not source_track_value:
         fail("稳定版自动化 bootstrap_source_track 无效")
@@ -214,7 +219,7 @@ def validate_stable_automation() -> None:
     versions = incompatible.get("versions")
     if not isinstance(versions, dict):
         fail("incompatible-versions.json versions 必须是对象")
-    version_pattern = re.compile(r"^v\d+\.\d+(?:\.\d+)?$")
+    version_pattern = re.compile(r"^v\d+\.\d+\.\d+$")
     for version, reason in versions.items():
         if not isinstance(version, str) or not version_pattern.fullmatch(version):
             fail(f"明确不兼容版本格式错误：{version!r}")
@@ -236,9 +241,13 @@ def validate_stable_automation() -> None:
         fail("稳定版自动化未准备稳定版派生源轨道")
 
     required_scripts = (
+        automation / "select-latest-version.py",
         automation / "select-previous-stable-release.py",
         automation / "prepare-source-track.sh",
         automation / "apply-source-patch.sh",
+        automation / "test-apply-source-patch.sh",
+        automation / "resolve-official-palpanel.sh",
+        automation / "test-resolve-official-palpanel.sh",
         automation / "build-stable-release.sh",
     )
     for path in required_scripts:
@@ -251,6 +260,23 @@ def validate_stable_automation() -> None:
     apply_script_text = (automation / "apply-source-patch.sh").read_text(encoding="utf-8")
     if "patch_storage_localize_test.go" not in apply_script_text:
         fail("受控补丁应用器缺少 pallocalize 测试重定位规则")
+    if "expected_added" not in apply_script_text or "if deleted:" not in apply_script_text:
+        fail("受控补丁应用器未精确校验已知测试 hunk")
+
+    resolver_text = (automation / "resolve-official-palpanel.sh").read_text(encoding="utf-8")
+    for marker in ("palpanel_${target_version}_linux_amd64.tar.gz", "SHA256SUMS", "checksums.txt"):
+        if marker not in resolver_text:
+            fail(f"官方 Release 二进制解析器缺少校验标记：{marker}")
+
+    if "resolve-official-palpanel.sh" not in build_script_text:
+        fail("稳定版构建未使用官方 Release palpanel 作为 original_sha256 来源")
+    if "rebuilt_original_palpanel_sha256" not in build_script_text:
+        fail("稳定版构建未区分官方二进制与源码重建二进制")
+
+    bootstrap_build = (source_track / "build" / "build-palpanel.sh").read_text(encoding="utf-8")
+    for command in ("npm run lint", "npm run test", "npm run build"):
+        if command not in bootstrap_build:
+            fail(f"稳定版前端构建缺少命令：{command}")
 
 def validate_placeholders() -> None:
     # 模板目录允许占位值，正式补丁目录不允许。

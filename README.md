@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.11.2`
+仓库版本：`v0.11.3`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -232,3 +232,22 @@ bash common/scripts/validate-repository.sh
 ```
 
 完整 Go、前端和二进制冒烟测试在 GitHub Actions 的 Go 1.25.12 / Node 22 环境执行。
+
+
+## v1.3.0 stable 校验修复
+
+稳定版发布配置当前为：
+
+```text
+目标上游：v1.3.0
+稳定补丁版本：0.8.1
+预期 Release：uitok-stable-v1.3.0-p0.8.1
+```
+
+`manifest.files["bin/palpanel"].original_sha256` 现在直接取自上游正式 Release
+`palpanel_v1.3.0_linux_amd64.tar.gz` 内的 `bin/palpanel`。构建过程仍会从源码重建
+未打补丁二进制用于编译验证，但该重建值只记录在 `build-metadata.json` 的
+`rebuilt_original_palpanel_sha256`，不再用于生产安装前置校验。
+
+这样可以避免上游正式 Release 与二次源码构建因构建时间、前端产物或工具链差异而产生
+不同 SHA-256，导致一键部署正确地拒绝安装并回滚。

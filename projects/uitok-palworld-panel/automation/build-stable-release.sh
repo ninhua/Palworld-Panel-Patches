@@ -35,7 +35,7 @@ PY
     source_track="${repo_root}/${source_track_rel}"
 fi
 
-[[ "${target_version}" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]] || {
+[[ "${target_version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
     echo "非法稳定版本：${target_version}" >&2
     exit 1
 }
@@ -47,6 +47,7 @@ license_file="${source_track}/LICENSE"
 notice_file="${source_track}/LICENSE-NOTICE.md"
 derivation_file="${source_track}/derivation.json"
 apply_source_patch="${script_dir}/apply-source-patch.sh"
+resolve_official_palpanel="${script_dir}/resolve-official-palpanel.sh"
 
 for path in \
     "${manifest_template}" \
@@ -55,7 +56,8 @@ for path in \
     "${license_file}" \
     "${notice_file}" \
     "${derivation_file}" \
-    "${apply_source_patch}"; do
+    "${apply_source_patch}" \
+    "${resolve_official_palpanel}"; do
     [[ -f "${path}" ]] || {
         echo "缺少源补丁轨道文件：${path}" >&2
         exit 1
@@ -161,6 +163,7 @@ generated_sha_after="$(sha256sum "${generated}" | awk '{print $1}')"
     go test -p=1 ./...
 )
 
+
 # 暂存全部改动，确保 merged patch 包含补丁新增的未跟踪文件。
 git -C "${patched}" add -A
 git -C "${patched}" diff --cached --check
@@ -188,6 +191,13 @@ patched_binary="${output}/work/patched-palpanel"
     "${actual_commit}" \
     "${build_time}"
 
+official_binary="${output}/work/official-palpanel"
+official_release_metadata="${output}/work/official-release.json"
+"${resolve_official_palpanel}" \
+    "${target_version}" \
+    "${official_binary}" \
+    "${official_release_metadata}" >/dev/null
+
 features_file="${output}/work/features.json"
 printf '%s\n' "${features_json_inline}" > "${features_file}"
 "${script_dir}/smoke-stable.sh" \
@@ -198,7 +208,8 @@ printf '%s\n' "${features_json_inline}" > "${features_file}"
     "${features_file}" \
     >"${output}/release/smoke-test.log" 2>&1
 
-original_sha="$(sha256sum "${original_binary}" | awk '{print $1}')"
+rebuilt_original_sha="$(sha256sum "${original_binary}" | awk '{print $1}')"
+original_sha="$(sha256sum "${official_binary}" | awk '{print $1}')"
 patched_sha="$(sha256sum "${patched_binary}" | awk '{print $1}')"
 version_slug="${target_version#v}"
 package_name="uitok-palworld-panel_stable-v${version_slug}_patch-${stable_patch_version}_linux-amd64"
@@ -212,6 +223,7 @@ cp "${patch_dir}/SHA256SUMS" "${package_dir}/source/source-chain/SHA256SUMS"
 cp "${license_file}" "${package_dir}/LICENSE"
 cp "${notice_file}" "${package_dir}/LICENSE-NOTICE.md"
 cp "${derivation_file}" "${package_dir}/derivation.json"
+cp "${official_release_metadata}" "${package_dir}/official-release.json"
 
 python3 - \
     "${manifest_template}" \
@@ -247,7 +259,7 @@ data["compatibility"] = {
 }
 data["files"]["bin/palpanel"]["original_sha256"] = original_sha
 data["files"]["bin/palpanel"]["patched_sha256"] = patched_sha
-data["notes"] = "Automatically generated stable patch. Installation matching uses target_version, verified status, checksums, package structure, and required feature containment; upstream commit is informational only."
+data["notes"] = "Automatically generated stable patch. original_sha256 is taken from the official GitHub Release Linux asset, not from a local source rebuild. Installation matching uses target_version, verified status, checksums, package structure, and required feature containment; upstream commit is informational only."
 Path(output).write_text(
     json.dumps(data, ensure_ascii=False, indent=2) + "\n",
     encoding="utf-8",
@@ -341,6 +353,7 @@ cp "${output}/work/stable-${target_version}-patch-${stable_patch_version}.patch"
 cp "${license_file}" "${output}/release/LICENSE"
 cp "${notice_file}" "${output}/release/LICENSE-NOTICE.md"
 cp "${derivation_file}" "${output}/release/derivation.json"
+cp "${official_release_metadata}" "${output}/release/official-release.json"
 cp "${patch_files[@]}" "${output}/release/"
 cp "${patch_dir}/SHA256SUMS" "${output}/release/PATCH-SHA256SUMS"
 
@@ -351,10 +364,12 @@ python3 - \
     "${build_time}" \
     "${stable_patch_version}" \
     "${original_sha}" \
+    "${rebuilt_original_sha}" \
     "${patched_sha}" \
     "$(basename "${archive}")" \
     "$(basename "${source_archive}")" \
-    "${derivation_file}" <<'PY'
+    "${derivation_file}" \
+    "${official_release_metadata}" <<'PY'
 from pathlib import Path
 import json, sys
 (
@@ -364,12 +379,15 @@ import json, sys
     build_time,
     patch,
     original_sha,
+    rebuilt_original_sha,
     patched_sha,
     archive,
     source_archive,
     derivation_path,
+    official_release_path,
 ) = sys.argv[1:]
 derivation = json.loads(Path(derivation_path).read_text(encoding="utf-8"))
+official_release = json.loads(Path(official_release_path).read_text(encoding="utf-8"))
 payload = {
     "schema_version": 1,
     "channel": "stable",
@@ -378,7 +396,9 @@ payload = {
     "build_time": build_time,
     "patch_version": patch,
     "original_palpanel_sha256": original_sha,
+    "rebuilt_original_palpanel_sha256": rebuilt_original_sha,
     "patched_palpanel_sha256": patched_sha,
+    "official_release": official_release,
     "binary_package": archive,
     "source_package": source_archive,
     "derivation": derivation,

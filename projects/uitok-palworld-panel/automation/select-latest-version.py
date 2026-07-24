@@ -4,15 +4,14 @@ from __future__ import annotations
 import re
 import sys
 
-VERSION_RE = re.compile(r"^v(\d+)\.(\d+)(?:\.(\d+))?$", re.IGNORECASE)
+VERSION_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$", re.IGNORECASE)
 
 
 def parse_version(value: str) -> tuple[int, int, int] | None:
     match = VERSION_RE.fullmatch(value.strip())
     if not match:
         return None
-    major, minor, patch = match.groups()
-    return int(major), int(minor), int(patch or 0)
+    return tuple(int(part) for part in match.groups())
 
 
 def main() -> None:
@@ -21,10 +20,11 @@ def main() -> None:
         value = raw.strip()
         parsed = parse_version(value)
         if parsed is not None:
-            candidates.append((parsed, value))
+            canonical = f"v{parsed[0]}.{parsed[1]}.{parsed[2]}"
+            candidates.append((parsed, canonical))
 
     if not candidates:
-        raise SystemExit("没有发现符合 vMAJOR.MINOR[.PATCH] 的正式版本")
+        raise SystemExit("没有发现符合 vMAJOR.MINOR.PATCH 的正式版本")
 
     candidates.sort(key=lambda item: (item[0], item[1]))
     print(candidates[-1][1])

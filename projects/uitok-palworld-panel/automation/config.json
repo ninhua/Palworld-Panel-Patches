@@ -3,6 +3,7 @@
   "upstream_repository": "uitok/palworld-panel",
   "release_tag_prefix": "uitok-stable-",
   "platform": "linux-amd64",
+  "stable_patch_version": "0.8.1",
   "required_features": [
     "patch-info-api",
     "base-custom-names"

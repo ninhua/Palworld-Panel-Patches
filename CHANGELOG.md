@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.11.3
+
+### Fixed
+
+- 修复 `uitok-stable-v1.3.0-p0.8.0` manifest 使用“源码重建官方二进制”SHA-256，导致一键部署下载官方 v1.3.0 后校验失败并回滚的问题。
+- 稳定 manifest 的 `original_sha256` 改为从上游正式 GitHub Release 的 Linux 包中安全提取并验证 `bin/palpanel` 后生成。
+- 新稳定补丁版本设为 `0.8.1`，重新发布 `uitok-stable-v1.3.0-p0.8.1`，不会被已有错误的 `p0.8.0` Release 跳过。
+- `build-metadata.json` 同时记录官方 Release 包信息和源码重建二进制 SHA-256，明确区分安装基线与构建验证产物。
+
+### Safety
+
+- 下载上游 `SHA256SUMS` 并校验完整 Linux 归档。
+- 拒绝归档绝对路径、`..` 路径、符号链接、硬链接和特殊文件。
+- 校验归档内部 `checksums.txt` 的 `bin/palpanel` SHA-256，并执行 `--version` 确认目标版本。
+- 校验上一个 stable Release 的 `manifest.json`、`build-metadata.json` 和合并补丁均出现在 `SHA256SUMS` 且哈希一致。
+- 上一个 stable Release 必须包含配置要求的全部 feature。
+- pallocalize 测试重定位改为精确结构校验，发现额外新增、删除或额外 hunk 时拒绝自动排除。
+
+### Validation
+
+- 新增官方 Release 包安全提取、归档内哈希、版本匹配、链接拒绝和损坏校验回归测试。
+- 新增补丁正常应用、已知测试上下文漂移、核心文件冲突、额外测试及删除行拒绝回归测试。
+- 稳定构建增加前端 lint 和 Vitest 测试。
+- 稳定版本格式收紧为 `vMAJOR.MINOR.PATCH`。
+
 ## v0.11.2
 
 ### Fixed
