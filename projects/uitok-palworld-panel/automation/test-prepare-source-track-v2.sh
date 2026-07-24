@@ -24,7 +24,7 @@ data["required_features"] = ["patch-info-api", "base-custom-names"]
 path.write_text(json.dumps(data, indent=2) + "\n")
 PY
 cat >"${candidate}/track.json" <<'JSON'
-{"schema_version":2,"target_version":"v1.1.0","status":"candidate","inherits":"../dev-v1.0.0"}
+{"schema_version":2,"target_version":"v1.1.0","status":"candidate","source_mode":"self-contained"}
 JSON
 cat >"${bootstrap}/manifest.template.json" <<'JSON'
 {"patch_version":"0.8.0-dev.1","features":["patch-info-api","base-custom-names"],"files":{"bin/palpanel":{"original_sha256":"0000000000000000000000000000000000000000000000000000000000000000","patched_sha256":"0000000000000000000000000000000000000000000000000000000000000000"}}}
@@ -35,6 +35,15 @@ printf '#!/usr/bin/env bash\nexit 0\n' >"${bootstrap}/build/build-palpanel.sh"
 chmod +x "${bootstrap}/build/build-palpanel.sh"
 echo license >"${bootstrap}/LICENSE"
 echo notice >"${bootstrap}/LICENSE-NOTICE.md"
+
+# The active candidate owns its source/build inputs and does not inherit the historical fixture.
+mkdir -p "${candidate}/source" "${candidate}/build"
+cp "${bootstrap}/manifest.template.json" "${candidate}/manifest.template.json"
+cp "${bootstrap}/source/0001.patch" "${candidate}/source/0001.patch"
+cp "${bootstrap}/source/SHA256SUMS" "${candidate}/source/SHA256SUMS"
+cp "${bootstrap}/build/build-palpanel.sh" "${candidate}/build/build-palpanel.sh"
+cp "${bootstrap}/LICENSE" "${candidate}/LICENSE"
+cp "${bootstrap}/LICENSE-NOTICE.md" "${candidate}/LICENSE-NOTICE.md"
 
 "${automation}/prepare-source-track.sh" "${work}/bootstrap-output" "${candidate}"
 test -s "${work}/bootstrap-output/source/0001.patch"

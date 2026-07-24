@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.2`
+仓库版本：`v0.12.3`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -15,13 +15,13 @@
 候选状态：candidate / 未发布前 verified=false
 ```
 
-`candidate-v1.3.0` 是当前日常维护入口。它继承旧 `dev-v1.2.2` 的历史源码补丁链，
-但所有补丁实际应用、测试和构建都以官方 `v1.3.0` tag 为基线。只有完整 stable Workflow
+`candidate-v1.3.0` 是当前日常维护入口，并且是自包含轨道。它拥有自己的 `source/`、
+`build/`、manifest 和许可文件；所有补丁应用、测试和构建均以官方 `v1.3.0` tag 为基线。只有完整 stable Workflow
 通过后，Release manifest 才会写入 `mode=exact`、`target_version=v1.3.0` 和
 `verified=true`。
 
-旧 `dev-v1.2.2` 不再代表当前维护版本，只保留为首次迁移的历史补丁来源。首个可用
-`v1.3.0` stable Release 发布后，后续版本继续从最新的较旧 stable Release 派生。
+旧 `dev-v1.2.2` 仅作为历史归档保留，不再参与 validation、build 或 release。首个可用
+`v1.3.0` stable Release 发布后，后续版本从最新的较旧 stable Release 源码包派生。
 
 ## 当前功能
 
@@ -151,9 +151,11 @@ GET /api/bases/{id}/feed-boxes
 
 ## 补丁结构
 
+当前活动轨道：
+
 ```text
-projects/uitok-palworld-panel/patches/dev-v1.2.2/
-├── upstream-lock.json
+projects/uitok-palworld-panel/patches/candidate-v1.3.0/
+├── track.json
 ├── manifest.template.json
 ├── source/
 │   ├── 0001-add-patch-info-api.patch
@@ -172,46 +174,15 @@ projects/uitok-palworld-panel/patches/dev-v1.2.2/
 ├── build/
 │   ├── build.sh
 │   └── build-palpanel.sh
-├── tests/
-│   ├── smoke.sh
-│   └── test-relative-output-path.sh
 ├── LICENSE
 └── LICENSE-NOTICE.md
 ```
 
-构建脚本按文件名顺序应用全部 `source/*.patch`，并先校验 `source/SHA256SUMS`。
+该目录是自包含的 v1.3.0 stable candidate。构建脚本按文件名顺序应用全部
+`source/*.patch`，先校验 `source/SHA256SUMS`，再以官方 `v1.3.0` 源码执行
+迁移、检查点编译和 clean-room 复验。
 
-## 构建
-
-```text
-Actions
-→ Build uitok dev patch
-→ Run workflow
-```
-
-预期 Artifact：
-
-```text
-uitok-dev-v1.2.2-patch-0.8.0-dev.1-5e3c0bce9d33
-```
-
-Artifact 包含二进制安装包、完整对应源码、manifest、全部补丁、许可证、构建元数据、冒烟日志和 SHA-256。
-
-## 发布
-
-```text
-Actions
-→ Release uitok dev patch
-→ Run workflow
-```
-
-预期预发布标签：
-
-```text
-uitok-dev-v1.2.2-p0.8.0-dev.1
-```
-
-Release 标签不可变；标签已存在时工作流应失败，不覆盖旧资产。
+历史 `dev-v1.2.2` 目录不再是配置入口，也不再由任何 GitHub Actions workflow 调用。
 
 ## 稳定版自动发布
 

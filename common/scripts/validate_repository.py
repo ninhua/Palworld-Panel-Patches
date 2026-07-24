@@ -129,17 +129,25 @@ def validate_patch_route_handlers() -> None:
             )
 
 def validate_known_import_contracts() -> None:
-    """Catch known import regressions that can be inferred from the patch chain."""
-    source_dir = (
-        ROOT
-        / "projects"
-        / "uitok-palworld-panel"
-        / "patches"
-        / "dev-v1.2.2"
-        / "source"
+    """Catch known import regressions in the configured active source track."""
+    config_path = (
+        ROOT / "projects" / "uitok-palworld-panel" / "automation" / "config.json"
     )
-    if not source_dir.exists():
+    if not config_path.is_file():
         return
+    config = load_json(config_path)
+    if not isinstance(config, dict):
+        fail("稳定版自动化 config.json 必须是对象")
+    track_rel = config.get("bootstrap_source_track")
+    if not isinstance(track_rel, str) or not track_rel:
+        fail("稳定版自动化配置缺少 bootstrap_source_track")
+    source_dir = (ROOT / track_rel / "source").resolve()
+    try:
+        source_dir.relative_to(ROOT.resolve())
+    except ValueError:
+        fail("active source track 路径越界")
+    if not source_dir.exists():
+        fail(f"active source track 缺少 source 目录：{source_dir}")
 
     target = "backend/internal/aitranslation/service.go"
     net_import_delta = 0
@@ -224,24 +232,18 @@ def validate_stable_automation() -> None:
     if not (declared_track / "track.json").is_file():
         fail("bootstrap_source_track 必须是显式 candidate 工作区")
 
-    source_track = declared_track
-    seen: set[Path] = set()
-    while (source_track / "track.json").is_file():
-        if source_track in seen:
-            fail("candidate 轨道继承出现循环")
-        seen.add(source_track)
-        track = load_json(source_track / "track.json")
-        if not isinstance(track, dict) or track.get("status") != "candidate":
-            fail(f"候选轨道 status 必须为 candidate：{source_track}")
-        inherits = track.get("inherits")
-        if not isinstance(inherits, str) or not inherits.strip():
-            fail(f"候选轨道 inherits 无效：{source_track}")
-        source_track = (source_track / inherits).resolve()
-        try:
-            source_track.relative_to(patches_root)
-        except ValueError:
-            fail(f"候选轨道继承路径越界：{source_track}")
+    track = load_json(declared_track / "track.json")
+    if not isinstance(track, dict) or track.get("status") != "candidate":
+        fail(f"候选轨道 status 必须为 candidate：{declared_track}")
+    target_version = track.get("target_version")
+    if not isinstance(target_version, str) or not re.fullmatch(r"v\d+\.\d+\.\d+", target_version):
+        fail("active candidate target_version 格式错误")
+    if track.get("source_mode") != "self-contained":
+        fail("active candidate 必须是 self-contained，不得继续继承历史 dev 轨道")
+    if track.get("inherits") not in {None, ""}:
+        fail("self-contained active candidate 不得设置 inherits")
 
+    source_track = declared_track
     manifest_path = source_track / "manifest.template.json"
     source_dir = source_track / "source"
     bootstrap_build = source_track / "build" / "build-palpanel.sh"
@@ -322,10 +324,24 @@ def validate_stable_automation() -> None:
         automation / "test-persist-workspace.sh",
         automation / "test-prepare-source-track-v2.sh",
         automation / "test-build-release-layout.sh",
+        automation / "tests" / "test-relative-output-path.sh",
     )
     for path in required_scripts:
         if not path.is_file():
             fail(f"稳定版自动化缺少脚本：{path}")
+
+    for retired in (
+        ROOT / ".github" / "workflows" / "build-uitok-dev-patch.yml",
+        ROOT / ".github" / "workflows" / "release-uitok-dev-patch.yml",
+    ):
+        if retired.exists():
+            fail(f"稳定维护期间不得保留活动 dev workflow：{retired}")
+
+    validate_all = (ROOT / "common" / "scripts" / "validate-all.sh").read_text(encoding="utf-8")
+    if "dev-v1.2.2" in validate_all:
+        fail("validate-all.sh 不得硬编码历史 dev-v1.2.2 轨道")
+    if "automation/tests/test-relative-output-path.sh" not in validate_all:
+        fail("validate-all.sh 缺少 active-track 相对输出路径回归")
 
     workflow_text = workflow_path.read_text(encoding="utf-8")
     for marker in (

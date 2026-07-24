@@ -74,9 +74,16 @@ while (current / "track.json").is_file():
         raise SystemExit(f"track.json schema_version 无效：{current}")
     if data.get("status") != "candidate":
         raise SystemExit(f"track.json status 必须为 candidate：{current}")
+    source_mode = data.get("source_mode")
     inherits = data.get("inherits")
+    if source_mode == "self-contained":
+        if inherits not in {None, ""}:
+            raise SystemExit(f"self-contained candidate 不得设置 inherits：{current}")
+        break
+    if source_mode not in {None, "inherited"}:
+        raise SystemExit(f"未知 candidate source_mode：{source_mode!r}")
     if not isinstance(inherits, str) or not inherits.strip():
-        raise SystemExit(f"track.json inherits 无效：{current}")
+        raise SystemExit(f"继承型 candidate 的 inherits 无效：{current}")
     current = (current / inherits).resolve()
     try:
         current.relative_to(root)

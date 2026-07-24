@@ -4,6 +4,6 @@
   "status": "candidate",
   "state": "workspace-created",
   "verified": false,
-  "inherits": "../dev-v1.2.2",
-  "notes": "Bootstrap candidate for the first v0.12 stable migration. The workflow persists actual compatibility results to migration/v1.3.0 on failure and solidifies stable-v1.3.0 on success."
+  "source_mode": "self-contained",
+  "notes": "Active stable maintenance track for PalPanel v1.3.0. Source patches and build inputs live in this directory; the archived dev-v1.2.2 track is not consulted by validation, build, or release workflows."
 }

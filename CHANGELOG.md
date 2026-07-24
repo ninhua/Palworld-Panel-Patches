@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.12.3
+
+### Fixed
+
+- 移除活动链路对 `dev-v1.2.2` 的依赖；`candidate-v1.3.0` 改为拥有 source、build、manifest 和许可文件的自包含稳定维护轨道。
+- `validate-all.sh` 不再硬编码执行 `dev-v1.2.2/tests`，改为执行稳定自动化的 active-track 构建回归。
+- 仓库 validator 不再从 `dev-v1.2.2/source` 读取补丁契约，并明确拒绝 active candidate 继续使用 `inherits`。
+- 退役旧的 dev 构建和 dev Release workflows，避免稳定维护期间继续触发 dev 通道。
+
+### Migration
+
+- 升级脚本将现有历史补丁、构建脚本和许可文件一次性复制到 `candidate-v1.3.0`，随后所有构建和校验只读取该目录。
+- `dev-v1.2.2` 目录可继续作为不可变历史归档存在，但不再是任何自动化入口。
+
 ## v0.12.2
 
 ### Fixed
