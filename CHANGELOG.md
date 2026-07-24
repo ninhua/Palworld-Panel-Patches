@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.12.15
+
+### Fixed
+
+- 新增 `0020-fix-audit-response-dialog-portal.patch`。
+- 操作审计响应详情改为通过 React Portal 挂载到 `document.body`，不再位于 `#app-main` 的滚动、`isolation` 和页面进入 `transform` 上下文内。
+- 修复点击审计记录后只出现弹窗大框、记录元数据和完整响应内容被裁剪或错位的问题。
+- 复用 PalPanel 现有 `pp-dialog-backdrop` / `pp-dialog-panel` 样式并提升弹窗层级；响应区域增加稳定的最小高度和动态视口滚动边界。
+- 与 v0.12.14 的 GitHub API 限额修复共同进入仍未发布的 stable patch `0.8.6`。
+
+### Validation
+
+- `0020` 以 `0017` 生成的 `AuditLogs.tsx` 为精确基线；`0018` 与 `0019` 不修改该文件，因此在完整链中可稳定应用。
+- 保留审计 `message` 字段、JSON 格式化、复制回退、Esc/遮罩关闭及现有后端数据契约，不新增敏感数据采集。
+
 ## v0.12.14
 
 ### Fixed

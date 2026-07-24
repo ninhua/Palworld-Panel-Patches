@@ -38,3 +38,9 @@ networks. It reads the repository's released and verified stable workspace from
 `raw.githubusercontent.com` first, constructs deterministic Release asset URLs,
 and only falls back to the GitHub REST API. It also accepts the deployment token
 aliases used by the one-click launcher.
+
+Patch `0020` renders the audit response detail dialog through a React portal
+attached to `document.body`. This keeps the fixed overlay outside `#app-main`'s
+scroll, isolation and page-enter transform context, preventing the visible
+empty-frame failure while preserving response metadata, formatting and copy
+behavior.

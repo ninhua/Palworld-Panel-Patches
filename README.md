@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.14`
+仓库版本：`v0.12.15`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -66,6 +66,7 @@ player-presence-history（候选可选功能，迁移失败时不阻断 stable R
 - 点击桌面表格行或移动端卡片打开响应详情弹窗；
 - 详情展示记录 ID、时间、操作者、角色、动作、对象、状态、来源 IP 和完整审计响应，JSON 响应自动格式化；
 - 支持 Enter/空格打开、Esc/遮罩关闭，并支持复制响应；HTTP 页面使用兼容复制回退；
+- 详情弹窗通过 `document.body` Portal 渲染，避免 `#app-main` 的滚动、隔离和页面动画上下文裁剪弹窗内容；
 - 失败响应使用醒目样式，无响应详情时显示明确占位；
 - 复用后端现有审计 `message` 字段，不保存未过滤的完整 HTTP 响应体，不扩大敏感数据记录范围。
 
@@ -235,6 +236,13 @@ GET /api/bases/{id}/feed-boxes
 - 继续对 manifest、SHA256SUMS 和补丁二进制执行原有完整校验；
 - REST API 保留为回退路径，并兼容一键部署脚本使用的补丁 GitHub Token 变量。
 
+`0020-fix-audit-response-dialog-portal.patch` 修复操作审计响应详情弹窗：
+
+- 使用 React Portal 将弹窗挂载到 `document.body`；
+- 避免 `#app-main` 的滚动容器、`isolation` 与页面进入动画 `transform` 改变 fixed 弹窗的包含块和堆叠上下文；
+- 复用 PalPanel 现有弹窗样式并提升层级；
+- 保留记录元数据、完整响应、JSON 格式化、复制和键盘关闭行为。
+
 ## 补丁结构
 
 当前活动轨道：
@@ -263,6 +271,7 @@ projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/
 │   ├── 0017-add-audit-log-response-detail-dialog.patch
 │   ├── 0018-add-player-presence-history.patch
 │   ├── 0019-avoid-github-api-rate-limit.patch
+│   ├── 0020-fix-audit-response-dialog-portal.patch
 │   └── SHA256SUMS
 ├── build/
 │   ├── build.sh
