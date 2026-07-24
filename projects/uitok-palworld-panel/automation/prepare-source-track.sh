@@ -231,6 +231,68 @@ previous_target="${previous_values[0]}"
 previous_patch="${previous_values[1]}"
 previous_features_json="${previous_values[2]}"
 
+bootstrap_target="$(
+python3 - "${bootstrap}/track.json" <<'PY'
+from pathlib import Path
+import json, re, sys
+path = Path(sys.argv[1])
+if not path.is_file():
+    print("")
+    raise SystemExit(0)
+data = json.loads(path.read_text(encoding="utf-8"))
+target = data.get("target_version")
+if not isinstance(target, str) or not re.fullmatch(r"v\d+\.\d+\.\d+", target):
+    raise SystemExit("bootstrap track.target_version 格式错误")
+print(target)
+PY
+)"
+
+use_bootstrap="$(
+python3 - "${bootstrap_target}" "${previous_target}" <<'PY'
+import re, sys
+
+def parse(value: str) -> tuple[int, int, int]:
+    match = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)", value)
+    if not match:
+        raise SystemExit(f"非法版本：{value}")
+    return tuple(map(int, match.groups()))
+
+print("true" if sys.argv[1] and parse(sys.argv[1]) > parse(sys.argv[2]) else "false")
+PY
+)"
+if [[ "${use_bootstrap}" == "true" ]]; then
+    copy_track "${bootstrap}"
+    finalize_track
+    python3 - \
+        "${output}/derivation.json" \
+        "${bootstrap_requested}" \
+        "${bootstrap}" \
+        "${stable_patch_version}" \
+        "${previous_tag}" \
+        "${previous_target}" <<'PY'
+from pathlib import Path
+import json, sys
+output, requested, resolved, patch, previous_tag, previous_target = sys.argv[1:]
+payload = {
+    "schema_version": 2,
+    "mode": "bootstrap-track",
+    "source_track": requested,
+    "source_track_base": resolved,
+    "derived_from_release": None,
+    "derived_from_target_version": None,
+    "derived_from_patch_version": None,
+    "derived_source_package": None,
+    "release_patch_version": patch,
+    "previous_release_considered": previous_tag,
+    "previous_target_considered": previous_target,
+    "selection_reason": "bootstrap-target-newer-than-previous-stable",
+}
+Path(output).write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+PY
+    echo "Prepared newer bootstrap source track instead of ${previous_tag}: ${output}"
+    exit 0
+fi
+
 source_package="$(find "${previous_dir}" -maxdepth 1 -type f -name '*_source.tar.gz' -printf '%f\n' | LC_ALL=C sort | tail -n1)"
 embedded_track=""
 if [[ -n "${source_package}" ]]; then

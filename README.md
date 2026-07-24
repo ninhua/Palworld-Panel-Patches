@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.7`
+仓库版本：`v0.12.8`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -11,7 +11,7 @@
 上游项目：uitok/palworld-panel
 当前维护目标：v1.3.0
 bootstrap 源轨道：patches/bootstrap-v1.3.0
-稳定补丁版本：0.8.1
+稳定补丁版本：0.8.2
 候选状态：candidate / 未发布前 verified=false
 ```
 
@@ -164,7 +164,7 @@ GET /api/bases/{id}/feed-boxes
 当前活动轨道：
 
 ```text
-projects/uitok-palworld-panel/patches/candidate-v1.3.0/
+projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/
 ├── track.json
 ├── manifest.template.json
 ├── source/
@@ -180,6 +180,7 @@ projects/uitok-palworld-panel/patches/candidate-v1.3.0/
 │   ├── 0010-fix-missing-base-worker-handler.patch
 │   ├── 0011-allow-http-service-endpoints.patch
 │   ├── 0012-restore-ai-translation-net-import.patch
+│   ├── 0013-fix-player-annotation-online-resolution.patch
 │   └── SHA256SUMS
 ├── build/
 │   ├── build.sh
@@ -188,7 +189,7 @@ projects/uitok-palworld-panel/patches/candidate-v1.3.0/
 └── LICENSE-NOTICE.md
 ```
 
-该目录是自包含的 v1.3.0 stable candidate。构建脚本按文件名顺序应用全部
+该目录是自包含且不可变的 v1.3.0 stable bootstrap。构建脚本按文件名顺序应用全部
 `source/*.patch`，先校验 `source/SHA256SUMS`，再以官方 `v1.3.0` 源码执行
 迁移、检查点编译和 clean-room 复验。
 
@@ -231,8 +232,8 @@ bash common/scripts/validate-repository.sh
 
 ```text
 目标上游：v1.3.0
-稳定补丁版本：0.8.1
-预期 Release：uitok-stable-v1.3.0-p0.8.1
+稳定补丁版本：0.8.2
+预期 Release：uitok-stable-v1.3.0-p0.8.2
 ```
 
 `manifest.files["bin/palpanel"].original_sha256` 现在直接取自上游正式 Release
@@ -260,7 +261,7 @@ detected
 核心规则：
 
 - 为目标版本创建 `candidate-vX.Y.Z` 工作区；
-- 从最新且更旧的 verified stable Release 导入补丁链，首次 stable 才使用 bootstrap；
+- 当 bootstrap 目标高于上一个 verified stable Release 时使用 bootstrap；否则从最新且更旧的 stable Release 导入补丁链；
 - 按补丁顺序记录 `compatible`、`adapted`、`incompatible`、`blocked`、`superseded`；
 - 任一必需功能失败即禁止 Release，并把 candidate 工作区写入 `migration/vX.Y.Z` 分支；
 - 可用补丁生成一个 merged patch，再在全新的官方源码上只应用 merged patch 完整复验；

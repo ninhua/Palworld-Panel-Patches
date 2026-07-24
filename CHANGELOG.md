@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.12.8
+
+### Fixed
+
+- 修复服务器玩家列表包含实时在线玩家、但该玩家尚未进入存档索引时，保存或清除玩家备注返回 `player_not_found` / `player not found`。
+- 玩家备注目标解析现在与玩家列表和玩家详情使用相同的 `playersForView` 合并视图，可按 PlayerUID 或 SteamID 识别仅存在于实时在线数据中的玩家。
+- 增加在线但未进入存档索引玩家的回归测试；备注先按 SteamID 保存，玩家后续进入存档后仍可读取。
+- 同目标修正版稳定补丁版本提升为 `0.8.2`，预期 Release 为 `uitok-stable-v1.3.0-p0.8.2`。
+
+### Release source selection
+
+- 当仓库 bootstrap 轨道目标版本高于上一个 stable Release 的目标版本时，优先使用 bootstrap 轨道，确保同目标修正补丁进入构建。
+- 当 bootstrap 目标与上一个 stable Release 相同或更旧时，继续从上一个 verified stable Release 派生，保持后续上游升级链路不变。
+
 ## v0.12.7
 
 ### Fixed

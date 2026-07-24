@@ -76,4 +76,16 @@ test -s "${work}/derived-output/source/0002.patch"
 test ! -e "${work}/derived-output/source/0001.patch"
 grep -Fq 'previous-stable-release' "${work}/derived-output/derivation.json"
 
+# A repository bootstrap targeting a newer upstream version than the previous
+# stable Release is authoritative. This is how same-target correction patches
+# enter a rebuilt v1.3.0 Release instead of being dropped by v1.2.3 derivation.
+cat >"${candidate}/track.json" <<'JSON'
+{"schema_version":2,"target_version":"v1.3.0","status":"candidate","source_mode":"self-contained"}
+JSON
+"${automation}/prepare-source-track.sh" \
+  "${work}/newer-bootstrap-output" "${candidate}" "${release}" "uitok-stable-v1.2.3-p0.8.1"
+test -s "${work}/newer-bootstrap-output/source/0001.patch"
+test ! -e "${work}/newer-bootstrap-output/source/0002.patch"
+grep -Fq 'bootstrap-target-newer-than-previous-stable' "${work}/newer-bootstrap-output/derivation.json"
+
 echo "prepare-source-track v2 regression tests passed."

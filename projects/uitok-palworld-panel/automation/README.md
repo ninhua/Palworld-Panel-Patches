@@ -40,7 +40,7 @@ candidate-vX.Y.Z/
 
 1. `select-latest-version.py` 选择最高正式 tag。
 2. `select-previous-stable-release.py` 只选择目标版本之前最新的 verified stable Release。
-3. `prepare-source-track.sh` 从新版源码包内的 `.palpatch/source-track` 导入补丁链；首次 stable 或 legacy 迁移才使用 bootstrap/旧 merged patch。
+3. `prepare-source-track.sh` 比较 bootstrap 与上一个 stable 的目标版本：bootstrap 更新时优先采用仓库补丁链，否则从源码包内 `.palpatch/source-track` 派生；legacy Release 仍支持旧 merged patch。
 4. `migrate-patch-workspace.py` 按字典序逐补丁处理，记录：
    - `compatible`
    - `adapted`
