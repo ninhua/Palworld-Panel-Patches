@@ -1,19 +1,21 @@
-# Upgrade v0.12.10 → v0.12.11
+# Upgrade v0.12.11 → v0.12.12
 
-本增量包修复 stable build 在 `clean-room-go-tests` 阶段失败的问题。
+本增量包增加操作审计响应详情弹窗，并将 stable patch version 提升到 `0.8.5`。
 
-根因是 `0014-add-panel-patch-hot-update.patch` 注册了三个新 API 路由，但没有把它们加入
-`docs/openapi.yaml`。上游路由契约测试会逐项比对 Gin 路由与 OpenAPI operation，因此全量
-Go 测试失败。
+新增 `0017-add-audit-log-response-detail-dialog.patch`：
 
-本次新增 `0016-fix-panel-patch-update-openapi-contract.patch`，补齐 OpenAPI 声明并增加显式路由断言。
-此前 `0.8.4` Release 未创建，所以 stable patch version 保持 `0.8.4`。
+- 点击桌面操作审计表格行或移动端卡片查看完整响应；
+- 显示记录 ID、时间、操作者、角色、动作、对象、状态和来源 IP；
+- 完整响应继续读取后端已脱敏的 `message` 字段，JSON 内容自动格式化；
+- 支持 Enter/空格打开、Esc 或遮罩关闭；
+- 支持复制响应，并兼容非 HTTPS 面板页面；
+- 不记录未过滤的完整 HTTP 响应体，不修改审计数据库结构。
 
 ## 覆盖
 
 ```bash
 cd /path/to/Palworld-Panel-Patches
-unzip -o Palworld-Panel-Patches-overlay-v0.12.10-to-v0.12.11.zip -d .
+unzip -o Palworld-Panel-Patches-overlay-v0.12.11-to-v0.12.12.zip -d .
 ```
 
 ## 验证与提交
@@ -23,9 +25,9 @@ python3 -m pip install -r requirements-ci.txt
 bash common/scripts/validate-all.sh
 
 git add -A
-git commit -m "v0.12.11: fix patch update OpenAPI contract"
+git commit -m "v0.12.12: add audit response detail dialog"
 git push origin main
 ```
 
-随后重新运行 `Auto release uitok stable patch`，目标版本填写 `v1.3.0`。
-预期 Release tag 仍为 `uitok-stable-v1.3.0-p0.8.4`。
+随后运行 `Auto release uitok stable patch`，目标版本填写 `v1.3.0`。
+预期 Release tag 为 `uitok-stable-v1.3.0-p0.8.5`。

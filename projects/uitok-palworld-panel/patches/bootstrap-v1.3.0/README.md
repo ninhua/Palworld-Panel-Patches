@@ -19,3 +19,11 @@ retaining a verified rollback backup.
 Patch `0015` adds the `audit-log-response-display` feature. It exposes the
 existing audit `message` response summary in desktop tables and mobile cards
 without storing raw response bodies or additional sensitive data.
+
+Patch `0016` restores the OpenAPI contract for the three patch-update routes so
+the upstream route-contract test passes in clean-room verification.
+
+Patch `0017` extends `audit-log-response-display` with a click-through response
+detail dialog for desktop rows and mobile cards. It displays the complete
+already-redacted audit message and record metadata, pretty-prints JSON, supports keyboard controls
+and copying on secure or HTTP pages, and does not collect raw HTTP bodies.

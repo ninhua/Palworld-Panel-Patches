@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.11`
+仓库版本：`v0.12.12`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -11,7 +11,7 @@
 上游项目：uitok/palworld-panel
 当前维护目标：v1.3.0
 bootstrap 源轨道：patches/bootstrap-v1.3.0
-稳定补丁版本：0.8.4
+稳定补丁版本：0.8.5
 候选状态：candidate / 未发布前 verified=false
 ```
 
@@ -50,11 +50,12 @@ audit-log-response-display
 
 `audit-log-response-display` 提供：
 
-- 操作审计桌面表格增加“响应”列；
-- 移动端操作卡片显示响应摘要；
-- 失败响应使用醒目样式显示，便于定位错误；
-- 无响应摘要时显示明确占位；
-- 复用后端现有审计 `message` 字段，不保存完整响应体，不扩大敏感数据记录范围。
+- 操作审计桌面表格增加“响应”列，移动端操作卡片显示响应摘要；
+- 点击桌面表格行或移动端卡片打开响应详情弹窗；
+- 详情展示记录 ID、时间、操作者、角色、动作、对象、状态、来源 IP 和完整审计响应，JSON 响应自动格式化；
+- 支持 Enter/空格打开、Esc/遮罩关闭，并支持复制响应；HTTP 页面使用兼容复制回退；
+- 失败响应使用醒目样式，无响应详情时显示明确占位；
+- 复用后端现有审计 `message` 字段，不保存未过滤的完整 HTTP 响应体，不扩大敏感数据记录范围。
 
 `base-custom-names` 提供：
 
@@ -196,6 +197,13 @@ GET /api/bases/{id}/feed-boxes
 - 修复 clean-room `go test -p=1 ./...` 报出的 `API route is missing from OpenAPI`；
 - stable patch version 保持 `0.8.4`，因为失败运行没有创建 immutable Release。
 
+`0017-add-audit-log-response-detail-dialog.patch` 增强 `audit-log-response-display`：
+
+- 审计列表行和移动端卡片都可打开详情弹窗；
+- 完整展示后端已脱敏的 `message`，并列出审计上下文；
+- 增加键盘操作、滚动锁定、遮罩关闭和复制响应；
+- 不新增后端响应体采集或数据库字段。
+
 ## 补丁结构
 
 当前活动轨道：
@@ -221,6 +229,7 @@ projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/
 │   ├── 0014-add-panel-patch-hot-update.patch
 │   ├── 0015-add-audit-log-response-display.patch
 │   ├── 0016-fix-panel-patch-update-openapi-contract.patch
+│   ├── 0017-add-audit-log-response-detail-dialog.patch
 │   └── SHA256SUMS
 ├── build/
 │   ├── build.sh
@@ -275,8 +284,8 @@ bash common/scripts/validate-repository.sh
 
 ```text
 目标上游：v1.3.0
-稳定补丁版本：0.8.4
-预期 Release：uitok-stable-v1.3.0-p0.8.4
+稳定补丁版本：0.8.5
+预期 Release：uitok-stable-v1.3.0-p0.8.5
 ```
 
 `manifest.files["bin/palpanel"].original_sha256` 现在直接取自上游正式 Release

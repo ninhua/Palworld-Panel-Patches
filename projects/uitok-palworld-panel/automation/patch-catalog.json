@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "notes": "Patch ordering remains lexical. Dependencies describe hard prerequisites. validation_checkpoint=false keeps cumulative source state until a later corrective patch closes the group; 0008/0009 are validated after 0010, and 0011 is validated after 0012. 0013 fixes player annotation lookup for online-only players. 0014 adds verified, exact-version panel patch hot update through the existing job queue; 0015 displays the existing audit response summary in desktop and mobile operation logs.",
+  "notes": "Patch ordering remains lexical. Dependencies describe hard prerequisites. validation_checkpoint=false keeps cumulative source state until a later corrective patch closes the group; 0008/0009 are validated after 0010, and 0011 is validated after 0012. 0013 fixes player annotation lookup for online-only players. 0014 adds verified, exact-version panel patch hot update through the existing job queue; 0015 displays the existing audit response summary in desktop and mobile operation logs; 0016 restores the patch-update OpenAPI contract, and 0017 adds click-through audit response details without expanding stored response data.",
   "patches": [
     {
       "file": "0001-add-patch-info-api.patch",
@@ -129,6 +129,14 @@
       "feature": "panel-patch-hot-update",
       "depends_on": [
         "0014-add-panel-patch-hot-update.patch"
+      ],
+      "validation_checkpoint": true
+    },
+    {
+      "file": "0017-add-audit-log-response-detail-dialog.patch",
+      "feature": "audit-log-response-display",
+      "depends_on": [
+        "0015-add-audit-log-response-display.patch"
       ],
       "validation_checkpoint": true
     }

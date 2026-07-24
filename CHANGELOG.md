@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.12.12
+
+### Added
+
+- 新增 `0017-add-audit-log-response-detail-dialog.patch`，继续增强 `audit-log-response-display`。
+- 操作审计桌面表格行和移动端卡片现在可点击打开响应详情弹窗。
+- 详情展示记录 ID、时间、操作者、角色、动作、对象、状态、来源 IP 和完整审计响应；JSON 内容自动格式化。
+- 支持键盘打开与关闭、遮罩关闭、页面滚动锁定和响应复制；HTTP 页面使用兼容复制回退。
+- 仅展示后端已经脱敏并保存的 `message`，不采集未过滤的完整 HTTP 响应体，不修改审计数据库结构。
+- stable patch version 提升到 `0.8.5`，预期 Release 为 `uitok-stable-v1.3.0-p0.8.5`。
+
+### Validation
+
+- 增量补丁以 `0015` 产出的 `AuditLogs.tsx` 为精确基线生成。
+- 增加 TypeScript TSX 语法转译检查、补丁哈希校验和 clean-room 迁移回归。
+
 ## v0.12.11
 
 ### Fixed
