@@ -1,210 +1,90 @@
-# Stable release automation
+# Stable patch migration automation
 
-该目录负责在上游 `uitok/palworld-panel` 发布正式稳定版后，自动生成对应的稳定补丁 Release。
+该目录维护 `uitok/palworld-panel` 正式 Release 的补丁迁移、验证和发布。
 
-## 派生规则
-
-稳定补丁按以下顺序选择来源：
+## 状态机
 
 ```text
-1. 查找当前补丁仓库中目标版本之前、版本最高的已发布 stable Release
-2. 同一上游版本存在多个补丁版本时，选择补丁版本最高者
-3. 下载该 Release 的 manifest、build-metadata、SHA256SUMS 和合并补丁
-4. 校验 Release tag、target_version、patch_version、exact/verified 与合并补丁 SHA-256
-5. 将该合并补丁应用到新的官方稳定版源码
-6. 重新定向 PatchInfo、OpenAPI 和构建版本到新版本
-7. 完整测试、构建和冒烟通过后发布新 stable Release
+detected
+→ workspace-created
+→ patches-imported
+→ testing
+├─ blocked
+└─ merged
+   → releasable
+   → released
 ```
 
-只有第一次没有任何更早的 stable Release 时，才使用 `config.json` 中的：
+工作区文件：
 
 ```text
-bootstrap_source_track
+candidate-vX.Y.Z/
+├── workspace.json
+├── manifest.template.json
+├── derivation.json
+├── compatibility-report.json
+├── source-chain/
+├── active-source/
+├── merged/
+└── reports/
 ```
 
-当前首次迁移源是旧 dev 补丁轨道。首次稳定 Release 发布后，后续上游稳定版本不再从 dev 轨道派生。
+`source-chain` 保留导入的完整链；`active-source` 只包含进入最终构建的补丁；`merged` 是 clean-room 复验的唯一输入。
 
-## 行为
+## 上游更新流程
+
+1. `select-latest-version.py` 选择最高正式 tag。
+2. `select-previous-stable-release.py` 只选择目标版本之前最新的 verified stable Release。
+3. `prepare-source-track.sh` 从新版源码包内的 `.palpatch/source-track` 导入补丁链；首次 stable 或 legacy 迁移才使用 bootstrap/旧 merged patch。
+4. `migrate-patch-workspace.py` 按字典序逐补丁处理，记录：
+   - `compatible`
+   - `adapted`
+   - `incompatible`
+   - `blocked`
+   - `superseded`
+5. `build-stable-release.sh` 生成 merged patch，并在全新的官方源码副本上仅应用该 merged patch。
+6. clean-room 完整执行：gofmt、OpenAPI 生成、Go 测试、前端 lint/Vitest/build、Linux amd64 构建、官方二进制校验和 `/api/patch/info` smoke test。
+7. `persist-workspace.sh`：
+   - 失败 candidate 写入 `migration/vX.Y.Z`；
+   - 成功 stable 写入 main 的 `stable-vX.Y.Z`。
+8. GitHub Release 使用显式五文件白名单。
+
+## 发布阻断
+
+以下任一条件成立时禁止发布：
+
+- 必需补丁或上一个 stable 已有功能不可用；
+- 补丁 SHA-256 不匹配；
+- 依赖补丁失败；
+- merged patch 无法在干净官方源码应用；
+- Go、前端、构建或 smoke test 失败；
+- manifest、运行时 feature 或 Release 文件白名单不一致。
+
+失败不会创建 PR、Issue 或 Release。
+
+## Axios 测试响应适配
+
+PalPanel v1.3.0 仅在模拟响应同时包含 `data` 与顶层 `status` 时将对象识别为 AxiosResponse。
+
+`adapt-frontend-api-tests.py`：
+
+- 解析 `apiClient` spy 的对象字面量边界；
+- 区分顶层与嵌套 `status`；
+- 只为缺失顶层 `status` 的 mock 补充 `status: 200`；
+- 清理旧适配器紧邻 `data` 注入的重复默认状态；
+- 对无法安全修复的重复属性直接失败；
+- 重复执行保持幂等。
+
+## Release 资产
+
+Release 顶层固定为：
 
 ```text
-每天检查一次上游正式 Release
-→ 选择最高 vMAJOR.MINOR.PATCH
-→ 检查显式不兼容列表
-→ 查找最高的上一个已发布稳定补丁
-→ 校验并准备稳定版派生源轨道
-→ 拉取新的官方稳定标签
-→ 应用上一个稳定 Release 的合并补丁
-→ 将 PatchInfo 重定向到目标稳定版本
-→ 重新生成 OpenAPI TypeScript 契约
-→ 执行 Go 测试、前端 lint、Vitest、前端构建、嵌入式二进制构建和冒烟测试
-→ 生成 manifest、derivation、源码包、安装包和 SHA256SUMS
-→ 直接创建稳定 GitHub Release
+binary package
+source package
+manifest.json
+compatibility-report.json
+SHA256SUMS
 ```
 
-不会创建 PR，也不会创建 Issue。任何派生校验、补丁应用、测试、构建或冒烟失败都会使 Workflow 失败；失败时不生成 Release，因此生产启动脚本不会发现可安装版本。
-
-## 调度
-
-Workflow：
-
-```text
-.github/workflows/auto-release-uitok-stable.yml
-```
-
-Cron：
-
-```text
-17 1 * * *
-```
-
-即每天执行一次。也可通过 `workflow_dispatch` 手动指定版本。
-
-## 版本匹配
-
-稳定补丁安装按以下字段判断：
-
-```text
-compatibility.mode == exact
-compatibility.target_version == 当前 PalPanel 稳定版本
-compatibility.verified == true
-```
-
-`upstream.commit` 只用于源码追踪，不参与运行时安装匹配。
-
-迁移到新的上游稳定版但功能集未变化时，补丁功能版本保持不变：
-
-```text
-uitok-stable-v1.3.0-p0.8.1
-→ uitok-stable-v1.4.0-p0.8.1
-```
-
-每个稳定 Release 都包含：
-
-```text
-derivation.json
-```
-
-用于记录首次迁移源，或上一个稳定 Release tag、目标版本、补丁版本及合并补丁 SHA-256。
-
-## 明确不兼容
-
-需要人工阻止某个上游版本时，编辑：
-
-```text
-incompatible-versions.json
-```
-
-命中后 Workflow 正常跳过，不创建 PR、Issue 或 Release。
-
-## 已知测试上下文漂移
-
-上游稳定版调整 `backend/internal/pallocalize/localize_test.go` 时，旧补丁中的测试 hunk 可能无法直接应用。
-
-构建使用 `apply-source-patch.sh`：
-
-```text
-完整补丁可应用
-→ 正常应用
-
-只有 pallocalize/localize_test.go 冲突
-且补丁内容仍是 ItemIcon / ContainerName 测试
-且排除该路径后其余补丁可完整应用
-→ 排除旧测试 hunk
-→ 生成独立 patch_storage_localize_test.go
-
-任何其他情况
-→ 构建失败，不创建 Release
-```
-
-该规则不会忽略核心实现冲突，也不会使用 `.rej` 文件继续构建。
-
-
-## 官方二进制安装基线
-
-稳定补丁 manifest 中的：
-
-```text
-files.bin/palpanel.original_sha256
-```
-
-必须对应上游正式 GitHub Release 的 Linux 包内 `bin/palpanel`，不得使用本仓库从源码
-重新构建的未打补丁二进制代替。`resolve-official-palpanel.sh` 会：
-
-```text
-下载上游 Release SHA256SUMS 和 Linux 归档
-→ 校验归档 SHA-256
-→ 拒绝不安全路径、链接和特殊文件
-→ 校验归档内 checksums.txt
-→ 执行 palpanel --version 验证目标版本
-→ 输出官方二进制和 official-release.json
-```
-
-源码重建二进制仍用于编译验证，其 SHA-256 只记录为：
-
-```text
-build-metadata.json.rebuilt_original_palpanel_sha256
-```
-
-## stable 补丁发布版本
-
-`config.json` 的 `stable_patch_version` 控制本次 stable Release 补丁版本。修复发布资产或
-安装契约但功能集合不变时，也必须递增该版本。例如：
-
-```text
-uitok-stable-v1.3.0-p0.8.0  # 错误的官方 SHA 基线
-uitok-stable-v1.3.0-p0.8.1  # 修正后的重新发布
-```
-
-同一 PalPanel 版本下，一键部署选择补丁版本最高的 Release。
-
-## 前端 API 测试响应夹具适配
-
-PalPanel v1.3.0 的 `handleRequest` 仅在模拟响应同时包含 `data` 与 `status` 时将其识别为
-AxiosResponse。旧补丁链中的部分 Vitest 用例只返回 `data`，导致响应 envelope 未解包，映射器
-收到错误层级并产生 `Unknown Base`、空仓库或空详情等回退值。
-
-构建在应用补丁和重定向版本后执行：
-
-```text
-adapt-frontend-api-tests.py
-```
-
-该适配器只处理 `frontend/src/**/*.test.ts(x)` 中形如：
-
-```ts
-vi.spyOn(apiClient, '...').mockResolvedValue({
-  data: ...
-})
-```
-
-的 Axios spy mock。适配器会解析 mock 对象的顶层属性，只在存在顶层 `data` 且缺少顶层
-`status` 时补充 `status: 200`。已有 `status` 无论位于 `data` 前方还是后方都不会重复插入；
-嵌套响应数据中的 `status` 不算 Axios 顶层状态。它不会修改生产 API 代码，也不会修改普通
-`vi.fn()` mock；重复执行保持幂等。任何测试仍失败时，Workflow 继续按失败处理，不创建 Release。
-
-## 当前维护目标
-
-`config.json` 使用：
-
-```json
-{
-  "maintenance_target_version": "v1.3.0",
-  "bootstrap_source_track": "projects/uitok-palworld-panel/patches/candidate-v1.3.0"
-}
-```
-
-候选轨道通过 `track.json` 继承历史补丁源，但 Workflow 检出的实际上游源码必须是官方
-`v1.3.0`。候选轨道不得标记为 verified；只有最终 Release manifest 可以在全套检查通过后
-标记 `exact / verified=true`。
-
-## Release 顶层资产
-
-Release 顶层仅保留安装、派生和校验所需文件。不得再把每个 `000x-*.patch` 单独上传。
-完整补丁链保存在安装包内部的：
-
-```text
-source/source-chain/
-```
-
-并同时包含在完整 patched source 包中。顶层只保留跨版本派生需要的合并补丁
-`stable-vX.Y.Z-patch-A.B.C.patch`。
+完整 source-chain、merged patch、workspace、derivation、build metadata、official-release metadata 和日志保留在包内。

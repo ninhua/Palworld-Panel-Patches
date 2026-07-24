@@ -1,13 +1,11 @@
-# PalPanel v1.3.0 candidate track
+# PalPanel v1.3.0 bootstrap candidate
 
-当前补丁维护目标：`PalPanel v1.3.0`。
+此目录仅定义 v0.12 更新链路的首次候选入口：
 
-此目录是显式候选轨道，不表示已经通过稳定版验证：
+- 目标：官方 `v1.3.0` tag；
+- 历史补丁来源：`../dev-v1.2.2`；
+- 当前状态不代表验证成功；
+- 失败结果写入 `migration/v1.3.0` 分支；
+- clean-room 全部通过后固化为 main 中的 `stable-v1.3.0`。
 
-- `target_version`: `v1.3.0`
-- `status`: `candidate`
-- 历史源码补丁链：继承 `../dev-v1.2.2`
-- 实际应用基线：GitHub Actions 检出的官方 `uitok/palworld-panel` `v1.3.0` tag
-- 发布条件：Go 测试、前端 lint/Vitest/build、官方二进制校验和运行时 smoke test 全部通过
-
-首次成功发布后，后续上游版本迁移仍从最新的较旧 stable Release 派生，而不是长期从旧 dev 轨道派生。
+后续上游版本从最新且更旧的 stable Release 源码包派生，不再回到 dev 轨道。

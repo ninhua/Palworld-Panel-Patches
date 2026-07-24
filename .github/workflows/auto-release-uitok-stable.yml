@@ -20,8 +20,7 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
-
+    timeout-minutes: 120
     env:
       AUTOMATION_DIR: projects/uitok-palworld-panel/automation
 
@@ -29,22 +28,28 @@ jobs:
       - name: Checkout patch repository
         uses: actions/checkout@v6
         with:
-          persist-credentials: false
+          fetch-depth: 0
+          persist-credentials: true
 
       - name: Read automation configuration
         id: config
         shell: bash
         run: |
           set -Eeuo pipefail
-          python3 - "${AUTOMATION_DIR}/config.json" >> "${GITHUB_OUTPUT}" <<'PY'
+          python3 - "${AUTOMATION_DIR}/config.json" >>"${GITHUB_OUTPUT}" <<'PY'
           from pathlib import Path
-          import json
-          import sys
-
+          import json, sys
           data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-          print(f'upstream_repository={data["upstream_repository"]}')
-          print(f'bootstrap_source_track={data["bootstrap_source_track"]}')
-          print(f'release_tag_prefix={data["release_tag_prefix"]}')
+          if data.get("schema_version") != 2:
+              raise SystemExit("automation config schema_version must be 2")
+          for key in (
+              "upstream_repository",
+              "bootstrap_source_track",
+              "release_tag_prefix",
+              "stable_patch_version",
+              "migration_branch_prefix",
+          ):
+              print(f"{key}={data[key]}")
           PY
 
       - name: Detect latest stable upstream release
@@ -56,7 +61,6 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-
           if [[ -n "${MANUAL_VERSION:-}" ]]; then
             version="$(printf '%s\n' "${MANUAL_VERSION}" | "${AUTOMATION_DIR}/select-latest-version.py")"
           else
@@ -68,11 +72,10 @@ jobs:
               "${AUTOMATION_DIR}/select-latest-version.py"
             )"
           fi
-
-          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "version=${version}" >>"${GITHUB_OUTPUT}"
           echo "检测到上游稳定版：${version}"
 
-      - name: Resolve previous stable derivation source
+      - name: Create migration source workspace
         id: source
         env:
           GH_TOKEN: ${{ github.token }}
@@ -82,8 +85,8 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          rm -rf .work/source-track .work/previous-release
-          mkdir -p .work
+          rm -rf .work
+          mkdir -p .work/previous-release
 
           previous_tag="$(
             gh api --paginate \
@@ -96,33 +99,11 @@ jobs:
           )"
 
           if [[ -n "${previous_tag}" ]]; then
-            mapfile -t previous_meta < <(
-              python3 - "${previous_tag}" "${TAG_PREFIX}" <<'PY'
-          import re, sys
-          tag, prefix = sys.argv[1:]
-          match = re.fullmatch(
-              re.escape(prefix) + r"(v\d+\.\d+(?:\.\d+)?)-p(\d+\.\d+\.\d+)",
-              tag,
-          )
-          if not match:
-              raise SystemExit(f"非法稳定 Release tag：{tag}")
-          print(match.group(1))
-          print(match.group(2))
-          PY
-            )
-            previous_target="${previous_meta[0]}"
-            previous_patch="${previous_meta[1]}"
-            merged_name="stable-${previous_target}-patch-${previous_patch}.patch"
-
-            mkdir -p .work/previous-release
+            # Download the complete previous Release. v0.12 Releases have five
+            # top-level files; legacy Releases are accepted for one-way migration.
             gh release download "${previous_tag}" \
               --repo "${GITHUB_REPOSITORY}" \
-              --dir .work/previous-release \
-              --pattern manifest.json \
-              --pattern build-metadata.json \
-              --pattern SHA256SUMS \
-              --pattern "${merged_name}"
-
+              --dir .work/previous-release
             "${AUTOMATION_DIR}/prepare-source-track.sh" \
               .work/source-track \
               "${BOOTSTRAP_SOURCE_TRACK}" \
@@ -134,37 +115,22 @@ jobs:
               "${BOOTSTRAP_SOURCE_TRACK}"
           fi
 
-          echo "source_track=.work/source-track" >> "${GITHUB_OUTPUT}"
-          echo "previous_tag=${previous_tag}" >> "${GITHUB_OUTPUT}"
+          echo "source_track=.work/source-track" >>"${GITHUB_OUTPUT}"
+          echo "previous_tag=${previous_tag}" >>"${GITHUB_OUTPUT}"
           cat .work/source-track/derivation.json
 
       - name: Resolve patch version and release tag
         id: release_meta
         env:
           TARGET_VERSION: ${{ steps.detect.outputs.version }}
-          SOURCE_TRACK: ${{ steps.source.outputs.source_track }}
+          PATCH_VERSION: ${{ steps.config.outputs.stable_patch_version }}
           TAG_PREFIX: ${{ steps.config.outputs.release_tag_prefix }}
         shell: bash
         run: |
           set -Eeuo pipefail
-          python3 - \
-            "${SOURCE_TRACK}/manifest.template.json" \
-            "${TARGET_VERSION}" \
-            "${TAG_PREFIX}" >> "${GITHUB_OUTPUT}" <<'PY'
-          from pathlib import Path
-          import json
-          import re
-          import sys
-
-          manifest_path, target, prefix = sys.argv[1:]
-          source = json.loads(Path(manifest_path).read_text(encoding="utf-8"))["patch_version"]
-          patch = source.split("-", 1)[0].split("+", 1)[0]
-          if not re.fullmatch(r"\d+\.\d+\.\d+", patch):
-              raise SystemExit(f"无法从 {source!r} 推导稳定补丁版本")
-          print(f"patch_version={patch}")
-          print(f"release_tag={prefix}{target}-p{patch}")
-          print(f"artifact_name=uitok-stable-{target}-patch-{patch}")
-          PY
+          echo "patch_version=${PATCH_VERSION}" >>"${GITHUB_OUTPUT}"
+          echo "release_tag=${TAG_PREFIX}${TARGET_VERSION}-p${PATCH_VERSION}" >>"${GITHUB_OUTPUT}"
+          echo "artifact_name=uitok-stable-${TARGET_VERSION}-patch-${PATCH_VERSION}" >>"${GITHUB_OUTPUT}"
 
       - name: Check compatibility blocklist and existing release
         id: gate
@@ -175,45 +141,54 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-
           blocked_reason="$(
-            python3 - \
-              "${AUTOMATION_DIR}/incompatible-versions.json" \
-              "${TARGET_VERSION}" <<'PY'
+            python3 - "${AUTOMATION_DIR}/incompatible-versions.json" "${TARGET_VERSION}" <<'PY'
           from pathlib import Path
-          import json
-          import sys
+          import json, sys
           data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
           print(data.get("versions", {}).get(sys.argv[2], ""))
           PY
           )"
-
           if [[ -n "${blocked_reason}" ]]; then
-            echo "skip=true" >> "${GITHUB_OUTPUT}"
-            echo "reason=explicitly-incompatible" >> "${GITHUB_OUTPUT}"
-            {
-              echo "## Stable patch skipped"
-              echo
-              echo "- Version: \`${TARGET_VERSION}\`"
-              echo "- Reason: ${blocked_reason}"
-            } >> "${GITHUB_STEP_SUMMARY}"
+            echo "skip=true" >>"${GITHUB_OUTPUT}"
+            echo "reason=explicitly-incompatible" >>"${GITHUB_OUTPUT}"
+            echo "明确阻止 ${TARGET_VERSION}: ${blocked_reason}"
             exit 0
           fi
-
-          if gh release view "${RELEASE_TAG}" \
-              --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            echo "skip=true" >> "${GITHUB_OUTPUT}"
-            echo "reason=already-released" >> "${GITHUB_OUTPUT}"
-            {
-              echo "## Stable patch already exists"
-              echo
-              echo "- Tag: \`${RELEASE_TAG}\`"
-            } >> "${GITHUB_STEP_SUMMARY}"
+          if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "skip=true" >>"${GITHUB_OUTPUT}"
+            echo "reason=already-released" >>"${GITHUB_OUTPUT}"
             exit 0
           fi
+          echo "skip=false" >>"${GITHUB_OUTPUT}"
+          echo "reason=build-required" >>"${GITHUB_OUTPUT}"
 
-          echo "skip=false" >> "${GITHUB_OUTPUT}"
-          echo "reason=build-required" >> "${GITHUB_OUTPUT}"
+      - name: Reconcile released workspace state
+        if: steps.gate.outputs.reason == 'already-released'
+        env:
+          TARGET_VERSION: ${{ steps.detect.outputs.version }}
+          RELEASE_TAG: ${{ steps.release_meta.outputs.release_tag }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          workspace="projects/uitok-palworld-panel/patches/stable-${TARGET_VERSION}"
+          if [[ -f "${workspace}/workspace.json" ]]; then
+            python3 "${AUTOMATION_DIR}/workspace-state.py" \
+              "${workspace}" released \
+              --verified true \
+              --release-tag "${RELEASE_TAG}"
+            python3 - "${workspace}/compatibility-report.json" <<'PY'
+          from pathlib import Path
+          import json, sys
+          path = Path(sys.argv[1])
+          data = json.loads(path.read_text(encoding="utf-8"))
+          data["state"] = "released"
+          data["verified"] = True
+          path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          PY
+            "${AUTOMATION_DIR}/persist-workspace.sh" stable "${workspace}" "${TARGET_VERSION}" \
+              "${{ steps.config.outputs.migration_branch_prefix }}"
+          fi
 
       - name: Checkout upstream stable source
         if: steps.gate.outputs.skip != 'true'
@@ -241,8 +216,11 @@ jobs:
           cache: npm
           cache-dependency-path: .work/upstream/frontend/package-lock.json
 
-      - name: Build and test stable patch
+      # build-stable-release invokes migrate-patch-workspace.py and then clean-room verification.
+      - name: Migrate, merge and clean-room test patches
+        id: build
         if: steps.gate.outputs.skip != 'true'
+        continue-on-error: true
         env:
           TARGET_VERSION: ${{ steps.detect.outputs.version }}
           SOURCE_TRACK: ${{ steps.source.outputs.source_track }}
@@ -255,92 +233,97 @@ jobs:
             "${TARGET_VERSION}" \
             "${SOURCE_TRACK}"
 
-      - name: Verify release files
-        if: steps.gate.outputs.skip != 'true'
+      - name: Persist blocked candidate workspace
+        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'failure'
+        env:
+          TARGET_VERSION: ${{ steps.detect.outputs.version }}
+          BRANCH_PREFIX: ${{ steps.config.outputs.migration_branch_prefix }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          workspace=".work/output/workspace/candidate-${TARGET_VERSION}"
+          if [[ ! -f "${workspace}/workspace.json" ]]; then
+            echo "构建在候选工作区创建前失败，无法持久化兼容报告。" >&2
+            exit 1
+          fi
+          "${AUTOMATION_DIR}/persist-workspace.sh" \
+            candidate "${workspace}" "${TARGET_VERSION}" "${BRANCH_PREFIX}"
+
+      - name: Fail after candidate persistence
+        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "稳定补丁迁移失败；candidate 工作区已写入 migration 分支。" >&2
+          exit 1
+
+      - name: Verify five-file release allowlist
+        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success'
         shell: bash
         run: |
           set -Eeuo pipefail
           cd .work/output/release
           sha256sum -c SHA256SUMS
           test -s manifest.json
-          test -s upstream-lock.json
-          test -s build-metadata.json
-          test -s derivation.json
-          test -s smoke-test.log
-          grep -Fq "Stable patch API smoke test passed." smoke-test.log
-
+          test -s compatibility-report.json
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 5
+          test "$(find . -maxdepth 1 -type f -name '*_linux-amd64.tar.gz' | wc -l)" -eq 1
+          test "$(find . -maxdepth 1 -type f -name '*_source.tar.gz' | wc -l)" -eq 1
           python3 - <<'PY'
           from pathlib import Path
           import json
           manifest = json.loads(Path("manifest.json").read_text(encoding="utf-8"))
+          report = json.loads(Path("compatibility-report.json").read_text(encoding="utf-8"))
           assert manifest["compatibility"]["mode"] == "exact"
           assert manifest["compatibility"]["verified"] is True
-          derivation = json.loads(Path("derivation.json").read_text(encoding="utf-8"))
-          assert derivation["mode"] in {"bootstrap-track", "previous-stable-release"}
-          metadata = json.loads(Path("build-metadata.json").read_text(encoding="utf-8"))
-          assert metadata["derivation"] == derivation
-          for key in ("binary_package", "source_package"):
-              path = Path(metadata[key])
-              assert path.is_file() and path.stat().st_size > 0, path
+          assert report["state"] == "releasable"
+          assert report["verified"] is True
           PY
 
       - name: Create release notes
-        if: steps.gate.outputs.skip != 'true'
+        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success'
+        env:
+          TARGET_VERSION: ${{ steps.detect.outputs.version }}
+          PATCH_VERSION: ${{ steps.release_meta.outputs.patch_version }}
+          PREVIOUS_TAG: ${{ steps.source.outputs.previous_tag }}
         shell: bash
         run: |
           set -Eeuo pipefail
           python3 - \
             .work/output/release/manifest.json \
-            .work/output/release/build-metadata.json \
-            .work/release-notes.md <<'PY'
+            .work/output/release/compatibility-report.json \
+            .work/release-notes.md \
+            "${PREVIOUS_TAG}" <<'PY'
           from pathlib import Path
-          import json
-          import sys
+          import json, sys
+          manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          report = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+          previous = sys.argv[4] or "bootstrap track"
+          features = "\n".join(f"- `{item}`" for item in manifest["features"])
+          counts = report.get("summary", {})
+          text = f"""## PalPanel {manifest['compatibility']['target_version']} stable patch
 
-          manifest_path, metadata_path, output_path = sys.argv[1:]
-          manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
-          metadata = json.loads(Path(metadata_path).read_text(encoding="utf-8"))
-          features = "\n".join(f"- `{value}`" for value in manifest["features"])
-          derivation = metadata["derivation"]
-          if derivation["mode"] == "previous-stable-release":
-              derived = (
-                  f"- Derived from stable Release: `{derivation['derived_from_release']}`\n"
-                  f"- Previous target: `{derivation['derived_from_target_version']}`\n"
-                  f"- Previous patch: `{derivation['derived_from_patch_version']}`"
-              )
-          else:
-              derived = "- Derived from bootstrap track: first stable migration"
-          text = f"""## PalPanel {metadata['target_version']} stable patch
-
-          This Release was generated automatically from the official stable tag.
+          Derived from: `{previous}`
 
           Compatibility:
-
-          - Target version: `{metadata['target_version']}`
-          - Patch version: `{metadata['patch_version']}`
           - Mode: `exact`
           - Verified: `true`
-          - Source commit: `{metadata['source_commit']}` (traceability only; installation matching is version-based)
-          {derived}
+          - Compatible patches: `{counts.get('compatible', 0)}`
+          - Adapted patches: `{counts.get('adapted', 0)}`
+          - Incompatible required patches: `0`
+          - Clean-room merged-patch verification: `passed`
 
           Features:
-
           {features}
 
-          For the first stable migration the workflow uses the configured bootstrap track.
-          Every later upstream stable version is derived from the newest older published stable
-          patch Release, then reapplied and fully tested against the new official source tag.
-
-          The workflow regenerated API contracts, ran Go tests, built the frontend and embedded
-          binary, executed `/api/patch/info` smoke validation, and generated SHA-256 checksums.
-
-          No Release is created when derivation, patch application, tests, build, or smoke validation fails.
+          The Release exposes only the binary package, corresponding source package,
+          manifest, compatibility report and SHA256SUMS. The complete patch chain,
+          merged patch, build metadata and logs are retained inside the packages.
           """
-          Path(output_path).write_text(text, encoding="utf-8")
+          Path(sys.argv[3]).write_text(text, encoding="utf-8")
           PY
 
-      - name: Upload stable build artifact
-        if: steps.gate.outputs.skip != 'true'
+      - name: Upload verified build artifact
+        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.release_meta.outputs.artifact_name }}
@@ -349,32 +332,72 @@ jobs:
           retention-days: 14
           compression-level: 0
 
+      - name: Persist releasable stable workspace
+        id: persist
+        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success'
+        env:
+          TARGET_VERSION: ${{ steps.detect.outputs.version }}
+          BRANCH_PREFIX: ${{ steps.config.outputs.migration_branch_prefix }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          "${AUTOMATION_DIR}/persist-workspace.sh" \
+            stable ".work/output/workspace/stable-${TARGET_VERSION}" \
+            "${TARGET_VERSION}" "${BRANCH_PREFIX}"
+
       - name: Create immutable stable Release
-        if: steps.gate.outputs.skip != 'true'
+        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release_meta.outputs.release_tag }}
           TARGET_VERSION: ${{ steps.detect.outputs.version }}
           PATCH_VERSION: ${{ steps.release_meta.outputs.patch_version }}
+          RELEASE_TARGET: ${{ steps.persist.outputs.commit }}
         shell: bash
         run: |
           set -Eeuo pipefail
-
-          if gh release view "${RELEASE_TAG}" \
-              --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            echo "Release 在构建期间已由其他任务创建：${RELEASE_TAG}" >&2
-            exit 1
-          fi
-
+          cd .work/output/release
+          binary="$(find . -maxdepth 1 -type f -name '*_linux-amd64.tar.gz' -printf '%f\n')"
+          source="$(find . -maxdepth 1 -type f -name '*_source.tar.gz' -printf '%f\n')"
           gh release create "${RELEASE_TAG}" \
-            .work/output/release/* \
-            --target "${GITHUB_SHA}" \
+            "${binary}" \
+            "${source}" \
+            manifest.json \
+            compatibility-report.json \
+            SHA256SUMS \
+            --target "${RELEASE_TARGET}" \
             --title "PalPanel ${TARGET_VERSION} stable patch ${PATCH_VERSION}" \
-            --notes-file .work/release-notes.md \
+            --notes-file ../../release-notes.md \
             --repo "${GITHUB_REPOSITORY}"
 
+      - name: Mark stable workspace released
+        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success'
+        env:
+          TARGET_VERSION: ${{ steps.detect.outputs.version }}
+          RELEASE_TAG: ${{ steps.release_meta.outputs.release_tag }}
+          BRANCH_PREFIX: ${{ steps.config.outputs.migration_branch_prefix }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          workspace=".work/output/workspace/stable-${TARGET_VERSION}"
+          python3 "${AUTOMATION_DIR}/workspace-state.py" \
+            "${workspace}" released \
+            --verified true \
+            --release-tag "${RELEASE_TAG}"
+          python3 - "${workspace}/compatibility-report.json" <<'PY'
+          from pathlib import Path
+          import json, sys
+          path = Path(sys.argv[1])
+          data = json.loads(path.read_text(encoding="utf-8"))
+          data["state"] = "released"
+          data["verified"] = True
+          path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          PY
+          "${AUTOMATION_DIR}/persist-workspace.sh" \
+            stable "${workspace}" "${TARGET_VERSION}" "${BRANCH_PREFIX}"
+
       - name: Write release summary
-        if: steps.gate.outputs.skip != 'true'
+        if: steps.gate.outputs.skip != 'true' && steps.build.outcome == 'success'
         env:
           RELEASE_TAG: ${{ steps.release_meta.outputs.release_tag }}
           TARGET_VERSION: ${{ steps.detect.outputs.version }}
@@ -387,8 +410,5 @@ jobs:
             echo "- Target: \`${TARGET_VERSION}\`"
             echo "- Patch: \`${PATCH_VERSION}\`"
             echo "- Tag: \`${RELEASE_TAG}\`"
-            echo
-            echo '```json'
-            cat .work/output/release/build-metadata.json
-            echo '```'
-          } >> "${GITHUB_STEP_SUMMARY}"
+            echo "- Release assets: 5"
+          } >>"${GITHUB_STEP_SUMMARY}"

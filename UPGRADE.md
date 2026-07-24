@@ -1,69 +1,61 @@
-# Upgrade v0.11.4 → v0.11.5
+# Upgrade v0.11.5 → v0.12.0
 
-本次升级同时处理 Run #5、PalPanel v1.3.0 维护基线和 Release 资产数量问题。
+本次升级重构 PalPanel stable 补丁更新链路，并修复 Run #5 的 TypeScript `TS1117`。
 
-## Run #5 修复
+## Run #5 根因
 
-旧适配器看到：
+旧适配器在 `vi.spyOn(apiClient, ...).mockResolvedValue({...})` 的 `data` 前直接插入：
 
 ```ts
-vi.spyOn(apiClient, 'get').mockResolvedValue({
-  data: {...},
-  status: 200,
-})
+status: 200,
 ```
 
-仍会在 `data` 前插入另一个 `status: 200`，最终触发：
+部分 PalPanel v1.3.0 上游测试已经在同一对象后部定义了顶层 `status`，因此出现重复属性。
+
+v0.12.0 会解析 mock 对象的顶层属性：
+
+- 已有顶层 `status`：不插入；
+- 只有嵌套业务字段 `status`：仍补充 Axios 顶层 `status`；
+- 检测到旧适配器紧邻 `data` 插入的重复 `status: 200`：删除注入项，保留上游状态码；
+- 无法安全判断的重复属性：在构建前明确失败，不交给 TypeScript 输出一批 TS1117。
+
+## 新更新链路
 
 ```text
-TS1117: An object literal cannot have multiple properties with the same name
+检测官方 stable tag
+→ 创建 candidate-vX.Y.Z 工作区
+→ 从最新更旧 stable Release 导入补丁链
+→ 逐补丁应用和编译检测
+→ 标记 compatible/adapted/incompatible/blocked
+→ 生成 active-source 和 merged patch
+→ 在全新官方源码上只应用 merged patch
+→ 完整测试、构建和 smoke test
+→ 固化 stable-vX.Y.Z
+→ 发布五文件 Release
 ```
 
-新适配器解析 mock 对象的顶层属性：
+失败时：
 
-- 有顶层 `data`、没有顶层 `status`：补充 `status: 200`；
-- 已有顶层 `status`：不修改，无论它在 `data` 前还是后；
-- 仅 `data` 内部存在嵌套 `status`：仍补充 Axios 顶层 `status`；
-- 重复运行：不产生任何额外修改。
+- 不创建 Release；
+- 不创建 PR 或 Issue；
+- candidate 工作区及兼容报告写入 `migration/vX.Y.Z` 分支；
+- main 和上一稳定 Release 不被覆盖。
 
-## v1.3.0 维护轨道
-
-当前配置改为：
+成功时 Release 顶层只有：
 
 ```text
-maintenance_target_version = v1.3.0
-bootstrap_source_track = projects/uitok-palworld-panel/patches/candidate-v1.3.0
+uitok-palworld-panel_stable-vX.Y.Z_patch-P_linux-amd64.tar.gz
+uitok-palworld-panel_stable-vX.Y.Z_patch-P_source.tar.gz
+manifest.json
+compatibility-report.json
+SHA256SUMS
 ```
-
-`candidate-v1.3.0` 显式代表当前维护目标。它继承旧 `dev-v1.2.2` 历史补丁链，但 Actions
-始终把补丁应用到官方 PalPanel `v1.3.0` tag 上。完整测试通过前，该目录仍是 candidate，
-不得视为 exact/verified stable。
-
-## Release 精简
-
-不再把以下文件逐个上传到 Release 顶层：
-
-```text
-0001-*.patch
-0002-*.patch
-...
-PATCH-SHA256SUMS
-```
-
-完整源补丁链仍在安装包的：
-
-```text
-source/source-chain/
-```
-
-以及完整 patched source 包中。Release 顶层继续保留跨版本派生所需的合并补丁、manifest、
-build metadata、SHA256SUMS 和安装/源码归档。
 
 ## 覆盖升级
 
 ```bash
-unzip Palworld-Panel-Patches-upgrade-v0.11.4-to-v0.11.5.zip
-cp -a Palworld-Panel-Patches-upgrade-v0.11.4-to-v0.11.5/. /path/to/Palworld-Panel-Patches/
+unzip Palworld-Panel-Patches-upgrade-v0.11.5-to-v0.12.0.zip
+cp -a Palworld-Panel-Patches-upgrade-v0.11.5-to-v0.12.0/. /path/to/Palworld-Panel-Patches/
 cd /path/to/Palworld-Panel-Patches
 bash common/scripts/validate-repository.sh
 ```
@@ -75,9 +67,4 @@ Auto release uitok stable patch
 upstream_version = v1.3.0
 ```
 
-Run #5 没有创建 `p0.8.1` Release，因此稳定补丁版本继续使用 `0.8.1`。成功后预期生成：
-
-```text
-uitok-stable-v1.3.0-p0.8.1
-uitok-palworld-panel_stable-v1.3.0_patch-0.8.1_linux-amd64.tar.gz
-```
+Run #5 未创建 `uitok-stable-v1.3.0-p0.8.1`，因此当前 stable patch version 继续使用 `0.8.1`。

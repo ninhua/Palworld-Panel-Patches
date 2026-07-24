@@ -166,80 +166,125 @@ def validate_known_import_contracts() -> None:
 
 
 def validate_stable_automation() -> None:
-    automation = (
-        ROOT
-        / "projects"
-        / "uitok-palworld-panel"
-        / "automation"
-    )
+    automation = ROOT / "projects" / "uitok-palworld-panel" / "automation"
     if not automation.exists():
         return
 
     config_path = automation / "config.json"
+    catalog_path = automation / "patch-catalog.json"
     incompatible_path = automation / "incompatible-versions.json"
     workflow_path = ROOT / ".github" / "workflows" / "auto-release-uitok-stable.yml"
-    for path in (config_path, incompatible_path, workflow_path):
+    for path in (config_path, catalog_path, incompatible_path, workflow_path):
         if not path.is_file():
             fail(f"稳定版自动化缺少文件：{path}")
 
     config = load_json(config_path)
-    if not isinstance(config, dict) or config.get("schema_version") != 1:
-        fail("稳定版自动化 config.json 格式错误")
+    if not isinstance(config, dict) or config.get("schema_version") != 2:
+        fail("稳定版自动化 config.json schema_version 必须为 2")
 
     stable_patch_version = config.get("stable_patch_version")
     if not isinstance(stable_patch_version, str) or not re.fullmatch(
         r"\d+\.\d+\.\d+", stable_patch_version
     ):
-        fail("稳定版自动化 stable_patch_version 必须是 MAJOR.MINOR.PATCH")
+        fail("stable_patch_version 必须是 MAJOR.MINOR.PATCH")
 
-    maintenance_target_version = config.get("maintenance_target_version")
-    if not isinstance(maintenance_target_version, str) or not re.fullmatch(
-        r"v\d+\.\d+\.\d+", maintenance_target_version
+    required_features = config.get("required_features")
+    optional_features = config.get("optional_features")
+    if not isinstance(required_features, list) or not all(
+        isinstance(value, str) and value for value in required_features
     ):
-        fail("稳定版自动化 maintenance_target_version 必须是 vMAJOR.MINOR.PATCH")
+        fail("required_features 格式错误")
+    if not isinstance(optional_features, list) or not all(
+        isinstance(value, str) and value for value in optional_features
+    ):
+        fail("optional_features 格式错误")
+    if set(required_features) & set(optional_features):
+        fail("required_features 与 optional_features 不得重叠")
 
-    source_track_value = config.get("bootstrap_source_track")
-    if not isinstance(source_track_value, str) or not source_track_value:
-        fail("稳定版自动化 bootstrap_source_track 无效")
-    declared_source_track = ROOT / source_track_value
-    source_track = declared_source_track
-    track_path = declared_source_track / "track.json"
-    if track_path.is_file():
-        track = load_json(track_path)
-        if not isinstance(track, dict) or track.get("schema_version") != 1:
-            fail(f"候选补丁轨道格式错误：{track_path}")
-        if track.get("status") != "candidate":
-            fail(f"候选补丁轨道 status 必须为 candidate：{track_path}")
-        if track.get("target_version") != maintenance_target_version:
-            fail("候选补丁轨道 target_version 与维护目标不一致")
-        inherited = track.get("inherits")
-        if not isinstance(inherited, str) or not inherited.strip():
-            fail(f"候选补丁轨道 inherits 无效：{track_path}")
-        source_track = (declared_source_track / inherited).resolve()
-        patches_root = (ROOT / "projects" / "uitok-palworld-panel" / "patches").resolve()
+    release_assets = config.get("release_assets")
+    if release_assets != [
+        "binary-package",
+        "source-package",
+        "manifest.json",
+        "compatibility-report.json",
+        "SHA256SUMS",
+    ]:
+        fail("release_assets 必须是固定五文件白名单")
+
+    for key in ("bootstrap_source_track", "workspace_root", "migration_branch_prefix"):
+        if not isinstance(config.get(key), str) or not config[key]:
+            fail(f"稳定版自动化配置缺少 {key}")
+
+    patches_root = (ROOT / config["workspace_root"]).resolve()
+    declared_track = (ROOT / config["bootstrap_source_track"]).resolve()
+    try:
+        declared_track.relative_to(patches_root)
+    except ValueError:
+        fail("bootstrap_source_track 必须位于 workspace_root 下")
+    if not (declared_track / "track.json").is_file():
+        fail("bootstrap_source_track 必须是显式 candidate 工作区")
+
+    source_track = declared_track
+    seen: set[Path] = set()
+    while (source_track / "track.json").is_file():
+        if source_track in seen:
+            fail("candidate 轨道继承出现循环")
+        seen.add(source_track)
+        track = load_json(source_track / "track.json")
+        if not isinstance(track, dict) or track.get("status") != "candidate":
+            fail(f"候选轨道 status 必须为 candidate：{source_track}")
+        inherits = track.get("inherits")
+        if not isinstance(inherits, str) or not inherits.strip():
+            fail(f"候选轨道 inherits 无效：{source_track}")
+        source_track = (source_track / inherits).resolve()
         try:
             source_track.relative_to(patches_root)
         except ValueError:
-            fail(f"候选补丁轨道继承路径越界：{source_track}")
-    else:
-        fail(f"当前维护目标必须使用显式 candidate 轨道：{declared_source_track}")
+            fail(f"候选轨道继承路径越界：{source_track}")
 
     manifest_path = source_track / "manifest.template.json"
-    if not manifest_path.is_file():
-        fail(f"稳定版自动化首次迁移源轨道不存在：{source_track}")
+    source_dir = source_track / "source"
+    bootstrap_build = source_track / "build" / "build-palpanel.sh"
+    for path in (manifest_path, source_dir / "SHA256SUMS", bootstrap_build):
+        if not path.is_file():
+            fail(f"bootstrap 源轨道不完整：{path}")
 
     manifest = load_json(manifest_path)
     if not isinstance(manifest, dict):
-        fail(f"源补丁 manifest 必须是对象：{manifest_path}")
-    manifest_features = set(manifest.get("features", []))
-    required_features = config.get("required_features")
-    if not isinstance(required_features, list) or not all(
-        isinstance(value, str) for value in required_features
-    ):
-        fail("稳定版自动化 required_features 格式错误")
-    missing = sorted(set(required_features) - manifest_features)
+        fail("bootstrap manifest 必须是对象")
+    features = set(manifest.get("features", []))
+    missing = sorted(set(required_features) - features)
     if missing:
-        fail("稳定版自动化必需 feature 不在源补丁 manifest 中：" + ", ".join(missing))
+        fail("bootstrap manifest 缺少基础必需 feature：" + ", ".join(missing))
+
+    catalog = load_json(catalog_path)
+    if not isinstance(catalog, dict) or catalog.get("schema_version") != 1:
+        fail("patch-catalog.json schema_version 必须为 1")
+    entries = catalog.get("patches")
+    if not isinstance(entries, list):
+        fail("patch-catalog.json patches 必须是数组")
+    catalog_files: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            fail("patch-catalog 条目必须是对象")
+        filename = entry.get("file")
+        feature = entry.get("feature")
+        dependencies = entry.get("depends_on")
+        if not isinstance(filename, str) or not filename.endswith(".patch"):
+            fail(f"patch-catalog 文件名无效：{filename!r}")
+        if filename in catalog_files:
+            fail(f"patch-catalog 重复文件：{filename}")
+        catalog_files.add(filename)
+        if not isinstance(feature, str) or not feature:
+            fail(f"patch-catalog feature 无效：{filename}")
+        if not isinstance(dependencies, list) or not all(
+            isinstance(value, str) for value in dependencies
+        ):
+            fail(f"patch-catalog depends_on 无效：{filename}")
+    bootstrap_patch_files = {path.name for path in source_dir.glob("*.patch")}
+    uncatalogued = sorted(bootstrap_patch_files - catalog_files)
+    if uncatalogued:
+        fail("bootstrap 补丁未进入 patch-catalog：" + ", ".join(uncatalogued))
 
     incompatible = load_json(incompatible_path)
     if not isinstance(incompatible, dict) or incompatible.get("schema_version") != 1:
@@ -247,90 +292,110 @@ def validate_stable_automation() -> None:
     versions = incompatible.get("versions")
     if not isinstance(versions, dict):
         fail("incompatible-versions.json versions 必须是对象")
-    version_pattern = re.compile(r"^v\d+\.\d+\.\d+$")
     for version, reason in versions.items():
-        if not isinstance(version, str) or not version_pattern.fullmatch(version):
-            fail(f"明确不兼容版本格式错误：{version!r}")
+        if not isinstance(version, str) or not re.fullmatch(r"v\d+\.\d+\.\d+", version):
+            fail(f"不兼容版本格式错误：{version!r}")
         if not isinstance(reason, str) or not reason.strip():
-            fail(f"明确不兼容版本缺少原因：{version}")
-
-    workflow_text = workflow_path.read_text(encoding="utf-8")
-    if 'cron: "17 1 * * *"' not in workflow_text:
-        fail("稳定版自动化 Workflow 必须保持每天一次调度")
-    if "pull_request" in workflow_text or "gh pr " in workflow_text:
-        fail("稳定版自动化不得创建 PR")
-    if "gh issue " in workflow_text:
-        fail("稳定版自动化不得创建 Issue")
-    if "gh release create" not in workflow_text:
-        fail("稳定版自动化缺少直接 Release 发布步骤")
-    if "select-previous-stable-release.py" not in workflow_text:
-        fail("稳定版自动化未选择上一个已发布稳定补丁")
-    if "prepare-source-track.sh" not in workflow_text:
-        fail("稳定版自动化未准备稳定版派生源轨道")
+            fail(f"不兼容版本缺少原因：{version}")
 
     required_scripts = (
         automation / "select-latest-version.py",
         automation / "select-previous-stable-release.py",
         automation / "prepare-source-track.sh",
         automation / "apply-source-patch.sh",
-        automation / "test-apply-source-patch.sh",
         automation / "resolve-official-palpanel.sh",
-        automation / "test-resolve-official-palpanel.sh",
+        automation / "retarget-stable-source.py",
         automation / "adapt-frontend-api-tests.py",
-        automation / "test-adapt-frontend-api-tests.py",
+        automation / "migrate-patch-workspace.py",
+        automation / "workspace-state.py",
+        automation / "persist-workspace.sh",
         automation / "build-stable-release.sh",
+        automation / "test-apply-source-patch.sh",
+        automation / "test-resolve-official-palpanel.sh",
+        automation / "test-adapt-frontend-api-tests.py",
+        automation / "test-migrate-patch-workspace.py",
+        automation / "test-persist-workspace.sh",
+        automation / "test-prepare-source-track-v2.sh",
+        automation / "test-build-release-layout.sh",
     )
     for path in required_scripts:
         if not path.is_file():
             fail(f"稳定版自动化缺少脚本：{path}")
 
-    build_script_text = (automation / "build-stable-release.sh").read_text(encoding="utf-8")
-    if "apply-source-patch.sh" not in build_script_text:
-        fail("稳定版构建未使用受控补丁应用器")
-    apply_script_text = (automation / "apply-source-patch.sh").read_text(encoding="utf-8")
-    if "patch_storage_localize_test.go" not in apply_script_text:
-        fail("受控补丁应用器缺少 pallocalize 测试重定位规则")
-    if "expected_added" not in apply_script_text or "if deleted:" not in apply_script_text:
-        fail("受控补丁应用器未精确校验已知测试 hunk")
-
-    resolver_text = (automation / "resolve-official-palpanel.sh").read_text(encoding="utf-8")
-    for marker in ("palpanel_${target_version}_linux_amd64.tar.gz", "SHA256SUMS", "checksums.txt"):
-        if marker not in resolver_text:
-            fail(f"官方 Release 二进制解析器缺少校验标记：{marker}")
-
-    if "resolve-official-palpanel.sh" not in build_script_text:
-        fail("稳定版构建未使用官方 Release palpanel 作为 original_sha256 来源")
-    if "rebuilt_original_palpanel_sha256" not in build_script_text:
-        fail("稳定版构建未区分官方二进制与源码重建二进制")
-
-    if "adapt-frontend-api-tests.py" not in build_script_text:
-        fail("稳定版构建未适配 v1.3.0 前端 API 测试 Axios 响应夹具")
-    adapter_text = (automation / "adapt-frontend-api-tests.py").read_text(encoding="utf-8")
+    workflow_text = workflow_path.read_text(encoding="utf-8")
     for marker in (
-        r"vi\.spyOn\(apiClient",
-        "status: 200",
-        "mockResolvedValue",
-        "top_level_properties",
-        "pending_insertions",
+        'cron: "17 1 * * *"',
+        "migrate-patch-workspace",
+        "Persist blocked candidate workspace",
+        "migration_branch_prefix",
+        "Verify five-file release allowlist",
+        "Persist releasable stable workspace",
+        "Create immutable stable Release",
+        "Mark stable workspace released",
     ):
-        if marker not in adapter_text:
-            fail(f"前端 API 测试适配器缺少安全标记：{marker}")
+        if marker not in workflow_text:
+            fail(f"稳定版 Workflow 缺少状态机标记：{marker}")
+    if "pull_request" in workflow_text or "gh pr " in workflow_text:
+        fail("稳定版自动化不得创建 PR")
+    if "gh issue " in workflow_text:
+        fail("稳定版自动化不得创建 Issue")
+    if ".work/output/release/*" in workflow_text:
+        fail("Release 创建不得使用通配符上传全部文件")
+    release_create_block = workflow_text.split("gh release create", 1)[-1]
+    for name in ("manifest.json", "compatibility-report.json", "SHA256SUMS"):
+        if name not in release_create_block:
+            fail(f"Release 创建缺少白名单资产：{name}")
 
-    if 'cp "${patch_files[@]}" "${output}/release/"' in build_script_text:
-        fail("稳定版 Release 不得把每个源补丁作为独立顶层资产上传")
-    if "PATCH-SHA256SUMS" in build_script_text:
-        fail("稳定版 Release 不得生成独立源补丁校验资产")
-    if '"${package_dir}/source/source-chain"' not in build_script_text:
-        fail("稳定版安装包内部必须保留完整源补丁链")
+    build_text = (automation / "build-stable-release.sh").read_text(encoding="utf-8")
+    for marker in (
+        "migrate-patch-workspace.py",
+        "clean-room",
+        "git apply --index --binary",
+        "compatibility-report.json",
+        "source-track/source",
+        "Release top level is an explicit five-file allowlist",
+        "runtime-smoke-test",
+    ):
+        if marker not in build_text:
+            fail(f"稳定版构建缺少更新链路标记：{marker}")
+    if 'cp "${patch_files[@]}" "${output}/release/"' in build_text:
+        fail("Release 顶层不得单独上传每个源补丁")
 
     prepare_text = (automation / "prepare-source-track.sh").read_text(encoding="utf-8")
-    for marker in ("bootstrap_requested", "track.json", "maintenance_target_version"):
+    for marker in ("*_source.tar.gz", ".palpatch/source-track", "Legacy compatibility"):
         if marker not in prepare_text:
-            fail(f"稳定版源轨道准备脚本缺少 v1.3 候选轨道标记：{marker}")
+            fail(f"源轨道准备脚本缺少派生兼容标记：{marker}")
 
-    bootstrap_build = (source_track / "build" / "build-palpanel.sh").read_text(encoding="utf-8")
+    migrate_text = (automation / "migrate-patch-workspace.py").read_text(encoding="utf-8")
+    for marker in (
+        "workspace-created",
+        "patches-imported",
+        "incompatible",
+        "blocked",
+        "active-source",
+        "merged_patch",
+    ):
+        if marker not in migrate_text:
+            fail(f"逐补丁迁移器缺少状态标记：{marker}")
+
+    adapter_text = (automation / "adapt-frontend-api-tests.py").read_text(encoding="utf-8")
+    for marker in (
+        "top_level_properties",
+        "repair_duplicate_default_statuses",
+        "pending_insertions",
+        "status: 200",
+    ):
+        if marker not in adapter_text:
+            fail(f"前端测试适配器缺少去重标记：{marker}")
+
+    persist_text = (automation / "persist-workspace.sh").read_text(encoding="utf-8")
+    for marker in ("migration/", "--force origin", "git push origin main"):
+        if marker not in persist_text:
+            fail(f"工作区持久化脚本缺少分支策略标记：{marker}")
+
+    build_commands = bootstrap_build.read_text(encoding="utf-8")
     for command in ("npm run lint", "npm run test", "npm run build"):
-        if command not in bootstrap_build:
+        if command not in build_commands:
             fail(f"稳定版前端构建缺少命令：{command}")
 
 def validate_placeholders() -> None:

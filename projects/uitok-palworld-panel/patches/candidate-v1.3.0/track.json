@@ -1,7 +1,9 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "target_version": "v1.3.0",
   "status": "candidate",
+  "state": "workspace-created",
+  "verified": false,
   "inherits": "../dev-v1.2.2",
-  "notes": "PalPanel v1.3.0 is the active maintenance target. The inherited historical patch chain is reapplied to the official v1.3.0 source and must pass the full stable workflow before release."
+  "notes": "Bootstrap candidate for the first v0.12 stable migration. The workflow persists actual compatibility results to migration/v1.3.0 on failure and solidifies stable-v1.3.0 on success."
 }

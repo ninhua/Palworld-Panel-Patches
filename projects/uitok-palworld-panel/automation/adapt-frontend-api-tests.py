@@ -119,6 +119,10 @@ def top_level_properties(text: str, open_index: int, close_index: int) -> list[t
                     expect_property = False
                     index = probe + 1
                     continue
+                # Shorthand properties and methods are still top-level keys and
+                # must prevent us from injecting a duplicate status field.
+                if probe >= close_index or text[probe] in ",}(":
+                    properties.append((key, index))
             expect_property = False
 
         if char == "{":
@@ -139,6 +143,45 @@ def top_level_properties(text: str, open_index: int, close_index: int) -> list[t
 
     return properties
 
+
+
+def repair_duplicate_default_statuses(text: str) -> tuple[str, int]:
+    repaired = 0
+    while True:
+        deletions: list[tuple[int, int]] = []
+        for match in CALL_PATTERN.finditer(text):
+            open_index = match.end() - 1
+            close_index = find_matching_brace(text, open_index)
+            properties = top_level_properties(text, open_index, close_index)
+            names = [name for name, _ in properties]
+            if names.count("status") <= 1:
+                continue
+
+            candidate: tuple[int, int] | None = None
+            for index, (name, position) in enumerate(properties[:-1]):
+                next_name, next_position = properties[index + 1]
+                if name != "status" or next_name != "data":
+                    continue
+                segment = text[position:next_position]
+                if not re.fullmatch(r"status\s*:\s*200\s*,\s*", segment):
+                    continue
+                line_start = text.rfind("\n", open_index + 1, position) + 1
+                data_line_start = text.rfind("\n", open_index + 1, next_position) + 1
+                if text[line_start:position].strip() == "" and data_line_start > line_start:
+                    candidate = (line_start, data_line_start)
+                else:
+                    candidate = (position, next_position)
+                break
+
+            if candidate is None:
+                fail("apiClient mock 已包含多个顶层 status，且无法安全识别旧适配器注入项")
+            deletions.append(candidate)
+
+        if not deletions:
+            return text, repaired
+        for start, end in reversed(deletions):
+            text = text[:start] + text[end:]
+            repaired += 1
 
 def pending_insertions(text: str) -> list[tuple[int, str]]:
     insertions: list[tuple[int, str]] = []
@@ -165,16 +208,21 @@ def adapt_file(path: Path) -> int:
     if "vi.spyOn(apiClient" not in original:
         return 0
 
-    insertions = pending_insertions(original)
-    updated = original
+    repaired_text, repaired = repair_duplicate_default_statuses(original)
+    insertions = pending_insertions(repaired_text)
+    updated = repaired_text
     for position, value in reversed(insertions):
         updated = updated[:position] + value + updated[position:]
 
     if pending_insertions(updated):
         fail(f"仍存在未适配的 apiClient Axios mock：{path}")
-    if insertions:
+    # A second analysis rejects any duplicate that would still require repair.
+    _, extra_repairs = repair_duplicate_default_statuses(updated)
+    if extra_repairs:
+        fail(f"适配后仍检测到重复的顶层 status：{path}")
+    if insertions or repaired:
         path.write_text(updated, encoding="utf-8")
-    return len(insertions)
+    return len(insertions) + repaired
 
 
 def main() -> None:

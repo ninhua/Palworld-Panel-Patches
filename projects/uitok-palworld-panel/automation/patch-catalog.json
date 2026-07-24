@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "notes": "Patch ordering remains lexical. Dependencies only describe hard prerequisites; every feature present in the previous stable manifest is preserved unless explicitly listed as optional in config.json.",
+  "patches": [
+    {
+      "file": "0001-add-patch-info-api.patch",
+      "feature": "patch-info-api",
+      "depends_on": []
+    },
+    {
+      "file": "0002-add-base-custom-names.patch",
+      "feature": "base-custom-names",
+      "depends_on": [
+        "0001-add-patch-info-api.patch"
+      ]
+    },
+    {
+      "file": "0003-add-base-storage-browser.patch",
+      "feature": "base-storage-browser",
+      "depends_on": [
+        "0001-add-patch-info-api.patch",
+        "0002-add-base-custom-names.patch"
+      ]
+    },
+    {
+      "file": "0004-fix-base-storage-container-resolution.patch",
+      "feature": "base-storage-browser",
+      "depends_on": [
+        "0003-add-base-storage-browser.patch"
+      ]
+    },
+    {
+      "file": "0005-enhance-base-storage-display.patch",
+      "feature": "base-storage-browser",
+      "depends_on": [
+        "0003-add-base-storage-browser.patch",
+        "0004-fix-base-storage-container-resolution.patch"
+      ]
+    },
+    {
+      "file": "0006-add-player-notes.patch",
+      "feature": "player-notes",
+      "depends_on": [
+        "0001-add-patch-info-api.patch"
+      ]
+    },
+    {
+      "file": "0007-add-guild-detail-browser.patch",
+      "feature": "guild-detail-browser",
+      "depends_on": [
+        "0002-add-base-custom-names.patch",
+        "0006-add-player-notes.patch"
+      ]
+    },
+    {
+      "file": "0008-add-base-worker-browser.patch",
+      "feature": "base-worker-browser",
+      "depends_on": [
+        "0002-add-base-custom-names.patch"
+      ]
+    },
+    {
+      "file": "0009-add-base-feed-box-summary.patch",
+      "feature": "base-feed-box-summary",
+      "depends_on": [
+        "0003-add-base-storage-browser.patch",
+        "0004-fix-base-storage-container-resolution.patch"
+      ]
+    },
+    {
+      "file": "0010-fix-missing-base-worker-handler.patch",
+      "feature": "base-worker-browser",
+      "depends_on": [
+        "0008-add-base-worker-browser.patch"
+      ]
+    },
+    {
+      "file": "0011-allow-http-service-endpoints.patch",
+      "feature": "insecure-endpoint-support",
+      "depends_on": [
+        "0001-add-patch-info-api.patch"
+      ]
+    },
+    {
+      "file": "0012-restore-ai-translation-net-import.patch",
+      "feature": "insecure-endpoint-support",
+      "depends_on": [
+        "0011-allow-http-service-endpoints.patch"
+      ]
+    }
+  ]
+}

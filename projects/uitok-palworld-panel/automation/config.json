@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "upstream_repository": "uitok/palworld-panel",
   "release_tag_prefix": "uitok-stable-",
   "platform": "linux-amd64",
@@ -8,6 +8,15 @@
     "patch-info-api",
     "base-custom-names"
   ],
+  "optional_features": [],
   "bootstrap_source_track": "projects/uitok-palworld-panel/patches/candidate-v1.3.0",
-  "maintenance_target_version": "v1.3.0"
+  "workspace_root": "projects/uitok-palworld-panel/patches",
+  "migration_branch_prefix": "migration/",
+  "release_assets": [
+    "binary-package",
+    "source-package",
+    "manifest.json",
+    "compatibility-report.json",
+    "SHA256SUMS"
+  ]
 }

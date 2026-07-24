@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.11.5`
+仓库版本：`v0.12.0`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -215,19 +215,24 @@ Release 标签不可变；标签已存在时工作流应失败，不覆盖旧资
 
 ## 稳定版自动发布
 
-每天检查一次上游正式 Release。首次没有已发布稳定补丁时，从 `bootstrap_source_track` 完成第一次迁移；之后的新上游稳定版本统一从版本最高的上一个已发布稳定补丁 Release 派生。
+每天检查一次上游正式 Release，或通过 `workflow_dispatch` 指定正式版本。
 
 ```text
-上一个 stable Release 的合并补丁
-→ 新的官方稳定版源码
-→ 重新定向版本元数据
-→ Go / 前端 / 二进制 / API 冒烟验证
-→ 直接发布新的 stable Release
+创建 candidate 工作区
+→ 从最新更旧 stable Release 导入 source-chain
+→ 逐补丁应用、编译检测和状态记录
+→ 生成 active-source 与 merged patch
+→ 在全新官方源码上只应用 merged patch
+→ 全量测试、构建和运行时 smoke
+→ 固化 stable 工作区
+→ 发布五文件 immutable Release
 ```
 
-不会创建 PR 或 Issue。派生校验、补丁应用、测试或构建失败时不创建 Release，生产启动脚本不会更新。每个 Release 都包含 `derivation.json` 记录派生来源。
+失败时不创建 Release、PR 或 Issue；兼容报告与日志写入 `migration/vX.Y.Z` 分支。成功后 main 保留 `stable-vX.Y.Z` 审计工作区。
 
-第一次稳定迁移后，后续稳定版不再从 `dev-v1.2.2` 轨道派生。
+后续版本优先从上一个 stable 源码包内的 `.palpatch/source-track` 派生。只有首次 stable 或 legacy 迁移才使用 bootstrap/旧 merged patch。
+
+Release 顶层严格限制为安装包、源码包、`manifest.json`、`compatibility-report.json` 和 `SHA256SUMS`。全部补丁与审计文件保留在包内。
 
 ## 验证
 
@@ -256,3 +261,29 @@ bash common/scripts/validate-repository.sh
 
 这样可以避免上游正式 Release 与二次源码构建因构建时间、前端产物或工具链差异而产生
 不同 SHA-256，导致一键部署正确地拒绝安装并回滚。
+
+## v0.12 稳定版更新链路
+
+上游正式 Release 更新后，自动化按状态机迁移补丁：
+
+```text
+detected
+→ workspace-created
+→ patches-imported
+→ testing
+→ merged
+→ releasable
+→ released
+```
+
+核心规则：
+
+- 为目标版本创建 `candidate-vX.Y.Z` 工作区；
+- 从最新且更旧的 verified stable Release 导入补丁链，首次 stable 才使用 bootstrap；
+- 按补丁顺序记录 `compatible`、`adapted`、`incompatible`、`blocked`、`superseded`；
+- 任一必需功能失败即禁止 Release，并把 candidate 工作区写入 `migration/vX.Y.Z` 分支；
+- 可用补丁生成一个 merged patch，再在全新的官方源码上只应用 merged patch 完整复验；
+- 成功后固化 `stable-vX.Y.Z` 工作区并发布不可变 Release；
+- Release 顶层固定为安装包、源码包、manifest、兼容报告和 SHA256SUMS 五个文件。
+
+完整补丁链、merged patch、构建元数据、smoke 日志和派生信息保留在安装包及源码包内部。

@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.12.0
+
+### Changed
+
+- 将上游 stable 更新改为持久化工作区状态机：创建 candidate、导入旧 stable 补丁链、逐补丁检测、标记不兼容、生成 merged patch、clean-room 复验、固化 stable 并发布 Release。
+- 后续版本不再把临时 `.work/source-track` 作为唯一迁移记录；失败候选写入 `migration/vX.Y.Z` 分支，成功工作区写入 main 的 `stable-vX.Y.Z`。
+- Release 顶层改为严格五文件白名单，不再单独上传 `0001`、`0002` 等补丁及零散审计文件。
+- 新版源码包内嵌 `.palpatch/source-track`，后续上游版本从最新更旧 stable Release 的源码包派生。
+
+### Fixed
+
+- 修复 Run #5 中旧 Axios mock 适配器重复插入顶层 `status` 导致的 TS1117。新版适配器先解析对象字面量顶层属性，只为缺失 `status` 的 mock 补充字段。
+- 可安全清理旧适配器紧邻 `data` 注入的 `status: 200`，同时保留上游已有状态码。
+- 增加 `aiTranslation.test.ts`、`communityServers.test.ts`、`guilds.test.ts`、`mods.test.ts`、`monitor.test.ts` 和 `setup.test.ts` 回归夹具。
+
+### Validation
+
+- 新增逐补丁迁移器、candidate/stable 工作区持久化及前端 mock 去重回归测试。
+- clean-room 阶段重新执行 merged patch 应用、gofmt、OpenAPI 生成、Go 全量测试、前端 lint/Vitest/build、Linux amd64 构建及 `/api/patch/info` smoke test。
+- 任一阶段失败均不创建 Release。
+
 ## v0.11.5
 
 ### Fixed
