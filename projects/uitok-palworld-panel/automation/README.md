@@ -156,3 +156,26 @@ uitok-stable-v1.3.0-p0.8.1  # 修正后的重新发布
 ```
 
 同一 PalPanel 版本下，一键部署选择补丁版本最高的 Release。
+
+## 前端 API 测试响应夹具适配
+
+PalPanel v1.3.0 的 `handleRequest` 仅在模拟响应同时包含 `data` 与 `status` 时将其识别为
+AxiosResponse。旧补丁链中的部分 Vitest 用例只返回 `data`，导致响应 envelope 未解包，映射器
+收到错误层级并产生 `Unknown Base`、空仓库或空详情等回退值。
+
+构建在应用补丁和重定向版本后执行：
+
+```text
+adapt-frontend-api-tests.py
+```
+
+该适配器只处理 `frontend/src/**/*.test.ts(x)` 中形如：
+
+```ts
+vi.spyOn(apiClient, '...').mockResolvedValue({
+  data: ...
+})
+```
+
+的 Axios spy mock，为其补充 `status: 200`。它不会修改生产 API 代码，也不会修改普通
+`vi.fn()` mock；重复执行保持幂等。任何测试仍失败时，Workflow 继续按失败处理，不创建 Release。

@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.11.4
+
+### Fixed
+
+- 修复 Run #4 中 `frontend/src/api/bases.test.ts` 返回 `Unknown Base` 的失败。
+- 根因不是基地自定义命名生产代码未应用，而是旧补丁测试模拟的 Axios 响应缺少 `status`；PalPanel v1.3.0 因而不再将其识别为 AxiosResponse，API envelope 没有被解包。
+- 新增 `adapt-frontend-api-tests.py`，为补丁链中所有 `vi.spyOn(apiClient, ...).mockResolvedValue(...)` 的旧式响应夹具补充 `status: 200`。
+- 同时覆盖基地命名、基地仓库以及其他补丁新增前端 API 测试，避免逐个修复后连续出现下一处同类失败。
+
+### Safety
+
+- 适配器只扫描 `frontend/src/**/*.test.ts(x)`，只修改 `apiClient` spy mock，不修改生产 API 实现。
+- 只接受 `mockResolvedValue` 或 `mockResolvedValueOnce` 紧接 `data` 属性的已知旧结构；已适配文件保持幂等。
+- 前端 lint、Vitest、build 仍完整执行；适配后若存在真实功能问题，Workflow 仍失败且不创建 Release。
+
+### Validation
+
+- 新增三种旧式 Axios mock、已适配输入、幂等执行、非 apiClient mock 不修改和缺失目录拒绝测试。
+- `validate-repository.sh` 现在执行补丁重定位、官方二进制解析和前端测试夹具适配三套回归测试。
+- stable 补丁版本保持 `0.8.1`；Run #4 在 Release 创建前失败，因此不会与已发布资产冲突。
+
 ## v0.11.3
 
 ### Fixed

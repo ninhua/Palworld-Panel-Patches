@@ -248,6 +248,8 @@ def validate_stable_automation() -> None:
         automation / "test-apply-source-patch.sh",
         automation / "resolve-official-palpanel.sh",
         automation / "test-resolve-official-palpanel.sh",
+        automation / "adapt-frontend-api-tests.py",
+        automation / "test-adapt-frontend-api-tests.py",
         automation / "build-stable-release.sh",
     )
     for path in required_scripts:
@@ -272,6 +274,13 @@ def validate_stable_automation() -> None:
         fail("稳定版构建未使用官方 Release palpanel 作为 original_sha256 来源")
     if "rebuilt_original_palpanel_sha256" not in build_script_text:
         fail("稳定版构建未区分官方二进制与源码重建二进制")
+
+    if "adapt-frontend-api-tests.py" not in build_script_text:
+        fail("稳定版构建未适配 v1.3.0 前端 API 测试 Axios 响应夹具")
+    adapter_text = (automation / "adapt-frontend-api-tests.py").read_text(encoding="utf-8")
+    for marker in (r"vi\.spyOn\(apiClient", "status: 200", "mockResolvedValue"):
+        if marker not in adapter_text:
+            fail(f"前端 API 测试适配器缺少安全标记：{marker}")
 
     bootstrap_build = (source_track / "build" / "build-palpanel.sh").read_text(encoding="utf-8")
     for command in ("npm run lint", "npm run test", "npm run build"):

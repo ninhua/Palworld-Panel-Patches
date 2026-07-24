@@ -1,70 +1,66 @@
-# Upgrade v0.11.2 → v0.11.3
+# Upgrade v0.11.3 → v0.11.4
 
-本次升级修复 PalPanel v1.3.0 stable 补丁安装时的官方二进制 SHA-256 不匹配：
-
-```text
-当前 SHA-256：fe92a0564f3e5aead26ff61449e804a95cd31df9273bc95c5184b1557c645cec
-错误 manifest 期望：040f6d26bc04d505570c39fc8f80c3163289c8e32a7e4fed8d7446a528040c8f
-```
-
-旧构建将源码重新编译得到的未打补丁二进制 SHA-256 写入 manifest，但生产环境安装的是
-上游 GitHub Release 中的正式二进制。两者不保证逐字节可复现，因此安装器按安全规则拒绝
-替换并回滚。
-
-新逻辑：
+Run #4 在前端 Vitest 阶段失败：
 
 ```text
-下载上游正式 Release 的 SHA256SUMS
-→ 校验 palpanel_v1.3.0_linux_amd64.tar.gz
-→ 安全检查归档路径、文件类型和链接
-→ 校验包内 checksums.txt
-→ 提取并执行 bin/palpanel --version
-→ 将正式二进制 SHA-256 写入 manifest.original_sha256
-→ 源码重建 SHA-256 仅写入 build-metadata 供追踪
+src/api/bases.test.ts
+expected: 北境制造中心
+received: Unknown Base
 ```
 
-稳定补丁版本提升为：
+根因是测试夹具兼容性，而不是生产端基地自定义名称逻辑被跳过。旧补丁测试使用：
+
+```ts
+vi.spyOn(apiClient, 'put').mockResolvedValue({
+  data: { ok: true, data: { ... } },
+})
+```
+
+PalPanel v1.3.0 的 `handleRequest` 只有在对象同时含有 `data` 和 `status` 时才按 AxiosResponse
+解包。缺少 `status` 后，映射器收到整个模拟对象而不是 envelope 的 `data`，`mapBase` 找不到
+`name`，因此返回 `Unknown Base`。
+
+v0.11.4 在稳定源码构建阶段运行 `adapt-frontend-api-tests.py`，把补丁新增 API 测试的旧式
+Axios spy mock 转换为：
+
+```ts
+vi.spyOn(apiClient, 'put').mockResolvedValue({
+  status: 200,
+  data: { ok: true, data: { ... } },
+})
+```
+
+适配范围包括 `frontend/src/**/*.test.ts(x)` 中的 `apiClient` spy，因此基地仓库、玩家备注、
+公会详情、基地工作帕鲁和饲料箱等同类测试不会在下一轮继续逐个失败。生产 API 代码不被修改。
+
+稳定补丁版本仍为：
 
 ```text
 0.8.1
 ```
 
-新 Release tag：
-
-```text
-uitok-stable-v1.3.0-p0.8.1
-```
+Run #4 在 Release 发布步骤之前失败，`uitok-stable-v1.3.0-p0.8.1` 尚未创建，所以不需要提升
+为 `0.8.2`。
 
 覆盖升级：
 
 ```bash
-unzip Palworld-Panel-Patches-upgrade-v0.11.2-to-v0.11.3.zip
-cp -a Palworld-Panel-Patches-upgrade-v0.11.2-to-v0.11.3/. /path/to/Palworld-Panel-Patches/
+unzip Palworld-Panel-Patches-upgrade-v0.11.3-to-v0.11.4.zip
+cp -a Palworld-Panel-Patches-upgrade-v0.11.3-to-v0.11.4/. /path/to/Palworld-Panel-Patches/
 cd /path/to/Palworld-Panel-Patches
 bash common/scripts/validate-repository.sh
 ```
 
-提交：
-
-```bash
-git add .
-git commit -m "fix: verify official PalPanel release binary"
-git push origin main
-```
-
-然后手动运行：
+提交后重新手动运行：
 
 ```text
 Auto release uitok stable patch
 upstream_version = v1.3.0
 ```
 
-成功后应生成：
+成功后仍应生成：
 
 ```text
 uitok-stable-v1.3.0-p0.8.1
 uitok-palworld-panel_stable-v1.3.0_patch-0.8.1_linux-amd64.tar.gz
 ```
-
-一键部署脚本会在同一 PalPanel 版本下选择补丁版本最高的 `p0.8.1`，不需要修改
-`linux-palworld-oneclick.sh` 或 `palpanel-feature-patch.sh`。

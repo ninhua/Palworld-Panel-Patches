@@ -48,6 +48,7 @@ notice_file="${source_track}/LICENSE-NOTICE.md"
 derivation_file="${source_track}/derivation.json"
 apply_source_patch="${script_dir}/apply-source-patch.sh"
 resolve_official_palpanel="${script_dir}/resolve-official-palpanel.sh"
+adapt_frontend_api_tests="${script_dir}/adapt-frontend-api-tests.py"
 
 for path in \
     "${manifest_template}" \
@@ -57,7 +58,8 @@ for path in \
     "${notice_file}" \
     "${derivation_file}" \
     "${apply_source_patch}" \
-    "${resolve_official_palpanel}"; do
+    "${resolve_official_palpanel}" \
+    "${adapt_frontend_api_tests}"; do
     [[ -f "${path}" ]] || {
         echo "缺少源补丁轨道文件：${path}" >&2
         exit 1
@@ -129,6 +131,8 @@ python3 "${script_dir}/retarget-stable-source.py" \
     "${patched}" \
     "${target_version}" \
     "${stable_patch_version}"
+
+python3 "${adapt_frontend_api_tests}" "${patched}"
 
 while IFS= read -r -d '' go_file; do
     if [[ -n "$(gofmt -d "${go_file}")" ]]; then
