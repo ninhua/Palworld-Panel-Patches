@@ -4,7 +4,10 @@ build-output/
 .work/
 *.tar.gz
 *.zip
+
+# SHA256SUMS: ignore release-level checksums, but keep source-track checksums
 SHA256SUMS
+!projects/uitok-palworld-panel/patches/*/source/SHA256SUMS
 
 # Temporary files
 *.tmp
