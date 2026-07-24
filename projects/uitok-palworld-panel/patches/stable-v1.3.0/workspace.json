@@ -1,10 +1,10 @@
 {
   "schema_version": 2,
   "target_version": "v1.3.0",
-  "state": "releasable",
+  "state": "released",
   "verified": true,
   "created_at": "2026-07-24T09:10:21Z",
-  "updated_at": "2026-07-24T09:15:04Z",
+  "updated_at": "2026-07-24T09:15:17Z",
   "source_track": "/home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track",
   "derivation": {
     "schema_version": 2,
@@ -23,5 +23,6 @@
     "file": "merged/stable-v1.3.0-patch-0.8.1.patch",
     "sha256": "5b577e02c8350db4cf926ff5c63f0ef719d6fc661711e2266c2150f91afe714e",
     "base_commit": "3c8d698abf1d9c4e271e3e62dcc736960f27e8eb"
-  }
+  },
+  "released_at": "2026-07-24T09:15:17Z"
 }
