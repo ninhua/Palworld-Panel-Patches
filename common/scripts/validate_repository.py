@@ -338,8 +338,8 @@ def validate_stable_automation() -> None:
             fail(f"稳定维护期间不得保留活动 dev workflow：{retired}")
 
     validate_all = (ROOT / "common" / "scripts" / "validate-all.sh").read_text(encoding="utf-8")
-    if re.search(r"patches/dev-v", validate_all):
-        fail("validate-all.sh 不得硬编码历史 dev 轨道")
+    if "dev-v1.2.2" in validate_all:
+        fail("validate-all.sh 不得硬编码历史 dev-v1.2.2 轨道")
     if "automation/tests/test-relative-output-path.sh" not in validate_all:
         fail("validate-all.sh 缺少 active-track 相对输出路径回归")
 

@@ -1,1 +1,198 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ninhua/Palworld-Panel-Patches/common/schemas/patch-manifest.schema.json",
+  "title": "Palworld Panel Patch Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "project",
+    "patch_version",
+    "patch_type",
+    "upstream",
+    "platforms",
+    "files",
+    "features"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "project": {
+      "enum": [
+        "uitok-palworld-panel",
+        "host-wine-aio"
+      ]
+    },
+    "patch_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$"
+    },
+    "patch_type": {
+      "enum": [
+        "source-build",
+        "compiled-overlay",
+        "runtime-compatibility"
+      ]
+    },
+    "upstream": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "version",
+        "commit"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "pattern": "^[^/\\s]+/[^/\\s]+$"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        }
+      }
+    },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "target_version",
+        "verified",
+        "notes"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "exact",
+            "source-alias"
+          ]
+        },
+        "target_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "platforms": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "linux-amd64",
+          "linux-arm64",
+          "windows-amd64"
+        ]
+      }
+    },
+    "files": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "original_sha256",
+          "patched_sha256"
+        ],
+        "properties": {
+          "original_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "patched_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    "features": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "compatibility": {
+            "properties": {
+              "mode": {
+                "const": "exact"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          }
+        },
+        "required": [
+          "compatibility"
+        ]
+      },
+      "then": {
+        "properties": {
+          "compatibility": {
+            "properties": {
+              "verified": {
+                "const": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "compatibility": {
+            "properties": {
+              "mode": {
+                "const": "source-alias"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          }
+        },
+        "required": [
+          "compatibility"
+        ]
+      },
+      "then": {
+        "properties": {
+          "compatibility": {
+            "properties": {
+              "verified": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

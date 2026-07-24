@@ -1,9 +1,0 @@
-{
-  "schema_version": 1,
-  "repository_version": "0.12.4",
-  "target_version": "v1.3.0",
-  "stable_patch_version": "0.8.1",
-  "active_track": "projects/uitok-palworld-panel/patches/candidate-v1.3.0",
-  "self_contained": true,
-  "legacy_tracks": []
-}

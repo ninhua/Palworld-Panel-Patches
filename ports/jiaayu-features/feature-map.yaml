@@ -1,0 +1,124 @@
+source:
+  repository: Jiaayu/palworld-panel
+  pinned_commit: ""
+  role: feature-reference
+  license_status: unconfirmed
+
+target:
+  project: uitok-palworld-panel
+
+features:
+  - id: base-custom-names
+    reference_label: 据点重命名
+    status: implemented-independently
+    patch_version: 0.2.0-dev.1
+    implementation: behavior-reimplementation
+    source_paths: []
+    target_paths:
+      - backend/internal/api/base_custom_names.go
+      - backend/internal/api/save_index.go
+      - backend/internal/api/routes.go
+      - frontend/src/api/bases.ts
+      - frontend/src/pages/Bases.tsx
+    notes: Stores display aliases in PalPanel KV storage; does not modify Palworld save files and copies no source code from the reference repository.
+
+  - id: base-storage-browser
+    reference_label: 据点仓库浏览
+    status: implemented-independently
+    patch_version: 0.3.2-dev.1
+    implementation: behavior-reimplementation
+    source_paths: []
+    target_paths:
+      - backend/internal/api/save_index.go
+      - backend/internal/api/base_storage_test.go
+      - backend/internal/pallocalize/localize.go
+      - frontend/src/api/bases.ts
+      - frontend/src/api/bases.test.ts
+      - frontend/src/pages/Bases.tsx
+      - frontend/src/types/index.ts
+    notes: Uses the target project's read-only base storage endpoint, resolves map-object containers linked by the base record, enriches them with localized container names and bundled item icons, and adds an independent browser UI; no source code is copied from the reference repository and no save data is modified.
+
+  - id: player-notes
+    reference_label: 玩家备注与标签
+    status: implemented-independently
+    patch_version: 0.4.0-dev.1
+    implementation: behavior-reimplementation
+    source_paths: []
+    target_paths:
+      - backend/internal/api/player_annotations.go
+      - backend/internal/api/save_index.go
+      - backend/internal/api/routes.go
+      - frontend/src/api/players.ts
+      - frontend/src/pages/Players.tsx
+      - frontend/src/types/index.ts
+    notes: Stores save-source-scoped management notes and tags in PalPanel KV storage, supports search and permission-gated editing, copies no source code from the reference repository, and does not modify player save files.
+
+  - id: guild-detail-browser
+    reference_label: 公会详情浏览
+    status: implemented-independently
+    patch_version: 0.5.0-dev.1
+    implementation: behavior-reimplementation
+    source_paths: []
+    target_paths:
+      - backend/internal/api/guild_detail.go
+      - backend/internal/api/save_index.go
+      - frontend/src/api/guilds.ts
+      - frontend/src/pages/Guilds.tsx
+      - frontend/src/types/index.ts
+    notes: Enriches the target project's existing read-only guild detail endpoint with member annotations and linked base metadata, copies no source code from the reference repository, and performs no save mutation.
+
+  - id: player-summary
+    status: planned
+    implementation: not-decided
+    source_paths: []
+    target_paths: []
+
+  - id: base-worker-browser
+    reference_label: 基地工作帕鲁浏览
+    status: implemented-independently
+    patch_version: 0.6.0-dev.1
+    implementation: behavior-reimplementation
+    source_paths: []
+    target_paths:
+      - backend/internal/api/base_workers.go
+      - backend/internal/api/save_index.go
+      - backend/internal/api/routes.go
+      - frontend/src/api/bases.ts
+      - frontend/src/pages/Bases.tsx
+      - frontend/src/types/index.ts
+    notes: Adds a read-only base worker endpoint and browser, merges indexed Pal details by instance ID, displays only fields present in the locked index, copies no source code from the reference repository, and performs no save mutation.
+
+  - id: base-feed-box-summary
+    reference_label: 基地饲料箱摘要
+    status: implemented-independently
+    patch_version: 0.7.0-dev.1
+    implementation: behavior-reimplementation
+    source_paths: []
+    target_paths:
+      - backend/internal/api/base_feed_boxes.go
+      - backend/internal/api/save_index.go
+      - backend/internal/api/routes.go
+      - frontend/src/api/bases.ts
+      - frontend/src/pages/Bases.tsx
+      - frontend/src/types/index.ts
+    notes: Adds a read-only feed-box summary endpoint and browser, filters feed-box container types, aggregates item quantities across boxes, copies no source code from the reference repository, and performs no save mutation.
+  - id: insecure-endpoint-support
+    reference_label: 非 HTTPS 服务端点兼容
+    status: implemented-independently
+    patch_version: 0.8.0-dev.1
+    implementation: behavior-reimplementation
+    source_paths: []
+    target_paths:
+      - astrbot_plugin_palpanel/main.py
+      - astrbot_plugin_palpanel/security.py
+      - backend/internal/aitranslation/service.go
+      - backend/internal/appconfig/config.go
+      - backend/internal/astrbotclient/client.go
+      - backend/internal/mods/downloader.go
+      - backend/internal/mods/importer.go
+      - backend/internal/server/webdav.go
+      - frontend/src/pages/Backups.tsx
+      - frontend/src/pages/Mods.tsx
+      - frontend/src/pages/Settings.tsx
+    notes: Adds explicit HTTP/HTTPS support for configurable AstrBot, WebDAV, AI-provider, upstream/download, and public remote Mod endpoints while retaining URL, credential, redirect, public-address, remote-path, and size validation. HTTP transport is not encrypted.
+

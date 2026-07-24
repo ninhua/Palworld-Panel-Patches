@@ -1,1 +1,98 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object"}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ninhua/Palworld-Panel-Patches/common/schemas/feature-port.schema.json",
+  "title": "Third-party Feature Port Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "feature_id",
+    "source",
+    "target",
+    "status",
+    "license_review"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "feature_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "commit",
+        "paths"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "pattern": "^[^/\\s]+/[^/\\s]+$"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "paths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "project",
+        "implementation"
+      ],
+      "properties": {
+        "project": {
+          "const": "uitok-palworld-panel"
+        },
+        "implementation": {
+          "enum": [
+            "rewrite",
+            "adapt",
+            "sidecar",
+            "not-decided"
+          ]
+        }
+      }
+    },
+    "status": {
+      "enum": [
+        "planned",
+        "researching",
+        "implementing",
+        "testing",
+        "released",
+        "rejected"
+      ]
+    },
+    "license_review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "completed",
+        "notes"
+      ],
+      "properties": {
+        "completed": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

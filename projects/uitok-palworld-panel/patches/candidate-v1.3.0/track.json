@@ -5,5 +5,5 @@
   "state": "workspace-created",
   "verified": false,
   "source_mode": "self-contained",
-  "notes": "Sole active stable maintenance track for PalPanel v1.3.0. Source patches, build inputs, manifest and license files are contained in this directory."
+  "notes": "Active stable maintenance track for PalPanel v1.3.0. Source patches and build inputs live in this directory; the archived dev-v1.2.2 track is not consulted by validation, build, or release workflows."
 }

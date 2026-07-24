@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "repository": "ninhua/Palworld-Panel-Patches",
+  "release_tag": "uitok-dev-v1.2.2-p0.1.0-dev.1",
+  "archive_name": "uitok-palworld-panel_dev-5e3c0bce9d33_target-v1.2.2_patch-0.1.0-dev.1_linux-amd64.tar.gz",
+  "patch_version": "0.1.0-dev.1",
+  "source": {
+    "repository": "uitok/palworld-panel",
+    "ref": "dev",
+    "commit": "5e3c0bce9d33091b3261f82b3e4da062fc35a8a1"
+  },
+  "compatibility": {
+    "target_version": "v1.2.2",
+    "verified": false,
+    "temporarily_allowed_installed_versions": [
+      "v1.2.1",
+      "v1.2.2"
+    ]
+  },
+  "installation": {
+    "default_enabled": true,
+    "fail_open": true,
+    "state_file": "app/.panel-patch-state.json"
+  }
+}
