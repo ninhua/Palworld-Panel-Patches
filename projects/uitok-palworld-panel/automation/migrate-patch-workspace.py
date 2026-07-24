@@ -297,16 +297,25 @@ def main() -> None:
             for item in pending_validation
             for path in item.get("touched_files", [])
         }
+        validation_head = run(["git", "rev-parse", "HEAD"], cwd=active).stdout.strip()
         try:
+            # The Axios mock adapter rewrites files also touched by later source patches
+            # (notably 0008/0009 on bases.test.ts). Apply it only to a temporary
+            # checkpoint worktree for lint/compile validation, then restore the raw
+            # cumulative patch-chain state before the next patch is applied.
+            run([sys.executable, str(args.adapter_script), str(active)], log=log)
+            run(["git", "diff", "--check"], cwd=active, log=log)
             if any(path.startswith("backend/") and path.endswith(".go") for path in touched):
                 run(["go", "test", "-run", "^$", "./..."], cwd=active / "backend", log=log)
             if any(path.startswith("frontend/") for path in touched):
                 run(["npm", "run", "lint"], cwd=active / "frontend", log=log)
+            run(["git", "reset", "--hard", validation_head], cwd=active)
+            run(["git", "clean", "-fd"], cwd=active)
             for item in pending_validation:
                 item["compile_status"] = "passed"
                 item["validated_at_checkpoint"] = checkpoint_name
             pending_validation = []
-            checkpoint_base = run(["git", "rev-parse", "HEAD"], cwd=active).stdout.strip()
+            checkpoint_base = validation_head
         except MigrationFailure as exc:
             reason = f"validation checkpoint {checkpoint_name} failed: {exc}"
             run(["git", "reset", "--hard", checkpoint_base], cwd=active)
@@ -381,11 +390,6 @@ def main() -> None:
                 log=log,
             )
             entry["apply_status"] = "passed"
-            adapter_result = run(
-                [sys.executable, str(args.adapter_script), str(active)],
-                log=log,
-            )
-            adapter_changed = "已适配 Axios mock" in adapter_result.stdout
             run(["git", "diff", "--check"], cwd=active, log=log)
 
             changed = bool(run(["git", "status", "--porcelain"], cwd=active).stdout.strip())
@@ -395,7 +399,7 @@ def main() -> None:
                 entry["reason"] = "patch produced no source delta on the target version"
                 statuses[patch.name] = "superseded"
             else:
-                status = "adapted" if adapter_changed or "重定位" in apply_result.stdout or "relocat" in apply_result.stdout.lower() else "compatible"
+                status = "adapted" if "重定位" in apply_result.stdout or "relocat" in apply_result.stdout.lower() else "compatible"
                 entry["compile_status"] = "pending-checkpoint" if validate_commands else "deferred-to-clean-room"
                 entry["final_status"] = status
                 statuses[patch.name] = status
@@ -458,7 +462,6 @@ def main() -> None:
             patch = source_dir / entry["file"]
             rebuild_log = workspace / "reports" / "optional-rebuild.log"
             run([str(args.apply_script), str(active), str(patch)], log=rebuild_log)
-            run([sys.executable, str(args.adapter_script), str(active)], log=rebuild_log)
             git_commit(active, f"include {patch.name} after optional feature filtering")
             shutil.copy2(patch, workspace / "active-source" / patch.name)
     else:

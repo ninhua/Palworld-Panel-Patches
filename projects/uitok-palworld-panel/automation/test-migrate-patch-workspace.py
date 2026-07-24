@@ -225,6 +225,132 @@ def test_validation_checkpoint(root: Path) -> None:
         raise AssertionError(report)
 
 
+
+def adapter_order_fixture(root: Path) -> tuple[Path, Path, Path, Path, Path, Path, Path, Path]:
+    upstream = root / "adapter-order-upstream"
+    upstream.mkdir()
+    run(["git", "init", "-q"], cwd=upstream)
+    run(["git", "config", "user.name", "Test"], cwd=upstream)
+    run(["git", "config", "user.email", "test@example.com"], cwd=upstream)
+    test_file = upstream / "frontend" / "src" / "api" / "bases.test.ts"
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text(
+        'export const rows = [\n  "base",\n]\n',
+        encoding="utf-8",
+    )
+    run(["git", "add", "."], cwd=upstream)
+    run(["git", "commit", "-qm", "base"], cwd=upstream)
+    base = run(["git", "rev-parse", "HEAD"], cwd=upstream).stdout.strip()
+
+    source = root / "adapter-order-source"
+    patches = source / "source"
+    (source / "build").mkdir(parents=True)
+    patches.mkdir()
+
+    test_file.write_text(
+        'export const rows = [\n  "base",\n  "worker",\n]\n',
+        encoding="utf-8",
+    )
+    patch1 = run(["git", "diff", "--binary", "--full-index"], cwd=upstream).stdout
+    (patches / "0001-worker.patch").write_text(patch1, encoding="utf-8")
+    run(["git", "add", "."], cwd=upstream)
+    run(["git", "commit", "-qm", "worker"], cwd=upstream)
+
+    test_file.write_text(
+        'export const rows = [\n  "base",\n  "worker",\n  "feed",\n]\n',
+        encoding="utf-8",
+    )
+    patch2 = run(["git", "diff", "--binary", "--full-index"], cwd=upstream).stdout
+    (patches / "0002-feed.patch").write_text(patch2, encoding="utf-8")
+    run(["git", "reset", "--hard", base], cwd=upstream)
+
+    (patches / "SHA256SUMS").write_text(
+        "".join(f"{sha(path)}  {path.name}\n" for path in sorted(patches.glob("*.patch"))),
+        encoding="utf-8",
+    )
+    write_json(source / "manifest.template.json", {
+        "patch_version": "1.0.0",
+        "features": ["worker", "feed"],
+        "files": {"bin/palpanel": {"original_sha256": "0" * 64, "patched_sha256": "0" * 64}},
+    })
+    write_json(source / "derivation.json", {"schema_version": 2, "mode": "bootstrap-track"})
+    (source / "build" / "build-palpanel.sh").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+
+    config = root / "adapter-order-config.json"
+    write_json(config, {
+        "schema_version": 2,
+        "stable_patch_version": "1.0.0",
+        "required_features": ["worker", "feed"],
+        "optional_features": [],
+    })
+    catalog = root / "adapter-order-catalog.json"
+    write_json(catalog, {"schema_version": 1, "patches": [
+        {"file": "0001-worker.patch", "feature": "worker", "depends_on": [], "validation_checkpoint": False},
+        {"file": "0002-feed.patch", "feature": "feed", "depends_on": ["0001-worker.patch"], "validation_checkpoint": True},
+    ]})
+
+    apply = root / "adapter-order-apply.sh"
+    apply.write_text(
+        '#!/usr/bin/env bash\nset -e\ngit -C "$1" apply --check "$2"\ngit -C "$1" apply "$2"\n',
+        encoding="utf-8",
+    )
+    apply.chmod(0o755)
+    retarget = root / "adapter-order-retarget.py"
+    retarget.write_text("print('retargeted')\n", encoding="utf-8")
+    adapter = root / "adapter-order-adapter.py"
+    adapter.write_text(
+        "from pathlib import Path\n"
+        "import sys\n"
+        "path = Path(sys.argv[1]) / 'frontend/src/api/bases.test.ts'\n"
+        "text = path.read_text(encoding='utf-8')\n"
+        "updated = text.replace('  \\\"worker\\\",', '  \\\"worker-adapted\\\",')\n"
+        "path.write_text(updated, encoding='utf-8')\n"
+        "print('已适配 Axios mock' if updated != text else 'frontend API mocks already compatible')\n",
+        encoding="utf-8",
+    )
+
+    fake_bin = root / "adapter-order-bin"
+    fake_bin.mkdir()
+    fake_npm = fake_bin / "npm"
+    fake_npm.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    fake_npm.chmod(0o755)
+    return upstream, source, config, catalog, apply, retarget, adapter, fake_bin
+
+
+def test_adapter_does_not_break_later_patch_context(root: Path) -> None:
+    upstream, source, config, catalog, apply, retarget, adapter, fake_bin = adapter_order_fixture(root)
+    workspace = root / "adapter-order-workspace"
+    active = root / "adapter-order-active"
+    result = run([
+        sys.executable, str(SCRIPT), str(upstream), str(source), str(workspace), str(active),
+        "v2.0.0", str(config), str(catalog), str(apply), str(retarget), str(adapter),
+    ], check=False, env={
+        "PALPATCH_MIGRATION_VALIDATE_COMMANDS": "1",
+        "PATH": str(fake_bin) + os.pathsep + os.environ.get("PATH", ""),
+    })
+    if result.returncode != 0:
+        raise AssertionError(result.stdout)
+
+    report = json.loads((workspace / "compatibility-report.json").read_text(encoding="utf-8"))
+    patches = report["patches"]
+    if [item["compile_status"] for item in patches] != ["passed", "passed"]:
+        raise AssertionError(report)
+    if {item.get("validated_at_checkpoint") for item in patches} != {"0002-feed.patch"}:
+        raise AssertionError(report)
+
+    final_text = (active / "frontend/src/api/bases.test.ts").read_text(encoding="utf-8")
+    if '"worker-adapted"' not in final_text or '"feed"' not in final_text:
+        raise AssertionError(final_text)
+
+    merged = next((workspace / "merged").glob("*.patch"))
+    clean = root / "adapter-order-clean"
+    shutil.copytree(upstream, clean)
+    run(["git", "apply", "--check", str(merged)], cwd=clean)
+    run(["git", "apply", str(merged)], cwd=clean)
+    merged_text = (clean / "frontend/src/api/bases.test.ts").read_text(encoding="utf-8")
+    if merged_text != final_text:
+        raise AssertionError((merged_text, final_text))
+
 def test_no_change_result(root: Path) -> None:
     upstream, source, config, catalog, apply, retarget, adapter = fixture(root)
     apply.write_text("#!/usr/bin/env bash\nset -e\necho 'patch already present; no source delta'\nexit 0\n", encoding="utf-8")
@@ -298,6 +424,9 @@ def main() -> None:
 
     with tempfile.TemporaryDirectory(prefix="palpatch-migrate-no-change-") as temp:
         test_no_change_result(Path(temp))
+
+    with tempfile.TemporaryDirectory(prefix="palpatch-migrate-adapter-order-") as temp:
+        test_adapter_does_not_break_later_patch_context(Path(temp))
 
     print("migrate-patch-workspace regression tests passed.")
 
