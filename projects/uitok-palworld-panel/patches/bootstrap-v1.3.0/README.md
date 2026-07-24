@@ -15,3 +15,7 @@ PalPanel job queue, accepts only exact and verified stable releases for the
 current target version, verifies release and binary checksums, performs an
 atomic binary replacement, and restarts the Linux process through `exec` while
 retaining a verified rollback backup.
+
+Patch `0015` adds the `audit-log-response-display` feature. It exposes the
+existing audit `message` response summary in desktop tables and mobile cards
+without storing raw response bodies or additional sensitive data.

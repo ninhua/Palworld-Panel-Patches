@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.9`
+仓库版本：`v0.12.10`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -11,7 +11,7 @@
 上游项目：uitok/palworld-panel
 当前维护目标：v1.3.0
 bootstrap 源轨道：patches/bootstrap-v1.3.0
-稳定补丁版本：0.8.3
+稳定补丁版本：0.8.4
 候选状态：candidate / 未发布前 verified=false
 ```
 
@@ -45,7 +45,16 @@ base-worker-browser
 base-feed-box-summary
 insecure-endpoint-support
 panel-patch-hot-update
+audit-log-response-display
 ```
+
+`audit-log-response-display` 提供：
+
+- 操作审计桌面表格增加“响应”列；
+- 移动端操作卡片显示响应摘要；
+- 失败响应使用醒目样式显示，便于定位错误；
+- 无响应摘要时显示明确占位；
+- 复用后端现有审计 `message` 字段，不保存完整响应体，不扩大敏感数据记录范围。
 
 `base-custom-names` 提供：
 

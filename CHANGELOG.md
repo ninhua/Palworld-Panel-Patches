@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.12.10
+
+### Added
+
+- 新增 `audit-log-response-display` 功能和 `0015-add-audit-log-response-display.patch`。
+- 操作审计桌面表格增加“响应”列，移动端卡片增加响应摘要区域。
+- 成功响应使用普通文本，失败响应使用醒目样式；无响应摘要时显示占位信息。
+- 仅展示后端已经记录的审计 `message` 字段，不新增完整响应体采集，避免令牌、密码或大体积数据进入审计日志。
+- stable patch version 提升到 `0.8.4`，预期 Release 为 `uitok-stable-v1.3.0-p0.8.4`。
+
+### Validation
+
+- 补丁更新 `/api/patch/info` 功能声明，并增加 `audit-log-response-display` 回归断言。
+
 ## v0.12.9
 
 ### Added
