@@ -13,3 +13,4 @@ d6c74c5fbb0552bb974c50e663198d47b978ea7ae1d4c1b0ddc5cf99cec067f8  0012-restore-a
 ebc7c6c90ead24d2244f57667e2e4d4197e52b235b10f224f72c4c18435df98b  0013-fix-player-annotation-online-resolution.patch
 f84ea6c3ee9b3d914a5175ee0e7b58a3ab62a47c6fdd2a74d1635c5f75f91ec5  0014-add-panel-patch-hot-update.patch
 d72099bc6ec2cc6618d303ba393382fad61b6442ecf5fa8ba16617a1fc3ef173  0015-add-audit-log-response-display.patch
+1db378b2faf472c059e6d29d84d8a5bcf74867560170175d5f4d59617b53fc1a  0016-fix-panel-patch-update-openapi-contract.patch

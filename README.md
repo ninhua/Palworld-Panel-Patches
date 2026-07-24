@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.10`
+仓库版本：`v0.12.11`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -189,6 +189,13 @@ GET /api/bases/{id}/feed-boxes
 
 `0012-restore-ai-translation-net-import.patch` 是编译修复补丁，只恢复 AI 翻译错误分类仍需使用的 Go `net` 导入，不改变 feature 或运行行为。
 
+`0016-fix-panel-patch-update-openapi-contract.patch` 修复 `0014` 遗漏的 OpenAPI 路由声明：
+
+- 为补丁热更新的查询、检查和执行接口补齐 OpenAPI operation；
+- 在路由契约测试中显式断言三个接口存在；
+- 修复 clean-room `go test -p=1 ./...` 报出的 `API route is missing from OpenAPI`；
+- stable patch version 保持 `0.8.4`，因为失败运行没有创建 immutable Release。
+
 ## 补丁结构
 
 当前活动轨道：
@@ -211,6 +218,9 @@ projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/
 │   ├── 0011-allow-http-service-endpoints.patch
 │   ├── 0012-restore-ai-translation-net-import.patch
 │   ├── 0013-fix-player-annotation-online-resolution.patch
+│   ├── 0014-add-panel-patch-hot-update.patch
+│   ├── 0015-add-audit-log-response-display.patch
+│   ├── 0016-fix-panel-patch-update-openapi-contract.patch
 │   └── SHA256SUMS
 ├── build/
 │   ├── build.sh
@@ -240,7 +250,10 @@ projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/
 → 发布五文件 immutable Release
 ```
 
-失败时不创建 Release、PR 或 Issue；兼容报告与日志写入 `migration/vX.Y.Z` 分支。成功后 main 保留 `stable-vX.Y.Z` 审计工作区。
+补丁不兼容、编译失败或 clean-room 验证失败时不创建 Release；兼容报告与日志写入
+`migration/vX.Y.Z` 分支，并创建或更新同版本 Issue 和 Draft PR。workflow 以成功状态正常结束。
+迁移成功、无需发布或 Release 已存在时自动关闭对应跟踪项；成功后 main 保留
+`stable-vX.Y.Z` 审计工作区。
 
 后续版本优先从上一个 stable 源码包内的 `.palpatch/source-track` 派生。只有首次 stable 或 legacy 迁移才使用 bootstrap/旧 merged patch。
 
@@ -262,8 +275,8 @@ bash common/scripts/validate-repository.sh
 
 ```text
 目标上游：v1.3.0
-稳定补丁版本：0.8.2
-预期 Release：uitok-stable-v1.3.0-p0.8.2
+稳定补丁版本：0.8.4
+预期 Release：uitok-stable-v1.3.0-p0.8.4
 ```
 
 `manifest.files["bin/palpanel"].original_sha256` 现在直接取自上游正式 Release

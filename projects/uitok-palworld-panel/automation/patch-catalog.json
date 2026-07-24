@@ -123,6 +123,14 @@
         "0001-add-patch-info-api.patch"
       ],
       "validation_checkpoint": true
+    },
+    {
+      "file": "0016-fix-panel-patch-update-openapi-contract.patch",
+      "feature": "panel-patch-hot-update",
+      "depends_on": [
+        "0014-add-panel-patch-hot-update.patch"
+      ],
+      "validation_checkpoint": true
     }
   ]
 }

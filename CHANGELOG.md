@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.12.11
+
+### Fixed
+
+- 新增 `0016-fix-panel-patch-update-openapi-contract.patch`。
+- 为 `GET /api/patch/update/status`、`POST /api/patch/update/check` 和 `POST /api/patch/update` 补齐 OpenAPI operation。
+- 路由契约测试显式检查三个补丁热更新接口，修复 stable build 在 `clean-room-go-tests` 阶段的失败。
+- stable patch version 保持 `0.8.4`；此前失败运行未创建对应 immutable Release。
+
+### Documentation
+
+- 同步活动补丁树至 `0016`。
+- 修正 blocked migration 的 Issue/Draft PR 跟踪说明和旧的 `0.8.2` 发布示例。
+
 ## v0.12.10
 
 ### Added
