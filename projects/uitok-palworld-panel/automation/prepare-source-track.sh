@@ -17,9 +17,13 @@ for command in realpath python3 sha256sum; do
 done
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "${script_dir}/../../.." && pwd)"
+patches_root="${repo_root}/projects/uitok-palworld-panel/patches"
 config="${script_dir}/config.json"
 output="$(realpath -m "$1")"
-bootstrap="$(realpath "$2")"
+bootstrap_requested="$(realpath "$2")"
+bootstrap="${bootstrap_requested}"
+bootstrap_target=""
 previous_dir=""
 previous_tag=""
 if [[ $# -eq 4 ]]; then
@@ -43,12 +47,53 @@ if not isinstance(patch, str) or not re.fullmatch(r"\d+\.\d+\.\d+", patch):
 features = config.get("required_features")
 if not isinstance(features, list) or not features or not all(isinstance(value, str) and value for value in features):
     raise SystemExit("config.required_features 必须是非空字符串数组")
+target = config.get("maintenance_target_version")
+if not isinstance(target, str) or not re.fullmatch(r"v\d+\.\d+\.\d+", target):
+    raise SystemExit("config.maintenance_target_version 必须是 vMAJOR.MINOR.PATCH")
 print(patch)
 print(json.dumps(features, ensure_ascii=False))
+print(target)
 PY
 )
 stable_patch_version="${config_values[0]}"
 required_features_json="${config_values[1]}"
+maintenance_target_version="${config_values[2]}"
+
+if [[ -f "${bootstrap_requested}/track.json" ]]; then
+    mapfile -t track_values < <(
+    python3 - "${bootstrap_requested}/track.json" <<'PY'
+from pathlib import Path
+import json, re, sys
+path = Path(sys.argv[1])
+data = json.loads(path.read_text(encoding="utf-8"))
+if data.get("schema_version") != 1:
+    raise SystemExit("candidate track schema_version 必须为 1")
+target = data.get("target_version")
+if not isinstance(target, str) or not re.fullmatch(r"v\d+\.\d+\.\d+", target):
+    raise SystemExit("candidate track target_version 无效")
+if data.get("status") != "candidate":
+    raise SystemExit("candidate track status 必须为 candidate")
+inherits = data.get("inherits")
+if not isinstance(inherits, str) or not inherits.strip():
+    raise SystemExit("candidate track inherits 无效")
+print(target)
+print(inherits)
+PY
+    )
+    bootstrap_target="${track_values[0]}"
+    [[ "${bootstrap_target}" == "${maintenance_target_version}" ]] || {
+        echo "候选轨道目标版本与维护目标不一致：${bootstrap_target} != ${maintenance_target_version}" >&2
+        exit 1
+    }
+    bootstrap="$(realpath "${bootstrap_requested}/${track_values[1]}")"
+    case "${bootstrap}/" in
+        "${patches_root}/"*) ;;
+        *)
+            echo "候选轨道继承路径越界：${bootstrap}" >&2
+            exit 1
+            ;;
+    esac
+fi
 
 for path in \
     "${bootstrap}/build/build-palpanel.sh" \
@@ -104,14 +149,21 @@ if [[ -z "${previous_dir}" ]]; then
     cp "${bootstrap}/source/"*.patch "${output}/source/"
     cp "${bootstrap}/source/SHA256SUMS" "${output}/source/SHA256SUMS"
     finalize_manifest
-    python3 - "${output}/derivation.json" "${bootstrap}" "${stable_patch_version}" <<'PY'
+    python3 - \
+        "${output}/derivation.json" \
+        "${bootstrap_requested}" \
+        "${bootstrap}" \
+        "${bootstrap_target:-${maintenance_target_version}}" \
+        "${stable_patch_version}" <<'PY'
 from pathlib import Path
 import json, sys
-output, source, patch = sys.argv[1:]
+output, source, source_base, target, patch = sys.argv[1:]
 payload = {
     "schema_version": 1,
     "mode": "bootstrap-track",
     "source_track": source,
+    "source_track_base": source_base,
+    "source_target_version": target,
     "derived_from_release": None,
     "derived_from_target_version": None,
     "derived_from_patch_version": None,

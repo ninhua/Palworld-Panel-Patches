@@ -177,5 +177,34 @@ vi.spyOn(apiClient, '...').mockResolvedValue({
 })
 ```
 
-的 Axios spy mock，为其补充 `status: 200`。它不会修改生产 API 代码，也不会修改普通
+的 Axios spy mock。适配器会解析 mock 对象的顶层属性，只在存在顶层 `data` 且缺少顶层
+`status` 时补充 `status: 200`。已有 `status` 无论位于 `data` 前方还是后方都不会重复插入；
+嵌套响应数据中的 `status` 不算 Axios 顶层状态。它不会修改生产 API 代码，也不会修改普通
 `vi.fn()` mock；重复执行保持幂等。任何测试仍失败时，Workflow 继续按失败处理，不创建 Release。
+
+## 当前维护目标
+
+`config.json` 使用：
+
+```json
+{
+  "maintenance_target_version": "v1.3.0",
+  "bootstrap_source_track": "projects/uitok-palworld-panel/patches/candidate-v1.3.0"
+}
+```
+
+候选轨道通过 `track.json` 继承历史补丁源，但 Workflow 检出的实际上游源码必须是官方
+`v1.3.0`。候选轨道不得标记为 verified；只有最终 Release manifest 可以在全套检查通过后
+标记 `exact / verified=true`。
+
+## Release 顶层资产
+
+Release 顶层仅保留安装、派生和校验所需文件。不得再把每个 `000x-*.patch` 单独上传。
+完整补丁链保存在安装包内部的：
+
+```text
+source/source-chain/
+```
+
+并同时包含在完整 patched source 包中。顶层只保留跨版本派生需要的合并补丁
+`stable-vX.Y.Z-patch-A.B.C.patch`。

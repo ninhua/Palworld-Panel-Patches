@@ -192,10 +192,38 @@ def validate_stable_automation() -> None:
     ):
         fail("稳定版自动化 stable_patch_version 必须是 MAJOR.MINOR.PATCH")
 
+    maintenance_target_version = config.get("maintenance_target_version")
+    if not isinstance(maintenance_target_version, str) or not re.fullmatch(
+        r"v\d+\.\d+\.\d+", maintenance_target_version
+    ):
+        fail("稳定版自动化 maintenance_target_version 必须是 vMAJOR.MINOR.PATCH")
+
     source_track_value = config.get("bootstrap_source_track")
     if not isinstance(source_track_value, str) or not source_track_value:
         fail("稳定版自动化 bootstrap_source_track 无效")
-    source_track = ROOT / source_track_value
+    declared_source_track = ROOT / source_track_value
+    source_track = declared_source_track
+    track_path = declared_source_track / "track.json"
+    if track_path.is_file():
+        track = load_json(track_path)
+        if not isinstance(track, dict) or track.get("schema_version") != 1:
+            fail(f"候选补丁轨道格式错误：{track_path}")
+        if track.get("status") != "candidate":
+            fail(f"候选补丁轨道 status 必须为 candidate：{track_path}")
+        if track.get("target_version") != maintenance_target_version:
+            fail("候选补丁轨道 target_version 与维护目标不一致")
+        inherited = track.get("inherits")
+        if not isinstance(inherited, str) or not inherited.strip():
+            fail(f"候选补丁轨道 inherits 无效：{track_path}")
+        source_track = (declared_source_track / inherited).resolve()
+        patches_root = (ROOT / "projects" / "uitok-palworld-panel" / "patches").resolve()
+        try:
+            source_track.relative_to(patches_root)
+        except ValueError:
+            fail(f"候选补丁轨道继承路径越界：{source_track}")
+    else:
+        fail(f"当前维护目标必须使用显式 candidate 轨道：{declared_source_track}")
+
     manifest_path = source_track / "manifest.template.json"
     if not manifest_path.is_file():
         fail(f"稳定版自动化首次迁移源轨道不存在：{source_track}")
@@ -278,9 +306,27 @@ def validate_stable_automation() -> None:
     if "adapt-frontend-api-tests.py" not in build_script_text:
         fail("稳定版构建未适配 v1.3.0 前端 API 测试 Axios 响应夹具")
     adapter_text = (automation / "adapt-frontend-api-tests.py").read_text(encoding="utf-8")
-    for marker in (r"vi\.spyOn\(apiClient", "status: 200", "mockResolvedValue"):
+    for marker in (
+        r"vi\.spyOn\(apiClient",
+        "status: 200",
+        "mockResolvedValue",
+        "top_level_properties",
+        "pending_insertions",
+    ):
         if marker not in adapter_text:
             fail(f"前端 API 测试适配器缺少安全标记：{marker}")
+
+    if 'cp "${patch_files[@]}" "${output}/release/"' in build_script_text:
+        fail("稳定版 Release 不得把每个源补丁作为独立顶层资产上传")
+    if "PATCH-SHA256SUMS" in build_script_text:
+        fail("稳定版 Release 不得生成独立源补丁校验资产")
+    if '"${package_dir}/source/source-chain"' not in build_script_text:
+        fail("稳定版安装包内部必须保留完整源补丁链")
+
+    prepare_text = (automation / "prepare-source-track.sh").read_text(encoding="utf-8")
+    for marker in ("bootstrap_requested", "track.json", "maintenance_target_version"):
+        if marker not in prepare_text:
+            fail(f"稳定版源轨道准备脚本缺少 v1.3 候选轨道标记：{marker}")
 
     bootstrap_build = (source_track / "build" / "build-palpanel.sh").read_text(encoding="utf-8")
     for command in ("npm run lint", "npm run test", "npm run build"):

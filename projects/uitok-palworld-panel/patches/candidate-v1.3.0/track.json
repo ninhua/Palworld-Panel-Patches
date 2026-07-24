@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "target_version": "v1.3.0",
+  "status": "candidate",
+  "inherits": "../dev-v1.2.2",
+  "notes": "PalPanel v1.3.0 is the active maintenance target. The inherited historical patch chain is reapplied to the official v1.3.0 source and must pass the full stable workflow before release."
+}

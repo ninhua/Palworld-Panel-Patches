@@ -8,5 +8,6 @@
     "patch-info-api",
     "base-custom-names"
   ],
-  "bootstrap_source_track": "projects/uitok-palworld-panel/patches/dev-v1.2.2"
+  "bootstrap_source_track": "projects/uitok-palworld-panel/patches/candidate-v1.3.0",
+  "maintenance_target_version": "v1.3.0"
 }

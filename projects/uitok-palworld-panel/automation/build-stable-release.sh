@@ -358,8 +358,6 @@ cp "${license_file}" "${output}/release/LICENSE"
 cp "${notice_file}" "${output}/release/LICENSE-NOTICE.md"
 cp "${derivation_file}" "${output}/release/derivation.json"
 cp "${official_release_metadata}" "${output}/release/official-release.json"
-cp "${patch_files[@]}" "${output}/release/"
-cp "${patch_dir}/SHA256SUMS" "${output}/release/PATCH-SHA256SUMS"
 
 python3 - \
     "${output}/release/build-metadata.json" \

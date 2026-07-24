@@ -9,34 +9,32 @@ from pathlib import Path
 
 SCRIPT = Path(__file__).with_name("adapt-frontend-api-tests.py")
 
-OLD_TEST = """import { describe, it, vi } from 'vitest';
+MIXED_TEST = """import { describe, it, vi } from 'vitest';
 import { apiClient } from './client';
 
 describe('patched api clients', () => {
   it('maps several responses', async () => {
-    const put = vi.spyOn(apiClient, 'put').mockResolvedValue({
-      data: { ok: true, data: { base: { name: '北境制造中心' } } },
+    const missing = vi.spyOn(apiClient, 'put').mockResolvedValue({
+      data: { ok: true, data: { base: { name: '北境制造中心', status: 'Safe' } } },
     });
-    const remove = vi.spyOn(apiClient, 'delete').mockResolvedValue({
+    const existingBefore = vi.spyOn(apiClient, 'get').mockResolvedValue({
+      status: 201,
+      data: { ok: true, data: { value: 1 } },
+    });
+    const existingAfter = vi.spyOn(apiClient, 'delete').mockResolvedValue({
       data: { ok: true, data: { deleted: true } },
+      status: 204,
     });
-    const get = vi.spyOn(apiClient, 'get').mockResolvedValueOnce({
+    const once = vi.spyOn(apiClient, 'get').mockResolvedValueOnce({
       data: { ok: true, data: { containers: [] } },
     });
-    void put;
-    void remove;
-    void get;
+    void missing;
+    void existingBefore;
+    void existingAfter;
+    void once;
   });
 });
 """
-
-ALREADY_ADAPTED = OLD_TEST.replace(
-    "mockResolvedValue({\n      data:",
-    "mockResolvedValue({\n      status: 200,\n      data:",
-).replace(
-    "mockResolvedValueOnce({\n      data:",
-    "mockResolvedValueOnce({\n      status: 200,\n      data:",
-)
 
 
 def run(source: Path, expect_success: bool = True) -> subprocess.CompletedProcess[str]:
@@ -54,11 +52,11 @@ def run(source: Path, expect_success: bool = True) -> subprocess.CompletedProces
     return result
 
 
-def make_source(root: Path, text: str) -> Path:
+def make_source(root: Path) -> Path:
     source = root / "source"
     api = source / "frontend" / "src" / "api"
     api.mkdir(parents=True)
-    (api / "bases.test.ts").write_text(text, encoding="utf-8")
+    (api / "mixed.test.ts").write_text(MIXED_TEST, encoding="utf-8")
     (api / "unrelated.test.ts").write_text(
         "vi.fn().mockResolvedValue({\n  data: { ok: true },\n});\n",
         encoding="utf-8",
@@ -77,32 +75,33 @@ def make_source(root: Path, text: str) -> Path:
 def main() -> None:
     with tempfile.TemporaryDirectory(prefix="palpanel-adapt-tests-") as temp:
         root = Path(temp)
+        source = make_source(root)
 
-        source = make_source(root / "old", OLD_TEST)
         run(source)
-        text = (source / "frontend" / "src" / "api" / "bases.test.ts").read_text(encoding="utf-8")
-        if text.count("status: 200,") != 3:
-            raise AssertionError(f"应适配 bases.test.ts 中 3 个 Axios mock，实际内容：\n{text}")
-        tsx_text = (source / "frontend" / "src" / "pages" / "api-client.test.tsx").read_text(encoding="utf-8")
-        if tsx_text.count("status: 200,") != 1:
-            raise AssertionError(f"应适配 API 目录外的 TSX 测试：\n{tsx_text}")
-        if "mockResolvedValue({\n      data:" in text or "mockResolvedValueOnce({\n      data:" in text:
-            raise AssertionError("仍存在未适配的 mock")
+        mixed_path = source / "frontend" / "src" / "api" / "mixed.test.ts"
+        mixed = mixed_path.read_text(encoding="utf-8")
+        if mixed.count("status: 200,") != 2:
+            raise AssertionError(f"只应补充两个缺失的顶层 status：\n{mixed}")
+        if mixed.count("status: 201,") != 1 or mixed.count("status: 204,") != 1:
+            raise AssertionError(f"不得改写已有顶层 status：\n{mixed}")
+        if mixed.count("status:") != 5:
+            raise AssertionError(f"嵌套 status 必须保留且不得被误判为顶层：\n{mixed}")
+
+        tsx = (source / "frontend" / "src" / "pages" / "api-client.test.tsx").read_text(encoding="utf-8")
+        if tsx.count("status: 200,") != 1:
+            raise AssertionError(f"应适配 API 目录外的 TSX 测试：\n{tsx}")
+
         unrelated = (source / "frontend" / "src" / "api" / "unrelated.test.ts").read_text(encoding="utf-8")
         if "status: 200" in unrelated:
             raise AssertionError("不得修改非 apiClient spy mock")
 
-        before = text
+        before = mixed
         run(source)
-        after = (source / "frontend" / "src" / "api" / "bases.test.ts").read_text(encoding="utf-8")
+        after = mixed_path.read_text(encoding="utf-8")
         if after != before:
             raise AssertionError("适配器必须幂等")
-
-        adapted = make_source(root / "adapted", ALREADY_ADAPTED)
-        run(adapted)
-        adapted_text = (adapted / "frontend" / "src" / "api" / "bases.test.ts").read_text(encoding="utf-8")
-        if adapted_text != ALREADY_ADAPTED:
-            raise AssertionError("已适配文件不应变化")
+        if "status: 200,\n      status:" in after:
+            raise AssertionError("不得生成重复 status 属性")
 
         run(root / "missing", expect_success=False)
 

@@ -1,64 +1,81 @@
-# Upgrade v0.11.3 → v0.11.4
+# Upgrade v0.11.4 → v0.11.5
 
-Run #4 在前端 Vitest 阶段失败：
+本次升级同时处理 Run #5、PalPanel v1.3.0 维护基线和 Release 资产数量问题。
 
-```text
-src/api/bases.test.ts
-expected: 北境制造中心
-received: Unknown Base
-```
+## Run #5 修复
 
-根因是测试夹具兼容性，而不是生产端基地自定义名称逻辑被跳过。旧补丁测试使用：
+旧适配器看到：
 
 ```ts
-vi.spyOn(apiClient, 'put').mockResolvedValue({
-  data: { ok: true, data: { ... } },
-})
-```
-
-PalPanel v1.3.0 的 `handleRequest` 只有在对象同时含有 `data` 和 `status` 时才按 AxiosResponse
-解包。缺少 `status` 后，映射器收到整个模拟对象而不是 envelope 的 `data`，`mapBase` 找不到
-`name`，因此返回 `Unknown Base`。
-
-v0.11.4 在稳定源码构建阶段运行 `adapt-frontend-api-tests.py`，把补丁新增 API 测试的旧式
-Axios spy mock 转换为：
-
-```ts
-vi.spyOn(apiClient, 'put').mockResolvedValue({
+vi.spyOn(apiClient, 'get').mockResolvedValue({
+  data: {...},
   status: 200,
-  data: { ok: true, data: { ... } },
 })
 ```
 
-适配范围包括 `frontend/src/**/*.test.ts(x)` 中的 `apiClient` spy，因此基地仓库、玩家备注、
-公会详情、基地工作帕鲁和饲料箱等同类测试不会在下一轮继续逐个失败。生产 API 代码不被修改。
-
-稳定补丁版本仍为：
+仍会在 `data` 前插入另一个 `status: 200`，最终触发：
 
 ```text
-0.8.1
+TS1117: An object literal cannot have multiple properties with the same name
 ```
 
-Run #4 在 Release 发布步骤之前失败，`uitok-stable-v1.3.0-p0.8.1` 尚未创建，所以不需要提升
-为 `0.8.2`。
+新适配器解析 mock 对象的顶层属性：
 
-覆盖升级：
+- 有顶层 `data`、没有顶层 `status`：补充 `status: 200`；
+- 已有顶层 `status`：不修改，无论它在 `data` 前还是后；
+- 仅 `data` 内部存在嵌套 `status`：仍补充 Axios 顶层 `status`；
+- 重复运行：不产生任何额外修改。
+
+## v1.3.0 维护轨道
+
+当前配置改为：
+
+```text
+maintenance_target_version = v1.3.0
+bootstrap_source_track = projects/uitok-palworld-panel/patches/candidate-v1.3.0
+```
+
+`candidate-v1.3.0` 显式代表当前维护目标。它继承旧 `dev-v1.2.2` 历史补丁链，但 Actions
+始终把补丁应用到官方 PalPanel `v1.3.0` tag 上。完整测试通过前，该目录仍是 candidate，
+不得视为 exact/verified stable。
+
+## Release 精简
+
+不再把以下文件逐个上传到 Release 顶层：
+
+```text
+0001-*.patch
+0002-*.patch
+...
+PATCH-SHA256SUMS
+```
+
+完整源补丁链仍在安装包的：
+
+```text
+source/source-chain/
+```
+
+以及完整 patched source 包中。Release 顶层继续保留跨版本派生所需的合并补丁、manifest、
+build metadata、SHA256SUMS 和安装/源码归档。
+
+## 覆盖升级
 
 ```bash
-unzip Palworld-Panel-Patches-upgrade-v0.11.3-to-v0.11.4.zip
-cp -a Palworld-Panel-Patches-upgrade-v0.11.3-to-v0.11.4/. /path/to/Palworld-Panel-Patches/
+unzip Palworld-Panel-Patches-upgrade-v0.11.4-to-v0.11.5.zip
+cp -a Palworld-Panel-Patches-upgrade-v0.11.4-to-v0.11.5/. /path/to/Palworld-Panel-Patches/
 cd /path/to/Palworld-Panel-Patches
 bash common/scripts/validate-repository.sh
 ```
 
-提交后重新手动运行：
+提交后重新运行：
 
 ```text
 Auto release uitok stable patch
 upstream_version = v1.3.0
 ```
 
-成功后仍应生成：
+Run #5 没有创建 `p0.8.1` Release，因此稳定补丁版本继续使用 `0.8.1`。成功后预期生成：
 
 ```text
 uitok-stable-v1.3.0-p0.8.1

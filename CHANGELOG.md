@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.11.5
+
+### Fixed
+
+- 修复 Run #5 中前端测试适配器无条件插入 `status: 200`，造成已有 `status` 的 mock 出现 TypeScript `TS1117` 重复属性错误。
+- 适配器改为解析 `apiClient` mock 对象的顶层属性；仅当存在顶层 `data` 且缺少顶层 `status` 时才补充状态码。
+- 已有 `status` 位于 `data` 前方或后方时均保持原样；`data` 内部的嵌套 `status` 不会被误判。
+
+### Changed
+
+- 当前补丁维护入口切换为 `projects/uitok-palworld-panel/patches/candidate-v1.3.0`。
+- 配置新增 `maintenance_target_version=v1.3.0`；候选轨道显式继承旧 `dev-v1.2.2` 历史补丁链，但实际构建基线始终为官方 v1.3.0 tag。
+- stable Release 顶层不再上传 `0001`、`0002` 等每个源补丁文件，也不再生成 `PATCH-SHA256SUMS`。
+- 完整源补丁链继续保存在安装包的 `source/source-chain/` 和完整源码包内，审计能力不受影响。
+
+### Validation
+
+- 增加“已有 status 在 data 前/后”“嵌套 status”“缺失 status”“幂等执行”等回归场景。
+- 候选轨道继承路径限制在本项目 `patches/` 目录内，并校验目标版本与维护配置一致。
+- 仓库验证明确拒绝将每个源补丁作为独立 Release 顶层资产。
+
 ## v0.11.4
 
 ### Fixed
