@@ -1,8 +1,8 @@
 {
   "schema_version": 2,
   "target_version": "v1.3.0",
-  "generated_at": "2026-07-24T13:33:42Z",
-  "state": "released",
+  "generated_at": "2026-07-24T16:48:44Z",
+  "state": "releasable",
   "required_features": [
     "base-custom-names",
     "patch-info-api"
@@ -19,7 +19,9 @@
     "patch-info-api",
     "player-notes"
   ],
-  "optional_features": [],
+  "optional_features": [
+    "player-presence-history"
+  ],
   "patches": [
     {
       "order": 1,
@@ -503,13 +505,91 @@
       "log": "reports/0017-add-audit-log-response-detail-dialog.patch.log",
       "validated_at_checkpoint": "0017-add-audit-log-response-detail-dialog.patch",
       "included_in_merged": true
+    },
+    {
+      "order": 18,
+      "file": "0018-add-player-presence-history.patch",
+      "sha256": "ab1439f61413cf3f4551245906fbbcb8a9430d02b59c4b61b05af75f195812a2",
+      "feature": "player-presence-history",
+      "required": false,
+      "depends_on": [
+        "0001-add-patch-info-api.patch",
+        "0006-add-player-notes.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/patch_info_test.go",
+        "backend/internal/api/player_presence.go",
+        "backend/internal/api/player_presence_test.go",
+        "backend/internal/api/save_index.go",
+        "backend/internal/monitor/manager.go",
+        "backend/internal/monitor/player_presence.go",
+        "backend/internal/monitor/player_presence_test.go",
+        "backend/internal/playerpresence/state.go",
+        "backend/internal/playerpresence/state_test.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/players.test.ts",
+        "frontend/src/api/players.ts",
+        "frontend/src/pages/Players.tsx",
+        "frontend/src/types/index.ts"
+      ],
+      "apply_status": "failed",
+      "compile_status": "not-run",
+      "final_status": "incompatible",
+      "reason": "命令失败（exit=1）：/home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/apply-source-patch.sh /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track/source/0018-add-player-presence-history.patch\nerror: patch failed: backend/internal/api/patch_info.go:1\nerror: backend/internal/api/patch_info.go: patch does not apply\nerror: patch failed: backend/internal/api/patch_info_test.go:1\nerror: backend/internal/api/patch_info_test.go: patch does not apply\nerror: patch failed: frontend/src/pages/Players.tsx:1\nerror: frontend/src/pages/Players.tsx: patch does not apply\nerror: patch failed: frontend/src/types/index.ts:1\nerror: frontend/src/types/index.ts: patch does not apply\n错误：已知测试路径必须在补丁中恰好出现一次，实际 0 次。\n错误：补丁无法直接应用，且不满足 PalPanel v1.3.0 的精确测试重定位规则。\nerror: patch failed: backend/internal/api/patch_info.go:1\nerror: backend/internal/api/patch_info.go: patch does not apply\nerror: patch failed: backend/internal/api/patch_info_test.go:1\nerror: backend/internal/api/patch_info_test.go: patch does not apply\nerror: patch failed: frontend/src/pages/Players.tsx:1\nerror: frontend/src/pages/Players.tsx: patch does not apply\nerror: patch failed: frontend/src/types/index.ts:1\nerror: frontend/src/types/index.ts: patch does not apply\n",
+      "log": "reports/0018-add-player-presence-history.patch.log",
+      "included_in_merged": false
+    },
+    {
+      "order": 19,
+      "file": "0019-avoid-github-api-rate-limit.patch",
+      "sha256": "7f71a6128a1cff6f037cba766cabe8d893ed539da97d887057a7ea9c9bc59658",
+      "feature": "panel-patch-hot-update",
+      "required": true,
+      "depends_on": [
+        "0014-add-panel-patch-hot-update.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/server/patch_update.go",
+        "backend/internal/server/patch_update_test.go"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0019-avoid-github-api-rate-limit.patch.log",
+      "validated_at_checkpoint": "0019-avoid-github-api-rate-limit.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 20,
+      "file": "0020-fix-audit-response-dialog-portal.patch",
+      "sha256": "c250616d19bdb39cc39c67b5c9e5609720033e279d25374d8190bf658f14bad2",
+      "feature": "audit-log-response-display",
+      "required": true,
+      "depends_on": [
+        "0017-add-audit-log-response-detail-dialog.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "frontend/src/pages/AuditLogs.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0020-fix-audit-response-dialog-portal.patch.log",
+      "validated_at_checkpoint": "0020-fix-audit-response-dialog-portal.patch",
+      "included_in_merged": true
     }
   ],
   "adaptations": [
     {
       "name": "retarget-stable-source",
       "status": "applied",
-      "details": "Retargeted patch metadata to v1.3.0 / 0.8.5"
+      "details": "Retargeted patch metadata to v1.3.0 / 0.8.6"
     },
     {
       "name": "frontend-axios-test-fixture-adapter",
@@ -518,14 +598,16 @@
     }
   ],
   "summary": {
-    "compatible": 16,
-    "blocked": 0,
-    "adapted": 1,
     "pending": 0,
-    "incompatible": 0,
-    "superseded": 0
+    "superseded": 0,
+    "compatible": 18,
+    "adapted": 1,
+    "blocked": 0,
+    "incompatible": 1
   },
-  "excluded_features": [],
+  "excluded_features": [
+    "player-presence-history"
+  ],
   "effective_features": [
     "audit-log-response-display",
     "base-custom-names",
@@ -539,8 +621,8 @@
     "player-notes"
   ],
   "merged_patch": {
-    "file": "merged/stable-v1.3.0-patch-0.8.5.patch",
-    "sha256": "5990becb3e3d6816955f7b9a964b16004d7a940931ea34946590d8b19eed7e40",
+    "file": "merged/stable-v1.3.0-patch-0.8.6.patch",
+    "sha256": "62001969ff0d657229878c0c6f6e8d4cd2fc590d08bcf15964f886e8b4075da0",
     "base_commit": "3c8d698abf1d9c4e271e3e62dcc736960f27e8eb"
   },
   "verified": true,

@@ -1233,7 +1233,7 @@ index 0000000000000000000000000000000000000000..7cf7a85773dfb956a02f139e004b78ee
 +}
 diff --git a/backend/internal/api/patch_info.go b/backend/internal/api/patch_info.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..90591bcba3502700a30c664f9759a578ed618c7d
+index 0000000000000000000000000000000000000000..f71cc7c9ed57db4a93cf577a02e733adc2826cff
 --- /dev/null
 +++ b/backend/internal/api/patch_info.go
 @@ -0,0 +1,38 @@
@@ -1249,7 +1249,7 @@ index 0000000000000000000000000000000000000000..90591bcba3502700a30c664f9759a578
 +	patchSourceRepository = "uitok/palworld-panel"
 +	patchSourceRef        = "v1.3.0"
 +	patchTargetVersion    = "v1.3.0"
-+	patchVersion          = "0.8.5"
++	patchVersion          = "0.8.6"
 +	patchRepository       = "ninhua/Palworld-Panel-Patches"
 +)
 +
@@ -2611,10 +2611,10 @@ index f8aab6be275bee281f2a1cde31d83f62c33e4276..67d0fa5664a31c4607ed13282081d31e
  		executor = executors[0]
 diff --git a/backend/internal/server/patch_update.go b/backend/internal/server/patch_update.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..5ba696c7acf04c9865a93926b77a44ccc3fb7862
+index 0000000000000000000000000000000000000000..2138d6d92f0dbee2c6faced0972785e36a92b6a4
 --- /dev/null
 +++ b/backend/internal/server/patch_update.go
-@@ -0,0 +1,813 @@
+@@ -0,0 +1,891 @@
 +package server
 +
 +import (
@@ -2687,6 +2687,14 @@ index 0000000000000000000000000000000000000000..5ba696c7acf04c9865a93926b77a44cc
 +	Archive   patchGitHubAsset
 +	Manifest  patchGitHubAsset
 +	Checksums patchGitHubAsset
++}
++
++type patchPublishedWorkspace struct {
++	SchemaVersion int    `json:"schema_version"`
++	TargetVersion string `json:"target_version"`
++	State         string `json:"state"`
++	Verified      bool   `json:"verified"`
++	ReleaseTag    string `json:"release_tag"`
 +}
 +
 +type patchReleaseManifest struct {
@@ -2953,6 +2961,70 @@ index 0000000000000000000000000000000000000000..5ba696c7acf04c9865a93926b77a44cc
 +}
 +
 +func (m Manager) resolvePatchRelease(ctx context.Context, request PatchUpdateRequest) (patchReleaseSelection, error) {
++	selection, workspaceErr := m.resolvePatchReleaseFromWorkspace(ctx, request)
++	if workspaceErr == nil {
++		return selection, nil
++	}
++	selection, apiErr := m.resolvePatchReleaseFromAPI(ctx, request)
++	if apiErr == nil {
++		return selection, nil
++	}
++	return patchReleaseSelection{}, fmt.Errorf(
++		"patch release lookup failed (published workspace: %v; github api: %v)",
++		workspaceErr,
++		apiErr,
++	)
++}
++
++func (m Manager) resolvePatchReleaseFromWorkspace(ctx context.Context, request PatchUpdateRequest) (patchReleaseSelection, error) {
++	endpoint := "https://raw.githubusercontent.com/" + request.Repository + "/main/projects/uitok-palworld-panel/patches/stable-" + request.TargetVersion + "/workspace.json"
++	if override := strings.TrimSpace(os.Getenv("PALPANEL_PATCH_RELEASE_WORKSPACE_URL")); override != "" {
++		endpoint = override
++	}
++	var workspace patchPublishedWorkspace
++	if err := m.getPatchJSON(ctx, endpoint, &workspace); err != nil {
++		return patchReleaseSelection{}, err
++	}
++	return patchSelectionFromWorkspace(request, workspace)
++}
++
++func patchSelectionFromWorkspace(request PatchUpdateRequest, workspace patchPublishedWorkspace) (patchReleaseSelection, error) {
++	if workspace.SchemaVersion != 2 || workspace.TargetVersion != request.TargetVersion || workspace.State != "released" || !workspace.Verified {
++		return patchReleaseSelection{}, fmt.Errorf("published workspace is not released and verified for %s", request.TargetVersion)
++	}
++	prefix := "uitok-stable-" + request.TargetVersion + "-p"
++	if !strings.HasPrefix(workspace.ReleaseTag, prefix) {
++		return patchReleaseSelection{}, fmt.Errorf("published workspace release tag does not match %s", request.TargetVersion)
++	}
++	version := strings.TrimPrefix(workspace.ReleaseTag, prefix)
++	if _, err := parsePatchVersion(version); err != nil {
++		return patchReleaseSelection{}, err
++	}
++	archiveName := fmt.Sprintf("uitok-palworld-panel_stable-%s_patch-%s_linux-amd64.tar.gz", request.TargetVersion, version)
++	releaseURL := "https://github.com/" + request.Repository + "/releases/tag/" + workspace.ReleaseTag
++	downloadBase := "https://github.com/" + request.Repository + "/releases/download/" + workspace.ReleaseTag + "/"
++	return patchReleaseSelection{
++		Release: patchGitHubRelease{
++			TagName: workspace.ReleaseTag,
++			HTMLURL: releaseURL,
++		},
++		Version: version,
++		Archive: patchGitHubAsset{
++			Name:               archiveName,
++			BrowserDownloadURL: downloadBase + archiveName,
++		},
++		Manifest: patchGitHubAsset{
++			Name:               "manifest.json",
++			BrowserDownloadURL: downloadBase + "manifest.json",
++		},
++		Checksums: patchGitHubAsset{
++			Name:               "SHA256SUMS",
++			BrowserDownloadURL: downloadBase + "SHA256SUMS",
++		},
++	}, nil
++}
++
++func (m Manager) resolvePatchReleaseFromAPI(ctx context.Context, request PatchUpdateRequest) (patchReleaseSelection, error) {
 +	endpoint := "https://api.github.com/repos/" + request.Repository + "/releases?per_page=100"
 +	var releases []patchGitHubRelease
 +	if err := m.getPatchJSON(ctx, endpoint, &releases); err != nil {
@@ -3124,7 +3196,13 @@ index 0000000000000000000000000000000000000000..5ba696c7acf04c9865a93926b77a44cc
 +func setPatchRequestHeaders(req *http.Request) {
 +	req.Header.Set("Accept", "application/vnd.github+json")
 +	req.Header.Set("User-Agent", "PalPanel-patch-hot-update")
-+	if token := strings.TrimSpace(firstPatchValue(os.Getenv("GITHUB_TOKEN"), os.Getenv("GH_TOKEN"))); token != "" {
++	if token := strings.TrimSpace(firstPatchValue(
++		os.Getenv("PALWORLD_LINUX_PANEL_PATCH_GITHUB_TOKEN"),
++		os.Getenv("PALPANEL_PANEL_PATCH_GITHUB_TOKEN"),
++		os.Getenv("PALPANEL_PATCH_GITHUB_TOKEN"),
++		os.Getenv("GITHUB_TOKEN"),
++		os.Getenv("GH_TOKEN"),
++	)); token != "" {
 +		req.Header.Set("Authorization", "Bearer "+token)
 +	}
 +}
@@ -3526,15 +3604,16 @@ index 0000000000000000000000000000000000000000..4fcb5c89ed8ae514ebfb769b1d1e5bb3
 +func recoverPatchUpdateIfNeeded(*db.Store) {}
 diff --git a/backend/internal/server/patch_update_test.go b/backend/internal/server/patch_update_test.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..8c59b44e06d247bcd98b511e09e78ca4db9ff028
+index 0000000000000000000000000000000000000000..10a0969f6b6b2cc31a7d68f3816a834f17ebd01e
 --- /dev/null
 +++ b/backend/internal/server/patch_update_test.go
-@@ -0,0 +1,104 @@
+@@ -0,0 +1,162 @@
 +package server
 +
 +import (
 +	"archive/tar"
 +	"compress/gzip"
++	"net/http"
 +	"os"
 +	"path/filepath"
 +	"strings"
@@ -3634,6 +3713,63 @@ index 0000000000000000000000000000000000000000..8c59b44e06d247bcd98b511e09e78ca4
 +		t.Fatalf("extracted body = %q", got)
 +	}
 +}
++
++func TestPatchSelectionFromPublishedWorkspace(t *testing.T) {
++	request := PatchUpdateRequest{
++		TargetVersion:       "v1.3.0",
++		CurrentPatchVersion: "0.8.4",
++		Repository:          patchUpdateRepository,
++		RequiredFeature:     "panel-patch-hot-update",
++	}
++	selection, err := patchSelectionFromWorkspace(request, patchPublishedWorkspace{
++		SchemaVersion: 2,
++		TargetVersion: "v1.3.0",
++		State:         "released",
++		Verified:      true,
++		ReleaseTag:    "uitok-stable-v1.3.0-p0.8.5",
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if selection.Version != "0.8.5" || selection.Release.TagName != "uitok-stable-v1.3.0-p0.8.5" {
++		t.Fatalf("unexpected selection: %#v", selection)
++	}
++	wantArchive := "uitok-palworld-panel_stable-v1.3.0_patch-0.8.5_linux-amd64.tar.gz"
++	if selection.Archive.Name != wantArchive || !strings.HasSuffix(selection.Archive.BrowserDownloadURL, "/"+wantArchive) {
++		t.Fatalf("unexpected archive: %#v", selection.Archive)
++	}
++	if selection.Manifest.Name != "manifest.json" || selection.Checksums.Name != "SHA256SUMS" {
++		t.Fatalf("unexpected metadata assets: %#v %#v", selection.Manifest, selection.Checksums)
++	}
++}
++
++func TestPatchSelectionRejectsUnverifiedWorkspace(t *testing.T) {
++	request := PatchUpdateRequest{TargetVersion: "v1.3.0", Repository: patchUpdateRepository}
++	_, err := patchSelectionFromWorkspace(request, patchPublishedWorkspace{
++		SchemaVersion: 2,
++		TargetVersion: "v1.3.0",
++		State:         "releasable",
++		Verified:      false,
++		ReleaseTag:    "uitok-stable-v1.3.0-p0.8.6",
++	})
++	if err == nil {
++		t.Fatal("expected unverified workspace to be rejected")
++	}
++}
++
++func TestSetPatchRequestHeadersUsesDeploymentTokenAlias(t *testing.T) {
++	t.Setenv("PALPANEL_PANEL_PATCH_GITHUB_TOKEN", "deployment-token")
++	t.Setenv("GITHUB_TOKEN", "")
++	t.Setenv("GH_TOKEN", "")
++	req, err := http.NewRequest(http.MethodGet, "https://api.github.com/repos/example/repo/releases", nil)
++	if err != nil {
++		t.Fatal(err)
++	}
++	setPatchRequestHeaders(req)
++	if got := req.Header.Get("Authorization"); got != "Bearer deployment-token" {
++		t.Fatalf("Authorization = %q", got)
++	}
++}
 diff --git a/backend/internal/server/webdav.go b/backend/internal/server/webdav.go
 index e985bdebe79490e4e6439042fcb0b432133b511c..a1a1348631f376428801730d381d7715fdbc9504 100644
 --- a/backend/internal/server/webdav.go
@@ -3688,7 +3824,7 @@ index e2f30d950edda0f5b4b37ab8da47aa3a0525a402..748638d3afd94db10a7edae8efdf0201
  	privateHTTP := "http://192.168.1.20/dav"
  	disabled := false
 diff --git a/docs/openapi.yaml b/docs/openapi.yaml
-index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..a4fa24d7b7c80575ab42382fa24e233121308f4d 100644
+index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..64b93e62074680ae68e1d9a93758fdcf539ea87c 100644
 --- a/docs/openapi.yaml
 +++ b/docs/openapi.yaml
 @@ -135,6 +135,11 @@ x-player-inventory: &playerInventory
@@ -4010,7 +4146,7 @@ index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..a4fa24d7b7c80575ab42382fa24e2331
 +          type: object
 +          required: [version, repository, features]
 +          properties:
-+            version: {type: string, const: 0.8.5}
++            version: {type: string, const: 0.8.6}
 +            repository: {type: string, const: ninhua/Palworld-Panel-Patches}
 +            features:
 +              type: array
@@ -5044,12 +5180,13 @@ index c770ee6b05ef5c99bfb3f60ea43a75aeb51e15df..cfea30a26e65a4b5f72d3fb3e0bcbc49
    'settings.proxyCommunityDescription': 'Used only by the backend when accessing BattleMetrics or a compatible source. Local panel APIs are unaffected.',
    'settings.proxyEnabled': 'Enabled',
 diff --git a/frontend/src/pages/AuditLogs.tsx b/frontend/src/pages/AuditLogs.tsx
-index 815f6b768aa496962d664e04a3f5d583745b847c..201ca20061b41e5a9cdde3bfab4a13af132bb457 100644
+index 815f6b768aa496962d664e04a3f5d583745b847c..35d2846984ca4617c495afa2f9f112cacfadf080 100644
 --- a/frontend/src/pages/AuditLogs.tsx
 +++ b/frontend/src/pages/AuditLogs.tsx
-@@ -1,13 +1,26 @@
+@@ -1,13 +1,27 @@
  import React, { useEffect, useState } from 'react';
 -import { ClipboardList, RefreshCw } from 'lucide-react';
++import { createPortal } from 'react-dom';
 +import { ClipboardList, Copy, RefreshCw, X } from 'lucide-react';
  import { auditApi } from '../api/audit';
  import type { AuditLog } from '../types';
@@ -5075,7 +5212,7 @@ index 815f6b768aa496962d664e04a3f5d583745b847c..201ca20061b41e5a9cdde3bfab4a13af
  
    const load = async () => {
      setLoading(true);
-@@ -16,10 +29,62 @@ export const AuditLogs: React.FC = () => {
+@@ -16,10 +30,62 @@ export const AuditLogs: React.FC = () => {
      setLoading(false);
    };
  
@@ -5138,7 +5275,7 @@ index 815f6b768aa496962d664e04a3f5d583745b847c..201ca20061b41e5a9cdde3bfab4a13af
    return (
      <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
        <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-[0_2px_12px_-3px_rgba(15,23,42,0.02)]">
-@@ -29,7 +94,7 @@ export const AuditLogs: React.FC = () => {
+@@ -29,7 +95,7 @@ export const AuditLogs: React.FC = () => {
                <ClipboardList size={18} className="text-sky-500" />
                操作审计
              </h3>
@@ -5147,7 +5284,7 @@ index 815f6b768aa496962d664e04a3f5d583745b847c..201ca20061b41e5a9cdde3bfab4a13af
            </div>
            <button type="button" onClick={load} className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">
              <RefreshCw size={14} />
-@@ -50,12 +115,26 @@ export const AuditLogs: React.FC = () => {
+@@ -50,12 +116,26 @@ export const AuditLogs: React.FC = () => {
                { key: 'action', label: '动作' },
                { key: 'target', label: '对象' },
                { key: 'status', label: '结果' },
@@ -5175,7 +5312,7 @@ index 815f6b768aa496962d664e04a3f5d583745b847c..201ca20061b41e5a9cdde3bfab4a13af
                  <div className="flex items-start justify-between gap-3">
                    <div>
                      <p className="text-xs font-bold text-slate-800">{item.action}</p>
-@@ -63,11 +142,31 @@ export const AuditLogs: React.FC = () => {
+@@ -63,11 +143,31 @@ export const AuditLogs: React.FC = () => {
                    </div>
                    <StatusBadge status={item.status === 'success' ? 'success' : 'failed'} />
                  </div>
@@ -5208,7 +5345,7 @@ index 815f6b768aa496962d664e04a3f5d583745b847c..201ca20061b41e5a9cdde3bfab4a13af
                  <td className="px-6 py-4 text-xs font-medium text-slate-400">{item.created_at}</td>
                  <td className="px-6 py-4 text-xs font-bold text-slate-700">{item.actor} / {item.role}</td>
                  <td className="px-6 py-4 font-mono text-[11px] text-slate-600">{item.action}</td>
-@@ -75,12 +174,80 @@ export const AuditLogs: React.FC = () => {
+@@ -75,12 +175,81 @@ export const AuditLogs: React.FC = () => {
                  <td className="px-6 py-4">
                    <StatusBadge status={item.status === 'success' ? 'success' : 'failed'} />
                  </td>
@@ -5223,14 +5360,14 @@ index 815f6b768aa496962d664e04a3f5d583745b847c..201ca20061b41e5a9cdde3bfab4a13af
          )}
        </section>
 +
-+      {selected && (
-+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm" onMouseDown={closeDetails}>
++      {selected && createPortal(
++        <div className="pp-dialog-backdrop fixed inset-0 z-[90] flex items-center justify-center p-4" onMouseDown={closeDetails}>
 +          <section
 +            role="dialog"
 +            aria-modal="true"
 +            aria-labelledby="audit-response-title"
 +            onMouseDown={(event) => event.stopPropagation()}
-+            className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-white/70 bg-white shadow-2xl"
++            className="pp-dialog-panel flex min-h-0 max-h-[88dvh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl"
 +          >
 +            <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 sm:px-6">
 +              <div>
@@ -5243,7 +5380,7 @@ index 815f6b768aa496962d664e04a3f5d583745b847c..201ca20061b41e5a9cdde3bfab4a13af
 +              </button>
 +            </header>
 +
-+            <div className="overflow-y-auto px-5 py-5 sm:px-6">
++            <div className="min-h-0 overflow-y-auto px-5 py-5 sm:px-6">
 +              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
 +                {[
 +                  ['时间', selected.created_at || '-'],
@@ -5276,7 +5413,7 @@ index 815f6b768aa496962d664e04a3f5d583745b847c..201ca20061b41e5a9cdde3bfab4a13af
 +                    {copied ? '已复制' : '复制响应'}
 +                  </button>
 +                </div>
-+                <pre className={`mt-3 max-h-[42vh] overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-6 ${selected.status === 'success' ? 'text-emerald-200' : 'text-rose-200'}`}>
++                <pre className={`mt-3 min-h-20 max-h-[42dvh] overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-6 ${selected.status === 'success' ? 'text-emerald-200' : 'text-rose-200'}`}>
 +                  {selectedResponse}
 +                </pre>
 +              </div>
@@ -5284,7 +5421,8 @@ index 815f6b768aa496962d664e04a3f5d583745b847c..201ca20061b41e5a9cdde3bfab4a13af
 +              <p className="mt-3 text-[10px] leading-5 text-slate-400">此处展示的是后端已脱敏并写入审计记录的响应信息，不包含未过滤的完整 HTTP 响应体。</p>
 +            </div>
 +          </section>
-+        </div>
++        </div>,
++        document.body,
 +      )}
      </div>
    );
