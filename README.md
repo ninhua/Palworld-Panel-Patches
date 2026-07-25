@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.16`
+仓库版本：`v0.12.17`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -224,6 +224,7 @@ GET /api/bases/{id}/feed-boxes
 
 `0018-add-player-presence-history.patch` 增加 `player-presence-history`：
 
+- 补丁已按 PalPanel v1.3.0 累计源码上下文重新生成，可由标准 `git apply --check` 直接验证和应用，不依赖 0018 专用语义适配器；
 - 使用现有监控采样器周期读取官方 REST 玩家列表；
 - 按玩家身份持久累计在线时长并保存最近完成会话；
 - 将统计附加到玩家列表和玩家详情，不新增写操作或权限；

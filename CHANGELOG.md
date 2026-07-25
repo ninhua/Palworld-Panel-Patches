@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.12.17
+
+### Fixed
+
+- 纠正 v0.12.16 本地修复包未替换 `0018-add-player-presence-history.patch` 的问题；旧包只是通过 `apply-source-patch.sh` 的专用语义迁移绕过四个冲突文件。
+- 以 PalPanel v1.3.0 在 `0017` 后的累计源码上下文重新生成 `0018`，修正 `patch_info.go`、`patch_info_test.go`、`Players.tsx` 和 `types/index.ts` 的真实 hunk 位置与上下文。
+- 删除 `apply_player_presence_patch` 专用适配器；`0018` 现在必须通过标准 `git apply --check`，否则迁移直接失败。
+- stable patch 目标仍为 `0.8.7`，在线历史仍为 required feature，审计详细响应仍由 `0021` 提供。
+
+### Validation
+
+- 新增对真实 `0018` 四个修正 section 的直接应用回归，验证补丁文件本身包含并应用在线历史改动。
+- 更新 `0018` 的 SHA-256，确保 source package 和 Release 校验不会继续接受旧片段补丁。
+
 ## v0.12.16
 
 ### Fixed

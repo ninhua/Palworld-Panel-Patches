@@ -28,7 +28,7 @@ detail dialog for desktop rows and mobile cards. It displays the complete
 already-redacted audit message and record metadata, pretty-prints JSON, supports keyboard controls
 and copying on secure or HTTP pages, and does not collect raw HTTP bodies.
 
-Patch `0018` adds the required `player-presence-history` feature. It reuses the existing 15-second
+Patch `0018` adds the required `player-presence-history` feature. Its four previously conflicting source sections are regenerated against the cumulative v1.3.0 context and must apply through standard `git apply`; no patch-name-specific adapter is used. It reuses the existing 15-second
 monitor loop to sample the official REST players endpoint, stores bounded
 sessions and totals in SQLite KV, caps recovery accrual after outages, and
 attaches history only to the live server save source.

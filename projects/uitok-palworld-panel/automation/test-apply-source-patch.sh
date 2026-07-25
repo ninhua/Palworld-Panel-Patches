@@ -232,39 +232,63 @@ test ! -e "${work}/deleted-known-line/backend/internal/pallocalize/patch_storage
 ! grep -Fq 'return "stone"' "${work}/deleted-known-line/backend/internal/pallocalize/localize.go"
 
 
-# 0018 使用严格语义迁移：四个已知上下文文件按锚点改写，其余补丁内容仍须正常应用。
-presence_target="${work}/presence-adapter"
+# 0018 必须是可直接应用的标准补丁，不得依赖文件名专用语义适配器。
+presence_target="${work}/presence-direct"
 mkdir -p \
     "${presence_target}/backend/internal/api" \
     "${presence_target}/frontend/src/pages" \
-    "${presence_target}/frontend/src/types" \
-    "${presence_target}/backend/internal/playerpresence"
+    "${presence_target}/frontend/src/types"
 git -C "${presence_target}" init -q
 git_config "${presence_target}"
-cat > "${presence_target}/backend/internal/api/patch_info.go" <<'GO'
-package api
-var patchFeatures = []string{"patch-info-api", "player-notes", "audit-log-response-display"}
-GO
-cat > "${presence_target}/backend/internal/api/patch_info_test.go" <<'GO'
-package api
-import "testing"
-func TestPatchFeatures(t *testing.T) {
-	for _, expected := range []string{"patch-info-api", "player-notes", "audit-log-response-display"} {
-		_ = expected
-	}
-}
-GO
-cat > "${presence_target}/frontend/src/types/index.ts" <<'TS'
-export interface Player {
-  id: string;
-  annotation_updated_at?: string;
-}
-TS
-cat > "${presence_target}/frontend/src/pages/Players.tsx" <<'TS'
+python3 - "${presence_target}" <<'PYPRESENCEFIXTURE'
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+
+def write_at(path: str, length: int, blocks: list[tuple[int, str]]) -> None:
+    lines = ["// fixture"] * length
+    for start, block in blocks:
+        for offset, line in enumerate(block.splitlines()):
+            lines[start - 1 + offset] = line
+    target = root / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+write_at("backend/internal/api/patch_info.go", 45, [(10, '''const (
+\tpatchSourceRepository = "uitok/palworld-panel"
+\tpatchSourceRef        = "v1.3.0"
+\tpatchTargetVersion    = "v1.3.0"
+\tpatchVersion          = "0.8.7"
+\tpatchRepository       = "ninhua/Palworld-Panel-Patches"
+)
+
+var patchFeatures = []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display"}
+
+func (s Server) patchInfo(c *gin.Context) {
+	info := buildinfo.Current()''')])
+write_at("backend/internal/api/patch_info_test.go", 90, [(74, '''\tfeatures := make(map[string]bool, len(response.Data.Patch.Features))
+\tfor _, feature := range response.Data.Patch.Features {
+\t\tfeatures[feature] = true
+\t}
+\tfor _, expected := range []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display"} {
+\t\tif !features[expected] {
+\t\t\tt.Fatalf("missing feature %q in %#v", expected, response.Data.Patch.Features)
+\t\t}
+\t}''')])
+write_at("frontend/src/pages/Players.tsx", 500, [
+    (13, '''import { SaveDataTabs } from '../components/ui/SaveDataTabs';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { appConfig } from '../config/defaults';
+
 const pageSize = 50;
 
-function PlayerIdentity({ player }: { player: any }) {
-  return <div>
+export const Players: React.FC = () => {
+  const { refreshKey, session } = useServerStore();
+  const canWriteAnnotations = Boolean(session?.permissions.includes('players:write'));'''),
+    (305, '''    <div className="min-w-0">
+      <p className="truncate text-xs font-bold text-slate-700">{player.nickname}</p>
+      <p className="truncate font-mono text-[10px] text-slate-400">{player.steam_id}</p>
       {(player.tags?.length ?? 0) > 0 && (
         <div className="mt-1 flex max-w-[220px] flex-wrap gap-1">
           {player.tags!.slice(0, 3).map((tag) => (
@@ -273,66 +297,82 @@ function PlayerIdentity({ player }: { player: any }) {
           {(player.tags?.length ?? 0) > 3 && <span className="text-[9px] font-bold text-slate-400">+{player.tags!.length - 3}</span>}
         </div>
       )}
-  </div>;
-}
-
-function PlayerDetail({ player }: { player: any }) {
-  return <div>
+    </div>
+  </div>
+);'''),
+    (435, '''          <div className="mt-5 grid grid-cols-2 gap-3">
             <Detail label="坐标" value={`${player.x.toFixed(0)}, ${player.y.toFixed(0)}, ${player.z.toFixed(0)}`} mono />
             <Detail label="Ping" value={player.ping == null ? '-' : `${player.ping} ms`} />
           </div>
 
           <section className="mt-5 rounded-2xl border border-violet-100 bg-violet-50/40 p-4">
-  </section>;
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="flex items-center gap-2 text-xs font-bold text-slate-700"><FileText size={14} className="text-violet-500" />玩家备注</h3>
+                <p className="mt-1 text-[10px] font-semibold text-slate-400">仅保存在面板数据库中，不修改玩家存档。</p>
+              </div>'''),
+])
+write_at("frontend/src/types/index.ts", 900, [(825, '''  path: string;
 }
-TS
-git -C "${presence_target}" add .
-git -C "${presence_target}" commit -qm "presence base"
 
-presence_patch="${work}/0018-add-player-presence-history.patch"
-cat > "${presence_patch}" <<'PATCH'
-diff --git a/backend/internal/api/patch_info.go b/backend/internal/api/patch_info.go
---- a/backend/internal/api/patch_info.go
-+++ b/backend/internal/api/patch_info.go
-@@ -1 +1,2 @@
--old patch info
-+old patch info
-+"player-presence-history"
-diff --git a/backend/internal/api/patch_info_test.go b/backend/internal/api/patch_info_test.go
---- a/backend/internal/api/patch_info_test.go
-+++ b/backend/internal/api/patch_info_test.go
-@@ -1 +1,2 @@
--old patch test
-+old patch test
-+"player-presence-history"
-diff --git a/frontend/src/pages/Players.tsx b/frontend/src/pages/Players.tsx
---- a/frontend/src/pages/Players.tsx
-+++ b/frontend/src/pages/Players.tsx
-@@ -1 +1,2 @@
--old players
-+old players
-+formatPresenceDuration
-diff --git a/frontend/src/types/index.ts b/frontend/src/types/index.ts
---- a/frontend/src/types/index.ts
-+++ b/frontend/src/types/index.ts
-@@ -1 +1,2 @@
--old types
-+old types
-+PlayerPresenceSession
-diff --git a/backend/internal/playerpresence/adapter_probe.go b/backend/internal/playerpresence/adapter_probe.go
-new file mode 100644
---- /dev/null
-+++ b/backend/internal/playerpresence/adapter_probe.go
-@@ -0,0 +1,3 @@
-+package playerpresence
-+
-+const AdapterProbe = true
-PATCH
-expect_success presence-adapter "${apply_script}" "${presence_target}" "${presence_patch}"
+export interface Player {
+  id: string;
+  player_uid?: string;
+  steam_id: string;
+  nickname: string;
+  level: number;
+  guild_id?: string;
+  guild_name: string;
+  is_online: boolean;
+  online_source: 'none' | 'rest' | 'paldefender' | 'rest+paldefender';
+  online_stale: boolean;
+  gm_user_id?: string;
+  last_online_time: string;
+  x: number;
+  y: number;
+  z: number;
+  ping?: number;
+  ip?: string;
+  inventory_summary?: Record<string, unknown>;
+  note?: string;
+  tags?: string[];
+  has_annotation?: boolean;
+  annotation_updated_at?: string;
+}
+
+export interface SaveInventorySlot {''')])
+PYPRESENCEFIXTURE
+git -C "${presence_target}" add .
+git -C "${presence_target}" commit -qm "presence cumulative base"
+
+presence_source="${script_dir}/../patches/bootstrap-v1.3.0/source/0018-add-player-presence-history.patch"
+presence_patch="${work}/0018-direct-context.patch"
+python3 - "${presence_source}" "${presence_patch}" <<'PYEXTRACT'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text(encoding="utf-8")
+paths = {
+    "backend/internal/api/patch_info.go",
+    "backend/internal/api/patch_info_test.go",
+    "frontend/src/pages/Players.tsx",
+    "frontend/src/types/index.ts",
+}
+sections = []
+for part in source.split("diff --git ")[1:]:
+    section = "diff --git " + part
+    first = section.splitlines()[0]
+    path = first.split(" a/", 1)[1].split(" b/", 1)[0]
+    if path in paths:
+        sections.append(section.rstrip() + "\n")
+if len(sections) != len(paths):
+    raise SystemExit(f"0018 direct-context sections = {len(sections)}, want {len(paths)}")
+Path(sys.argv[2]).write_text("".join(sections), encoding="utf-8")
+PYEXTRACT
+expect_success presence-direct "${apply_script}" "${presence_target}" "${presence_patch}"
 grep -Fq '"player-presence-history"' "${presence_target}/backend/internal/api/patch_info.go"
 grep -Fq 'export interface PlayerPresenceSession' "${presence_target}/frontend/src/types/index.ts"
 grep -Fq 'const formatPresenceDuration' "${presence_target}/frontend/src/pages/Players.tsx"
-test -f "${presence_target}/backend/internal/playerpresence/adapter_probe.go"
-grep -Fq '已精确适配 PalPanel v1.3.0 的玩家在线历史补丁。' "${work}/presence-adapter.out"
+! grep -Fq 'apply_player_presence_patch' "${apply_script}"
 
 echo "apply-source-patch regression tests passed."

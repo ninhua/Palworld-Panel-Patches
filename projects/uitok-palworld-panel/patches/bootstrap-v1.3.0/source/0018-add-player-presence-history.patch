@@ -1,15 +1,24 @@
 diff --git a/backend/internal/api/patch_info.go b/backend/internal/api/patch_info.go
-index dc478da..f62c5db 100644
+index 90591bcba3502700a30c664f9759a578ed618c7d..7c5bbd0f1b677eee5ec9ca4292105d2dd889d523 100644
 --- a/backend/internal/api/patch_info.go
 +++ b/backend/internal/api/patch_info.go
-@@ -1 +1 @@
+@@ -14,7 +14,7 @@ const (
+ 	patchRepository       = "ninhua/Palworld-Panel-Patches"
+ )
+ 
 -var patchFeatures = []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display"}
 +var patchFeatures = []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display", "player-presence-history"}
+ 
+ func (s Server) patchInfo(c *gin.Context) {
+ 	info := buildinfo.Current()
 diff --git a/backend/internal/api/patch_info_test.go b/backend/internal/api/patch_info_test.go
-index b8f2ba1..b0e99fc 100644
+index f63e46ad941611877841d5986f83224afc4dbfda..460730e5d12852df917540390fe8492652c0ff93 100644
 --- a/backend/internal/api/patch_info_test.go
 +++ b/backend/internal/api/patch_info_test.go
-@@ -1,4 +1,4 @@
+@@ -77,7 +77,7 @@ func TestPatchInfo(t *testing.T) {
+ 	for _, feature := range response.Data.Patch.Features {
+ 		features[feature] = true
+ 	}
 -	for _, expected := range []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display"} {
 +	for _, expected := range []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display", "player-presence-history"} {
  		if !features[expected] {
@@ -147,10 +156,11 @@ index f6d6e6c..ae14d0d 100644
    };
  };
 diff --git a/frontend/src/pages/Players.tsx b/frontend/src/pages/Players.tsx
-index 9613107..7f17118 100644
+index 5708fcfd2f5245918aed98724816b8831f1ae832..015af2d57b7862fd9a2cab605180a0e5bd5228a8 100644
 --- a/frontend/src/pages/Players.tsx
 +++ b/frontend/src/pages/Players.tsx
-@@ -1,5 +1,22 @@
+@@ -16,6 +16,23 @@ import { appConfig } from '../config/defaults';
+ 
  const pageSize = 50;
  
 +const formatPresenceDuration = (seconds?: number) => {
@@ -171,9 +181,9 @@ index 9613107..7f17118 100644
 +};
 +
  export const Players: React.FC = () => {
- 
- const PlayerIdentity: React.FC<{ player: Player }> = ({ player }) => (
-@@ -15,6 +32,11 @@ const PlayerIdentity: React.FC<{ player: Player }> = ({ player }) => (
+   const { refreshKey, session } = useServerStore();
+   const canWriteAnnotations = Boolean(session?.permissions.includes('players:write'));
+@@ -313,6 +330,11 @@ export const Players: React.FC = () => {
            {(player.tags?.length ?? 0) > 3 && <span className="text-[9px] font-bold text-slate-400">+{player.tags!.length - 3}</span>}
          </div>
        )}
@@ -185,7 +195,7 @@ index 9613107..7f17118 100644
      </div>
    </div>
  );
-@@ -22,6 +44,27 @@ const PlayerIdentity: React.FC<{ player: Player }> = ({ player }) => (
+@@ -435,8 +457,29 @@ export const Players: React.FC = () => {
            <div className="mt-5 grid grid-cols-2 gap-3">
              <Detail label="坐标" value={`${player.x.toFixed(0)}, ${player.y.toFixed(0)}, ${player.z.toFixed(0)}`} mono />
              <Detail label="Ping" value={player.ping == null ? '-' : `${player.ping} ms`} />
@@ -213,11 +223,16 @@ index 9613107..7f17118 100644
 +          )}
 +
            <section className="mt-5 rounded-2xl border border-violet-100 bg-violet-50/40 p-4">
+             <div className="flex items-center justify-between gap-3">
+               <div>
 diff --git a/frontend/src/types/index.ts b/frontend/src/types/index.ts
-index 68a4174..6e37a7a 100644
+index 7c6e2aa40e7e55fa6decf7a5e10c6b4a73888a38..a8917ea04ba607733e84452b24ee65df8d58c589 100644
 --- a/frontend/src/types/index.ts
 +++ b/frontend/src/types/index.ts
-@@ -1,3 +1,9 @@
+@@ -825,6 +825,12 @@
+   path: string;
+ }
+ 
 +export interface PlayerPresenceSession {
 +  started_at: string;
 +  ended_at: string;
@@ -226,8 +241,8 @@ index 68a4174..6e37a7a 100644
 +
  export interface Player {
    id: string;
-   player_uid: string;
-@@ -5,6 +11,17 @@ export interface Player {
+   player_uid?: string;
+@@ -848,6 +854,17 @@ export interface Player {
    tags?: string[];
    has_annotation?: boolean;
    annotation_updated_at?: string;
