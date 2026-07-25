@@ -126,6 +126,7 @@ generated_sha_after="$(sha256sum "${generated}" | awk '{print $1}')"
 
 original_binary="${output}/work/original-palpanel"
 patched_binary="${output}/work/patched-palpanel"
+patched_helper="${patched_binary}-uid-remap"
 
 "${script_dir}/build-palpanel.sh" \
     "${original}" \
@@ -141,6 +142,12 @@ patched_binary="${output}/work/patched-palpanel"
     "${expected_commit}" \
     "${build_time}"
 
+[[ -x "${patched_helper}" ]] || {
+    echo "补丁构建未生成 palworld-uid-remap helper：${patched_helper}" >&2
+    exit 1
+}
+"${patched_helper}" derive-host-uid --steam-id 76561198000000000 >/dev/null
+
 "${patch_root}/tests/smoke.sh" \
     "${patched_binary}" \
     "${expected_commit}" \
@@ -154,6 +161,7 @@ package_name="uitok-palworld-panel_dev-${expected_commit:0:12}_target-${target_v
 package_dir="${output}/work/${package_name}"
 mkdir -p "${package_dir}/overlay/bin" "${package_dir}/source"
 cp "${patched_binary}" "${package_dir}/overlay/bin/palpanel"
+cp "${patched_helper}" "${package_dir}/overlay/bin/palworld-uid-remap"
 cp "${patch_files[@]}" "${package_dir}/source/"
 cp "${patch_dir}/SHA256SUMS" "${package_dir}/source/SHA256SUMS"
 cp "${lock}" "${package_dir}/upstream-lock.json"

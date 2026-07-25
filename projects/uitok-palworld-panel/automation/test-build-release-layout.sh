@@ -90,7 +90,7 @@ git -C "${upstream}" checkout -- payload.txt
 cat >"${track}/manifest.template.json" <<'JSON'
 {
   "patch_version":"0.8.1",
-  "features":["patch-info-api","base-custom-names","player-presence-history"],
+  "features":["patch-info-api","base-custom-names","player-presence-history","host-save-migrator"],
   "files":{"bin/palpanel":{"original_sha256":"0000000000000000000000000000000000000000000000000000000000000000","patched_sha256":"0000000000000000000000000000000000000000000000000000000000000000"}}
 }
 JSON
@@ -102,6 +102,8 @@ cat >"${track}/build/build-palpanel.sh" <<'EOF'
 set -e
 printf '%s\n' "$3" >"$2"
 chmod +x "$2"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$2-uid-remap"
+chmod +x "$2-uid-remap"
 EOF
 chmod +x "${track}/build/build-palpanel.sh"
 echo license >"${track}/LICENSE"
@@ -118,6 +120,8 @@ test "$(find "${release}" -maxdepth 1 -name '*_linux-amd64.tar.gz' | wc -l)" -eq
 test "$(find "${release}" -maxdepth 1 -name '*_source.tar.gz' | wc -l)" -eq 1
 source_archive="$(find "${release}" -maxdepth 1 -name '*_source.tar.gz' -print -quit)"
 tar -tzf "${source_archive}" | grep -Fq './.palpatch/source-track/source/0001-layout.patch'
+binary_archive="$(find "${release}" -maxdepth 1 -name '*_linux-amd64.tar.gz' -print -quit)"
+tar -tzf "${binary_archive}" | grep -Fq '/overlay/bin/palworld-uid-remap'
 
 # A target where every patch is already present must end cleanly without an empty Release.
 cat >"${automation}/apply-source-patch.sh" <<'EOF'

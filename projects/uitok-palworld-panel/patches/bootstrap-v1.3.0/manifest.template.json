@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "uitok-palworld-panel",
-  "patch_version": "0.8.7",
+  "patch_version": "0.8.8",
   "patch_type": "source-build",
   "upstream": {
     "repository": "uitok/palworld-panel",
@@ -34,7 +34,8 @@
     "insecure-endpoint-support",
     "panel-patch-hot-update",
     "audit-log-response-display",
-    "player-presence-history"
+    "player-presence-history",
+    "host-save-migrator"
   ],
-  "notes": "Self-contained v1.3.0 stable maintenance source track. Player presence history is a required feature sampled conservatively from the official REST players endpoint. Write-operation audit records store bounded, recursively redacted structured response details in the existing audit message field."
+  "notes": "Self-contained v1.3.0 stable maintenance source track. Includes required player presence history, bounded redacted audit response details, and a managed co-op host-to-dedicated UID migration flow backed by PalPanel's first-party Rust remapper. Migration always creates a new imported save source and does not overwrite or deploy the input world."
 }

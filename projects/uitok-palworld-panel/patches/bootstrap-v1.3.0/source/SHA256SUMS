@@ -19,3 +19,4 @@ d72099bc6ec2cc6618d303ba393382fad61b6442ecf5fa8ba16617a1fc3ef173  0015-add-audit
 7f71a6128a1cff6f037cba766cabe8d893ed539da97d887057a7ea9c9bc59658  0019-avoid-github-api-rate-limit.patch
 c250616d19bdb39cc39c67b5c9e5609720033e279d25374d8190bf658f14bad2  0020-fix-audit-response-dialog-portal.patch
 52ee364b51df0b5fffe18eb7f15616ad9779945e3fac7401a0839218defd46f2  0021-capture-audit-response-details.patch
+302b254a20fcdf0fa36db8ce23c8661e566a2e09a6f654856d00f2f9a7f67a42  0022-add-host-save-migrator.patch

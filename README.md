@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.17`
+仓库版本：`v0.12.18`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -11,7 +11,7 @@
 上游项目：uitok/palworld-panel
 当前维护目标：v1.3.0
 bootstrap 源轨道：patches/bootstrap-v1.3.0
-稳定补丁版本：0.8.7
+稳定补丁版本：0.8.8
 候选状态：candidate / 未发布前 verified=false
 ```
 
@@ -336,8 +336,10 @@ bash common/scripts/validate-repository.sh
 
 ```text
 目标上游：v1.3.0
-稳定补丁版本：0.8.7
-预期 Release：uitok-stable-v1.3.0-p0.8.7
+稳定补丁版本：0.8.8
+预期 Release：uitok-stable-v1.3.0-p0.8.8
+
+`host-save-migrator` 使用随 Release 分发的 `palworld-uid-remap`。helper 作为 overlay 附加文件分发，但不列为安装前必须已存在的 manifest 目标，以兼容旧安装器。旧部署脚本或热更新只替换主二进制时，面板会在首次预检时从同版本 Release 包自举 helper 并按构建时 SHA-256 校验；离线环境可设置 `PALPANEL_UID_REMAPPER_BIN`。
 ```
 
 `manifest.files["bin/palpanel"].original_sha256` 现在直接取自上游正式 Release

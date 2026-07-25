@@ -7,3 +7,5 @@ The patch source, modified binary, and corresponding patched source archive prod
 The `base-custom-names` behavior was independently implemented for this patch line. No source code was copied from the feature-reference repository because its licensing status has not been confirmed.
 
 The repository-level MIT license applies only to original tooling and documentation that are not derivative works of the GPL-covered upstream source.
+
+The `host-save-migrator` user flow was designed with reference to the documented behavior of `66six11/PalworldHostSaveMigrator` (MIT). No Python, Tk, palsav, or Kraken source from that repository is copied into this patch. Execution uses the GPL-3.0-or-later Rust UID remapper and pinned source snapshots already present in `uitok/palworld-panel` v1.3.0.

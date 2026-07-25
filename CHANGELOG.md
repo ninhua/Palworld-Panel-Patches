@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.12.18
+
+### Added
+
+- 新增 `0022-add-host-save-migrator.patch` 与 `host-save-migrator` 功能。
+- 复用 PalPanel v1.3.0 自带的 GPL Rust `palworld-uid-remap`，新增 SteamID64→专服 UID、`host-plan` 和 `host-execute`。
+- 存档中心的受管导入源增加“主机迁移”入口；迁移始终生成新的导入存档源。
+- 补丁包新增 `overlay/bin/palworld-uid-remap`，归档级 checksums 覆盖该文件；为兼容旧安装器，它不作为安装前必须已存在的 manifest 目标。
+- `palpanel` 构建时嵌入 helper SHA-256；冷安装脚本只替换主二进制时，首次迁移预检会从同版本直链 Release 包自举、校验并安装 helper。
+- 现有安装器会随 overlay 复制 helper；只替换主二进制的旧安装或热更新路径会在首次预检时从同版本 Release 直链包自举并校验 helper。
+
+### Safety
+
+- 源世界只读；输出使用 remapper 的临时目录、输入二次 manifest、语义指纹和未关联文件校验。
+- 当前只执行目标 UID 不存在的直接迁移；检测到目标玩家或 DPS 文件时阻止操作。
+- 不迁移 `LocalData.sav`，不自动激活或部署输出。
+
+### Changed
+
+- 仓库版本升级到 `v0.12.18`。
+- stable patch 升级到 `0.8.8`，`host-save-migrator` 为 required feature。
+
 ## v0.12.17
 
 ### Fixed

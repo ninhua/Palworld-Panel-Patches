@@ -224,6 +224,7 @@ current_stage="clean-room-go-tests"
 
 original_binary="${output}/work/original-palpanel"
 patched_binary="${output}/work/patched-palpanel"
+patched_helper="${patched_binary}-uid-remap"
 current_stage="clean-room-original-build"
 "${build_palpanel}" \
     "${original}" \
@@ -238,6 +239,12 @@ current_stage="clean-room-patched-build"
     "${target_version}-p${stable_patch_version}" \
     "${actual_commit}" \
     "${build_time}"
+
+[[ -x "${patched_helper}" ]] || {
+    echo "补丁构建未生成 palworld-uid-remap helper：${patched_helper}" >&2
+    exit 1
+}
+"${patched_helper}" derive-host-uid --steam-id 76561198000000000 >/dev/null
 
 current_stage="official-release-resolution"
 official_binary="${output}/work/official-palpanel"
@@ -284,6 +291,7 @@ mkdir -p \
     "${package_dir}/source/source-chain" \
     "${package_dir}/reports"
 cp "${patched_binary}" "${package_dir}/overlay/bin/palpanel"
+cp "${patched_helper}" "${package_dir}/overlay/bin/palworld-uid-remap"
 cp "${merged_patch}" "${package_dir}/source/"
 cp "${candidate_workspace}/active-source/"*.patch "${package_dir}/source/source-chain/"
 cp "${candidate_workspace}/active-source/SHA256SUMS" "${package_dir}/source/source-chain/SHA256SUMS"

@@ -51,3 +51,13 @@ redacted structured response details. Standard API helpers record their actual
 `data` or `error` payload; direct JSON responses are captured as a compatibility
 fallback. Sensitive keys and Bearer tokens are redacted before the existing
 `audit_logs.message` field is written, and the final JSON is capped at 32 KiB.
+
+## 0022 host-save-migrator
+
+- 基于上游已固定源码的 `tools/palworld-uid-remap`，不引入 Python/Tk 运行时。
+- 对受管导入存档执行 SteamID64 主机 UID 迁移。
+- 使用现有 `/save-sources/import/inspect` 与 `/save-sources/import` 的 JSON 分流，保持 API 路径集合不变。
+- 输出注册为新的 `kind=import` 存档源；源目录只读。
+- 当前拒绝目标 UID 已存在的存档。
+- helper 随 Release overlay 分发，但不列为安装前必须已存在的 manifest 目标；完整 overlay 安装会复制它。若旧部署或热更新只替换 `palpanel`，面板会从同版本 Release 直链包自举 helper，并校验构建时嵌入的 SHA-256。
+- 离线环境可用 `PALPANEL_UID_REMAPPER_BIN` 指定预装 helper；镜像环境可用 `PALPANEL_UID_REMAPPER_PACKAGE_URL` 覆盖自举包地址。

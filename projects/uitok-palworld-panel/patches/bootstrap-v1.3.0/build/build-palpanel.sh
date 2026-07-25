@@ -15,7 +15,7 @@ version="$3"
 commit="$4"
 build_time="$5"
 
-for command in go node npm realpath; do
+for command in go node npm realpath sha256sum; do
     command -v "${command}" >/dev/null 2>&1 || {
         echo "缺少构建命令：${command}" >&2
         exit 1
@@ -66,10 +66,40 @@ cp -R "${source_dir}/frontend/dist/." "${embedded}/"
 mkdir -p "$(dirname "${output_binary}")"
 rm -f "${output_binary}"
 
+helper_manifest="${source_dir}/tools/palworld-uid-remap/Cargo.toml"
+helper_source="${source_dir}/tools/palworld-uid-remap/src/host.rs"
+helper_output="${output_binary}-uid-remap"
+helper_sha=""
+rm -f "${helper_output}"
+if [[ -f "${helper_source}" ]]; then
+    command -v cargo >/dev/null 2>&1 || {
+        echo "缺少构建命令：cargo" >&2
+        exit 1
+    }
+    [[ -f "${helper_manifest}" ]] || {
+        echo "缺少 UID remapper Cargo.toml" >&2
+        exit 1
+    }
+    cargo_target="$(dirname "${output_binary}")/.cargo-$(basename "${output_binary}")"
+    rm -rf "${cargo_target}"
+    CARGO_TARGET_DIR="${cargo_target}" cargo build \
+        --locked \
+        --release \
+        --manifest-path "${helper_manifest}"
+    cp "${cargo_target}/release/palworld-uid-remap" "${helper_output}"
+    chmod 0755 "${helper_output}"
+    "${helper_output}" derive-host-uid --steam-id 76561198000000000 >/dev/null
+    helper_sha="$(sha256sum "${helper_output}" | awk '{print $1}')"
+    rm -rf "${cargo_target}"
+fi
+
 ldflags="-s -w \
 -X palpanel/internal/buildinfo.Version=${version} \
 -X palpanel/internal/buildinfo.Commit=${commit} \
 -X palpanel/internal/buildinfo.BuildTime=${build_time}"
+if [[ -n "${helper_sha}" ]]; then
+    ldflags+=" -X palpanel/internal/api.hostMigrationHelperSHA256=${helper_sha}"
+fi
 
 if ! (
     cd "${source_dir}/backend"
