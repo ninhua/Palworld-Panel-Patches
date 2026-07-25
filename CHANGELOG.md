@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.12.22
+
+### Fixed
+
+- 重新生成 `0023-add-global-inventory-browser.patch` 的累计源码 hunk，修复 `patch_info.go`、`patch_info_test.go`、`routes.go`、`docs/openapi.yaml` 和 `frontend/src/i18n/index.tsx` 无法在 0001–0022 后直接应用的问题。
+- `global-inventory-browser` 不再整行改写共享 `patchFeatures` 和 `TestPatchInfo` 期望列表；改由新增的库存实现文件在包初始化时注册功能，并由独立测试验证。
+- 库存路由以已有 storage/workers/feed-boxes 累计顺序为前像；OpenAPI 路径和 Schema 使用 0009、0016、0018、0022 后的真实行位；中英文路由名称使用 PalPanel v1.3.0 完整字典相邻行。
+- 保持标准 `git apply`，不增加 0023 文件名专用重写或模糊兜底。
+
+### Validation
+
+- 新增 0023 累计行位回归夹具，覆盖后端路由、OpenAPI 两个 hunk、完整 i18n 路由字典、前端路由和功能注册。
+- 回归明确禁止 0023 再包含 `patch_info.go` 或 `patch_info_test.go` section，减少后续功能对共享单行列表的冲突。
+- stable patch 版本保持 `0.8.9`；blocked migration 尚未创建 immutable Release，可重新运行同一标签。
+
 ## v0.12.21
 
 ### Fixed

@@ -411,6 +411,110 @@ grep -Fq 'planHostMigration' "${host_migration_target}/frontend/src/pages/SaveSo
 grep -Fq '主机迁移</button>' "${host_migration_target}/frontend/src/pages/SaveSources.tsx"
 grep -Fq 'const next = renameValue.trim();' "${host_migration_target}/frontend/src/pages/SaveSources.tsx"
 
+# 0023 必须在 0001-0022 的累计行位和相邻路由/Schema 上直接应用。
+inventory_target="${work}/global-inventory-direct"
+python3 - "${inventory_target}" <<'PYGLOBALINVENTORY'
+from pathlib import Path
+import shutil
+import sys
+
+root = Path(sys.argv[1])
+shutil.rmtree(root, ignore_errors=True)
+
+def write_at(path: str, blocks: list[tuple[int, list[str]]]) -> None:
+    lines: list[str] = []
+    for start, block in sorted(blocks):
+        while len(lines) < start - 1:
+            lines.append(f"// cumulative fixture {len(lines) + 1}")
+        if len(lines) != start - 1:
+            raise SystemExit(f"overlapping fixture block for {path}:{start}")
+        lines.extend(block)
+    target = root / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+write_at("backend/internal/api/routes.go", [(246, [
+    '\tapi.GET("/bases/:id/storage", s.getSaveBaseStorage)',
+    '\tapi.GET("/bases/:id/workers", s.getSaveBaseWorkers)',
+    '\tapi.GET("/bases/:id/feed-boxes", s.getSaveBaseFeedBoxes)',
+    '\tapi.GET("/pals", s.listSavePals)',
+    '\tapi.GET("/pals/:id", s.getSavePal)',
+    '\tapi.GET("/map/entities", s.listMapEntities)',
+])])
+write_at("docs/openapi.yaml", [
+    (1204, [
+        '  /bases/{id}/workers:',
+        '    parameters: [*idParameter]',
+        '    get: {operationId: getBaseWorkers, tags: [world], x-palpanel-permission: read, responses: *readResponses}',
+        '  /bases/{id}/feed-boxes:',
+        '    parameters: [*idParameter]',
+        '    get: {operationId: getBaseFeedBoxes, tags: [world], x-palpanel-permission: read, responses: *readResponses}',
+        '  /pals:',
+        '    get: {operationId: listPals, tags: [world], x-palpanel-permission: read, responses: *readResponses}',
+    ]),
+    (1529, [
+        '    ListSummary:',
+        '      type: object',
+        '      required: [total, limit, offset, returned, page]',
+    ]),
+])
+nav = "  'nav.setupGroup': 'Getting started', 'nav.workspaceGroup': 'Workspace', 'nav.worldGroup': 'World management', 'nav.systemGroup': 'Operations & security', 'nav.setup': 'Server setup', 'nav.serverCenter': 'Server center', 'nav.playersWorld': 'Players & world', 'nav.saveTools': 'Save tools', 'nav.mods': 'Mod management', 'nav.backupTasks': 'Backups & tasks', 'nav.securityAudit': 'Security & audit', 'nav.settings': 'System settings', 'nav.main': 'Main navigation', 'nav.expand': 'Expand sidebar', 'nav.collapse': 'Collapse sidebar', 'nav.overview': '{brand} overview', 'nav.serverHeartbeat': 'Server heartbeat', 'nav.running': 'Running', 'nav.stopped': 'Stopped', 'nav.online': 'online', 'nav.uptime': 'uptime', 'nav.adminSession': 'Administrator session', 'nav.logout': 'Sign out',"
+route = "  'route.setup': 'Server setup', 'route.dashboard': 'Server overview', 'route.monitor': 'Live monitoring', 'route.communityServers': 'Community servers', 'route.playerCenter': 'Player center', 'route.saveSources': 'Save center', 'route.worldArchive': 'World archive', 'route.palInventory': 'Pal inventory', 'route.breeding': 'Breeding lab', 'route.liveMap': 'Live map', 'route.mods': 'Mod management', 'route.backups': 'Backups & restore', 'route.tasks': 'Task queue', 'route.security': 'Security', 'route.banlist': 'Ban list', 'route.audit': 'Audit log', 'route.settings': 'System settings', 'route.panel': 'Admin panel',"
+header = "  'header.setup': 'Getting started', 'header.workspace': 'Overview', 'header.world': 'World data', 'header.system': 'Operations', 'header.openNavigation': 'Open navigation', 'header.toggleNavigation': 'Toggle navigation', 'header.autoRefresh': 'Auto refresh', 'header.paused': 'Paused', 'header.syncTitle': 'Sync latest data', 'header.sync': 'Sync', 'header.saveWorld': 'Save world', 'header.restartServer': 'Restart server', 'header.restart': 'Restart', 'header.announcement': 'Broadcast announcement', 'header.broadcast': 'Broadcast',"
+write_at("frontend/src/i18n/index.tsx", [
+    (68, [
+        "  'route.monitor': '实时监控',",
+        "  'route.communityServers': '社区服务器',",
+        "  'route.playerCenter': '玩家中心',",
+        "  'route.saveSources': '存档中心',",
+        "  'route.worldArchive': '世界档案',",
+        "  'route.palInventory': '帕鲁仓库',",
+    ]),
+    (254, [nav, route, header]),
+])
+write_at("frontend/src/routes.tsx", [
+    (1, [
+        "import React from 'react';",
+        'import {',
+        '  Activity, Archive, ClipboardList, Database, Dna, FolderArchive, Globe2, LayoutDashboard,',
+        '  ListTodo, Map as MapIcon, Puzzle, Settings as SettingsIcon, Shield, Sparkles,',
+        '  UserCog, UserX, Users,',
+        "} from 'lucide-react';",
+        "import type { TranslationKey } from './i18n';",
+    ]),
+    (24, [
+        "const Pals = lazyPage(() => import('./pages/Pals'), 'Pals');",
+        "const PalDefenderGM = lazyPage(() => import('./pages/PalDefenderGM'), 'PalDefenderGM');",
+        "const Players = lazyPage(() => import('./pages/Players'), 'Players');",
+        "const SaveSources = lazyPage(() => import('./pages/SaveSources'), 'SaveSources');",
+        "const Security = lazyPage(() => import('./pages/Security'), 'Security');",
+        "const Settings = lazyPage(() => import('./pages/Settings'), 'Settings');",
+        "const Setup = lazyPage(() => import('./pages/Setup'), 'Setup');",
+    ]),
+    (51, [
+        "  { id: 'community-servers', path: '/community-servers', title: '社区服务器', navLabel: '社区服务器', titleKey: 'route.communityServers', navGroup: 'workspace', icon: <Globe2 size={18} />, element: <CommunityServers /> },",
+        "  { id: 'player-center', path: '/player-center', title: '玩家中心', navLabel: '玩家中心', titleKey: 'route.playerCenter', navGroup: 'world', activePaths: ['/gm'], icon: <UserCog size={18} />, element: <PalDefenderGM /> },",
+        "  { id: 'save-sources', path: '/save-sources', title: '存档中心', navLabel: '存档中心', titleKey: 'route.saveSources', navGroup: 'world', icon: <FolderArchive size={18} />, element: <SaveSources /> },",
+        "  { id: 'world-archive', path: '/world', title: '世界档案', navLabel: '世界档案', titleKey: 'route.worldArchive', navGroup: 'world', activePaths: ['/players', '/guilds', '/bases'], icon: <Database size={18} />, element: <Players /> },",
+        "  { id: 'pal-inventory', path: '/pal-inventory', title: '帕鲁仓库', navLabel: '帕鲁仓库', titleKey: 'route.palInventory', navGroup: 'world', activePaths: ['/pals'], icon: <Dna size={18} />, element: <Pals /> },",
+        "  { id: 'breeding', path: '/breeding', title: '配种实验室', navLabel: '配种实验室', titleKey: 'route.breeding', navGroup: 'world', icon: <Dna size={18} />, element: <BreedingLab /> },",
+    ]),
+])
+PYGLOBALINVENTORY
+git -C "${inventory_target}" init -q
+git_config "${inventory_target}"
+git -C "${inventory_target}" add .
+git -C "${inventory_target}" commit -qm "0023 cumulative base"
+inventory_source="${script_dir}/../patches/bootstrap-v1.3.0/source/0023-add-global-inventory-browser.patch"
+expect_success global-inventory-direct "${apply_script}" "${inventory_target}" "${inventory_source}"
+grep -Fq 'patchFeatures = append(patchFeatures, "global-inventory-browser")' "${inventory_target}/backend/internal/api/global_inventory.go"
+grep -Fq 'api.GET("/inventory", s.listGlobalInventory)' "${inventory_target}/backend/internal/api/routes.go"
+grep -Fq '  /inventory:' "${inventory_target}/docs/openapi.yaml"
+grep -Fq "'route.inventory': '库存管理'" "${inventory_target}/frontend/src/i18n/index.tsx"
+grep -Fq "titleKey: 'route.inventory'" "${inventory_target}/frontend/src/routes.tsx"
+! grep -Fq 'diff --git a/backend/internal/api/patch_info.go' "${inventory_source}"
+! grep -Fq 'diff --git a/backend/internal/api/patch_info_test.go' "${inventory_source}"
+
 # 非 pallocalize 补丁失败时不得误入 0023 的测试重定位规则。
 unrelated_base="${work}/unrelated-base"
 mkdir -p "${unrelated_base}/frontend/src/pages"

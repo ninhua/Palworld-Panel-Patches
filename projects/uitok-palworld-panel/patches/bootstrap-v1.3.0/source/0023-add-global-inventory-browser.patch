@@ -1,9 +1,9 @@
 diff --git a/backend/internal/api/global_inventory.go b/backend/internal/api/global_inventory.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..eafa75371379752727e8568f303f69c07ea82677
+index 0000000..4d7c3e8
 --- /dev/null
 +++ b/backend/internal/api/global_inventory.go
-@@ -0,0 +1,367 @@
+@@ -0,0 +1,371 @@
 +package api
 +
 +import (
@@ -17,6 +17,10 @@ index 0000000000000000000000000000000000000000..eafa75371379752727e8568f303f69c0
 +	"palpanel/internal/pallocalize"
 +	"palpanel/internal/saveindex"
 +)
++
++func init() {
++	patchFeatures = append(patchFeatures, "global-inventory-browser")
++}
 +
 +type globalInventoryLocation struct {
 +	OwnerType     string `json:"owner_type"`
@@ -373,10 +377,10 @@ index 0000000000000000000000000000000000000000..eafa75371379752727e8568f303f69c0
 +}
 diff --git a/backend/internal/api/global_inventory_test.go b/backend/internal/api/global_inventory_test.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..0e731f5c6b465c7ce96d64914328371697de74cd
+index 0000000..e461c57
 --- /dev/null
 +++ b/backend/internal/api/global_inventory_test.go
-@@ -0,0 +1,85 @@
+@@ -0,0 +1,94 @@
 +package api
 +
 +import (
@@ -384,6 +388,15 @@ index 0000000000000000000000000000000000000000..0e731f5c6b465c7ce96d649143283716
 +
 +	"palpanel/internal/saveindex"
 +)
++
++func TestGlobalInventoryFeatureRegistered(t *testing.T) {
++	for _, feature := range patchFeatures {
++		if feature == "global-inventory-browser" {
++			return
++		}
++	}
++	t.Fatalf("global-inventory-browser not registered in %#v", patchFeatures)
++}
 +
 +func TestBuildGlobalInventoryAggregatesPlayerBaseAndUnknownLocations(t *testing.T) {
 +	index := saveindex.Index{
@@ -462,47 +475,27 @@ index 0000000000000000000000000000000000000000..0e731f5c6b465c7ce96d649143283716
 +		}
 +	}
 +}
-diff --git a/backend/internal/api/patch_info.go b/backend/internal/api/patch_info.go
-index 12b4de659c4d43e35c42730b0e7ab3bfcd6a3314..99123edd9c45b2ce6d6b29351a3ba32a58ca2995 100644
---- a/backend/internal/api/patch_info.go
-+++ b/backend/internal/api/patch_info.go
-@@ -1,3 +1,3 @@
- package api
- 
--var patchFeatures = []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display", "player-presence-history", "host-save-migrator"}
-+var patchFeatures = []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display", "player-presence-history", "host-save-migrator", "global-inventory-browser"}
-diff --git a/backend/internal/api/patch_info_test.go b/backend/internal/api/patch_info_test.go
-index 04e45f846d2f7aab3b1b408bd56d74b28280143c..360c95d446346ea8f9324f4763cfb63137322387 100644
---- a/backend/internal/api/patch_info_test.go
-+++ b/backend/internal/api/patch_info_test.go
-@@ -1,7 +1,7 @@
- package api
- 
- func TestPatchInfo(t *testing.T) {
--	for _, expected := range []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display", "player-presence-history", "host-save-migrator"} {
-+	for _, expected := range []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display", "player-presence-history", "host-save-migrator", "global-inventory-browser"} {
- 		if !features[expected] {
- 			t.Fatalf("missing feature %q in %#v", expected, response.Data.Patch.Features)
- 		}
 diff --git a/backend/internal/api/routes.go b/backend/internal/api/routes.go
-index c74b3edb832ae0c59eb57e5eb43356e02b5a37c0..415e429d4115c908ac8aadc36f82da58cccfb52e 100644
 --- a/backend/internal/api/routes.go
 +++ b/backend/internal/api/routes.go
-@@ -16,5 +16,6 @@ func (s Server) registerWorldRoutes(api *gin.RouterGroup) {
- 	api.PUT("/bases/:id/name", Require(PermServerControl), s.putBaseCustomName)
- 	api.DELETE("/bases/:id/name", Require(PermServerControl), s.deleteBaseCustomName)
+@@ -246,6 +246,7 @@ func (s Server) registerWorldRoutes(api *gin.RouterGroup) {
  	api.GET("/bases/:id/storage", s.getSaveBaseStorage)
+ 	api.GET("/bases/:id/workers", s.getSaveBaseWorkers)
+ 	api.GET("/bases/:id/feed-boxes", s.getSaveBaseFeedBoxes)
 +	api.GET("/inventory", s.listGlobalInventory)
  	api.GET("/pals", s.listSavePals)
- }
+ 	api.GET("/pals/:id", s.getSavePal)
+ 	api.GET("/map/entities", s.listMapEntities)
 diff --git a/docs/openapi.yaml b/docs/openapi.yaml
-index c9d3dcb105776015b03f4c223c0ff4d3a1050996..db899aa67fd0601c5be85f944ed1dd6048f4dcac 100644
 --- a/docs/openapi.yaml
 +++ b/docs/openapi.yaml
-@@ -2,6 +2,19 @@ paths:
-   /bases/{id}/storage:
+@@ -1204,8 +1204,21 @@ paths:
+   /bases/{id}/workers:
      parameters: [*idParameter]
-     get: {operationId: getBaseStorage, tags: [world], x-palpanel-permission: read, responses: *readResponses}
+     get: {operationId: getBaseWorkers, tags: [world], x-palpanel-permission: read, responses: *readResponses}
+   /bases/{id}/feed-boxes:
+     parameters: [*idParameter]
+     get: {operationId: getBaseFeedBoxes, tags: [world], x-palpanel-permission: read, responses: *readResponses}
 +  /inventory:
 +    get:
 +      operationId: listGlobalInventory
@@ -518,11 +511,7 @@ index c9d3dcb105776015b03f4c223c0ff4d3a1050996..db899aa67fd0601c5be85f944ed1dd60
 +      responses: *readResponses
    /pals:
      get: {operationId: listPals, tags: [world], x-palpanel-permission: read, responses: *readResponses}
- components:
-@@ -26,5 +39,58 @@ components:
-         container_type: {type: string}
-         container_name: {type: string}
-         slots: {type: array, items: {$ref: '#/components/schemas/SaveInventorySlot'}}
+@@ -1529,3 +1542,56 @@ components:
 +    GlobalInventoryLocation:
 +      type: object
 +      required: [owner_type, owner_id, owner_name, container_id, container_type, container_name, slot, count]
@@ -578,6 +567,7 @@ index c9d3dcb105776015b03f4c223c0ff4d3a1050996..db899aa67fd0601c5be85f944ed1dd60
 +        source_id: {type: string}
      ListSummary:
        type: object
+       required: [total, limit, offset, returned, page]
 diff --git a/frontend/src/api/inventory.test.ts b/frontend/src/api/inventory.test.ts
 new file mode 100644
 index 0000000000000000000000000000000000000000..8804cfa1ebeb060de56b65b8c7f7b36374ba17e4
@@ -737,24 +727,21 @@ index 0000000000000000000000000000000000000000..666ac4af9e2aadc7d9df907dd1c3c573
 +  ),
 +};
 diff --git a/frontend/src/i18n/index.tsx b/frontend/src/i18n/index.tsx
-index dcf028bfadb74ef70acdef56b8cbcc4d26cbc647..5f8b7c520eeb96c30e9c97f9521bb709e8909e62 100644
 --- a/frontend/src/i18n/index.tsx
 +++ b/frontend/src/i18n/index.tsx
-@@ -1,6 +1,7 @@
- const zhCN = {
+@@ -68,6 +68,7 @@ const zhCN = {
+   'route.monitor': '实时监控',
+   'route.communityServers': '社区服务器',
    'route.playerCenter': '玩家中心',
    'route.saveSources': '存档中心',
 +  'route.inventory': '库存管理',
    'route.worldArchive': '世界档案',
    'route.palInventory': '帕鲁仓库',
-   'route.breeding': '配种实验室',
-@@ -9,5 +10,5 @@ const zhCN = {
- export type TranslationKey = keyof typeof zhCN;
- 
- const enUS: Record<TranslationKey, string> = {
+@@ -254,3 +255,3 @@ const enUS: Record<TranslationKey, string> = {
+   'nav.setupGroup': 'Getting started', 'nav.workspaceGroup': 'Workspace', 'nav.worldGroup': 'World management', 'nav.systemGroup': 'Operations & security', 'nav.setup': 'Server setup', 'nav.serverCenter': 'Server center', 'nav.playersWorld': 'Players & world', 'nav.saveTools': 'Save tools', 'nav.mods': 'Mod management', 'nav.backupTasks': 'Backups & tasks', 'nav.securityAudit': 'Security & audit', 'nav.settings': 'System settings', 'nav.main': 'Main navigation', 'nav.expand': 'Expand sidebar', 'nav.collapse': 'Collapse sidebar', 'nav.overview': '{brand} overview', 'nav.serverHeartbeat': 'Server heartbeat', 'nav.running': 'Running', 'nav.stopped': 'Stopped', 'nav.online': 'online', 'nav.uptime': 'uptime', 'nav.adminSession': 'Administrator session', 'nav.logout': 'Sign out',
 -  'route.setup': 'Server setup', 'route.dashboard': 'Server overview', 'route.monitor': 'Live monitoring', 'route.communityServers': 'Community servers', 'route.playerCenter': 'Player center', 'route.saveSources': 'Save center', 'route.worldArchive': 'World archive', 'route.palInventory': 'Pal inventory', 'route.breeding': 'Breeding lab', 'route.liveMap': 'Live map', 'route.mods': 'Mod management', 'route.backups': 'Backups & restore', 'route.tasks': 'Task queue', 'route.security': 'Security', 'route.banlist': 'Ban list', 'route.audit': 'Audit log', 'route.settings': 'System settings', 'route.panel': 'Admin panel',
 +  'route.setup': 'Server setup', 'route.dashboard': 'Server overview', 'route.monitor': 'Live monitoring', 'route.communityServers': 'Community servers', 'route.playerCenter': 'Player center', 'route.saveSources': 'Save center', 'route.inventory': 'Inventory', 'route.worldArchive': 'World archive', 'route.palInventory': 'Pal inventory', 'route.breeding': 'Breeding lab', 'route.liveMap': 'Live map', 'route.mods': 'Mod management', 'route.backups': 'Backups & restore', 'route.tasks': 'Task queue', 'route.security': 'Security', 'route.banlist': 'Ban list', 'route.audit': 'Audit log', 'route.settings': 'System settings', 'route.panel': 'Admin panel',
- };
+   'header.setup': 'Getting started', 'header.workspace': 'Overview', 'header.world': 'World data', 'header.system': 'Operations', 'header.openNavigation': 'Open navigation', 'header.toggleNavigation': 'Toggle navigation', 'header.autoRefresh': 'Auto refresh', 'header.paused': 'Paused', 'header.syncTitle': 'Sync latest data', 'header.sync': 'Sync', 'header.saveWorld': 'Save world', 'header.restartServer': 'Restart server', 'header.restart': 'Restart', 'header.announcement': 'Broadcast announcement', 'header.broadcast': 'Broadcast',
 diff --git a/frontend/src/pages/Inventory.tsx b/frontend/src/pages/Inventory.tsx
 new file mode 100644
 index 0000000000000000000000000000000000000000..90f9cd16eef0a0b79f054d9bf0cc7ae9c0b333da
