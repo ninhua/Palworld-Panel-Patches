@@ -1,0 +1,29 @@
+{
+  "schema_version": 2,
+  "target_version": "v1.3.0",
+  "state": "blocked",
+  "verified": false,
+  "created_at": "2026-07-25T15:49:55Z",
+  "updated_at": "2026-07-25T15:55:07Z",
+  "source_track": "/home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track",
+  "derivation": {
+    "schema_version": 2,
+    "mode": "bootstrap-track",
+    "source_track": "/home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/patches/bootstrap-v1.3.0",
+    "source_track_base": "/home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/patches/bootstrap-v1.3.0",
+    "derived_from_release": null,
+    "derived_from_target_version": null,
+    "derived_from_patch_version": null,
+    "derived_source_package": null,
+    "release_patch_version": "0.8.9"
+  },
+  "release_tag": null,
+  "base_commit": "3c8d698abf1d9c4e271e3e62dcc736960f27e8eb",
+  "merged_patch": {
+    "file": "merged/stable-v1.3.0-patch-0.8.9.patch",
+    "sha256": "f321be0d3b465c6c593e666dd24ca1622b12ea8b57c843a70f44cd0bfe76fb29",
+    "base_commit": "3c8d698abf1d9c4e271e3e62dcc736960f27e8eb"
+  },
+  "failed_stage": "clean-room-patched-build",
+  "failure_reason": "Stable build failed during clean-room-patched-build; inspect reports and the Actions log."
+}
