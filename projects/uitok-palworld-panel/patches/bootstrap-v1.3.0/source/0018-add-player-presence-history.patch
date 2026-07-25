@@ -156,12 +156,9 @@ index f6d6e6c..ae14d0d 100644
    };
  };
 diff --git a/frontend/src/pages/Players.tsx b/frontend/src/pages/Players.tsx
-index 5708fcfd2f5245918aed98724816b8831f1ae832..015af2d57b7862fd9a2cab605180a0e5bd5228a8 100644
 --- a/frontend/src/pages/Players.tsx
 +++ b/frontend/src/pages/Players.tsx
-@@ -16,6 +16,23 @@ import { appConfig } from '../config/defaults';
- 
- const pageSize = 50;
+@@ -17,2 +17,19 @@ const pageSize = 50;
  
 +const formatPresenceDuration = (seconds?: number) => {
 +  const value = Math.max(0, Math.floor(Number(seconds) || 0));
@@ -181,11 +178,7 @@ index 5708fcfd2f5245918aed98724816b8831f1ae832..015af2d57b7862fd9a2cab605180a0e5
 +};
 +
  export const Players: React.FC = () => {
-   const { refreshKey, session } = useServerStore();
-   const canWriteAnnotations = Boolean(session?.permissions.includes('players:write'));
-@@ -313,6 +330,11 @@ export const Players: React.FC = () => {
-           {(player.tags?.length ?? 0) > 3 && <span className="text-[9px] font-bold text-slate-400">+{player.tags!.length - 3}</span>}
-         </div>
+@@ -318,2 +335,7 @@ export const Players: React.FC = () => {
        )}
 +      {player.presence_available && (
 +        <p className="mt-1 truncate text-[9px] font-semibold text-sky-600">
@@ -193,11 +186,7 @@ index 5708fcfd2f5245918aed98724816b8831f1ae832..015af2d57b7862fd9a2cab605180a0e5
 +        </p>
 +      )}
      </div>
-   </div>
- );
-@@ -435,8 +457,29 @@ export const Players: React.FC = () => {
-           <div className="mt-5 grid grid-cols-2 gap-3">
-             <Detail label="坐标" value={`${player.x.toFixed(0)}, ${player.y.toFixed(0)}, ${player.z.toFixed(0)}`} mono />
+@@ -439,4 +461,25 @@ const PlayerDetail: React.FC<{
              <Detail label="Ping" value={player.ping == null ? '-' : `${player.ping} ms`} />
 +            <Detail label={player.is_online ? '本次在线' : '上次在线'} value={player.presence_available ? formatPresenceDuration(player.session_seconds) : '统计暂不可用'} />
 +            <Detail label="累计在线" value={player.presence_available ? formatPresenceDuration(player.total_seconds) : '统计暂不可用'} />
@@ -223,8 +212,6 @@ index 5708fcfd2f5245918aed98724816b8831f1ae832..015af2d57b7862fd9a2cab605180a0e5
 +          )}
 +
            <section className="mt-5 rounded-2xl border border-violet-100 bg-violet-50/40 p-4">
-             <div className="flex items-center justify-between gap-3">
-               <div>
 diff --git a/frontend/src/types/index.ts b/frontend/src/types/index.ts
 index 7c6e2aa40e7e55fa6decf7a5e10c6b4a73888a38..a8917ea04ba607733e84452b24ee65df8d58c589 100644
 --- a/frontend/src/types/index.ts

@@ -39,6 +39,15 @@ fi
 # 否则未来新增或删除的测试可能在排除整个文件时被静默丢弃。
 known_test_path="backend/internal/pallocalize/localize_test.go"
 relocated_test_path="backend/internal/pallocalize/patch_storage_localize_test.go"
+known_test_header="diff --git a/${known_test_path} b/${known_test_path}"
+
+# 只有补丁实际包含已登记的 pallocalize 测试 section，才允许进入该精确
+# 重定位路径。其他补丁（例如玩家在线历史）失败时必须保留原始冲突，
+# 不能被无关适配规则二次解释。
+if ! grep -Fxq "${known_test_header}" "${patch_file}"; then
+    echo "错误：补丁无法直接应用，且未匹配任何已登记的精确重定位规则。" >&2
+    exit 1
+fi
 
 validate_known_test_patch() {
     python3 - "${patch_file}" "${known_test_path}" <<'PY'

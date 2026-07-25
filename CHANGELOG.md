@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.12.20
+
+### Fixed
+
+- 修复 `apply-source-patch.sh` 在任意补丁直接应用失败后都会误入 0023 pallocalize 测试重定位逻辑的问题；现在只有补丁实际包含已登记测试 section 时才允许重定位。
+- 重新生成 `0018-add-player-presence-history.patch` 的 `Players.tsx` section，以 0001–0017 累计源码为前像，并缩小详情 hunk 的上下文范围。
+- `0018` 仍通过标准 `git apply --check` 应用，不恢复文件名专用语义改写，也不会排除 `Players.tsx`。
+- 修复 Action 中先报告 `Players.tsx` 冲突、随后又错误报告“已知测试路径 0 次”的双重误导。
+
+### Validation
+
+- 在线历史回归夹具改为使用 0006 后的真实累计行位，验证列表摘要、详情时长和最近会话 section 均直接应用。
+- 新增非 pallocalize 冲突回归，确认无关补丁失败时不会调用测试重定位规则。
+- stable patch 版本保持 `0.8.9`；失败的发布流程未生成 immutable Release，可重新运行同一 Release 标签。
+
 ## v0.12.19
 
 ### Added

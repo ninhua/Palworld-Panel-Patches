@@ -1,48 +1,42 @@
-# Upgrade v0.12.18 → v0.12.19
+# Upgrade v0.12.19 → v0.12.20
 
-本次更新新增只读全服库存浏览器，stable patch 目标为 `0.8.9`。
+本次更新修复 stable `0.8.9` 发布流程中的 `0018` 累计补丁冲突，不增加新的功能编号，也不修改一键部署脚本。
 
-应用增量包后应确认存在：
+应用增量包后应确认以下文件已更新：
 
 ```text
-projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source/0023-add-global-inventory-browser.patch
+projects/uitok-palworld-panel/automation/apply-source-patch.sh
+projects/uitok-palworld-panel/automation/test-apply-source-patch.sh
+projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source/0018-add-player-presence-history.patch
+projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source/SHA256SUMS
 ```
 
-并确认 manifest 和 required features 包含：
+`apply-source-patch.sh` 现在遵循：
 
-```json
-"global-inventory-browser"
-```
+- 补丁能直接应用时，仅执行标准 `git apply`；
+- 补丁失败且不包含已登记的 pallocalize 测试 section 时，立即保留原始冲突并失败；
+- 只有 0023 对应的固定测试 section 才允许精确重定位。
 
-下一次 Release 标签：
+`0018` 的玩家页面改动仍必须直接应用，不能被排除。下一次 Release 标签保持：
 
 ```text
 uitok-stable-v1.3.0-p0.8.9
 ```
 
-功能入口：
-
-```text
-世界管理 → 库存管理
-```
-
-接口：
-
-```http
-GET /api/inventory?q=&owner_type=all&category=&sort=count_desc&limit=200&offset=0
-```
-
-该功能直接读取现有 save index，不增加 sidecar 或新运行时依赖。现有一键部署脚本无需修改。
-
-升级后的兼容性报告必须满足：
+重新运行 Action 后，兼容性报告应满足：
 
 ```json
 {
   "excluded_features": [],
   "effective_features": [
+    "player-presence-history",
     "global-inventory-browser"
   ]
 }
 ```
 
-`effective_features` 实际还会包含其他已启用功能；上例只列出本次新增项。
+并且 `reports/0018-add-player-presence-history.patch.log` 中不应再出现：
+
+```text
+已知测试路径必须在补丁中恰好出现一次，实际 0 次
+```

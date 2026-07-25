@@ -300,7 +300,7 @@ export const Players: React.FC = () => {
     </div>
   </div>
 );'''),
-    (435, '''          <div className="mt-5 grid grid-cols-2 gap-3">
+    (437, '''          <div className="mt-5 grid grid-cols-2 gap-3">
             <Detail label="坐标" value={`${player.x.toFixed(0)}, ${player.y.toFixed(0)}, ${player.z.toFixed(0)}`} mono />
             <Detail label="Ping" value={player.ping == null ? '-' : `${player.ping} ms`} />
           </div>
@@ -374,5 +374,21 @@ grep -Fq '"player-presence-history"' "${presence_target}/backend/internal/api/pa
 grep -Fq 'export interface PlayerPresenceSession' "${presence_target}/frontend/src/types/index.ts"
 grep -Fq 'const formatPresenceDuration' "${presence_target}/frontend/src/pages/Players.tsx"
 ! grep -Fq 'apply_player_presence_patch' "${apply_script}"
+
+# 非 pallocalize 补丁失败时不得误入 0023 的测试重定位规则。
+unrelated_base="${work}/unrelated-base"
+mkdir -p "${unrelated_base}/frontend/src/pages"
+git -C "${unrelated_base}" init -q
+git_config "${unrelated_base}"
+printf 'original\n' > "${unrelated_base}/frontend/src/pages/Players.tsx"
+git -C "${unrelated_base}" add .
+git -C "${unrelated_base}" commit -qm "unrelated base"
+printf 'patched\n' > "${unrelated_base}/frontend/src/pages/Players.tsx"
+git -C "${unrelated_base}" diff --binary --full-index HEAD > "${work}/unrelated-conflict.patch"
+git -C "${unrelated_base}" checkout -- frontend/src/pages/Players.tsx
+printf 'drifted\n' > "${unrelated_base}/frontend/src/pages/Players.tsx"
+expect_failure unrelated-conflict "${apply_script}" "${unrelated_base}" "${work}/unrelated-conflict.patch"
+grep -Fq '未匹配任何已登记的精确重定位规则' "${work}/unrelated-conflict.err"
+! grep -Fq '已知测试路径必须在补丁中恰好出现一次' "${work}/unrelated-conflict.err"
 
 echo "apply-source-patch regression tests passed."
