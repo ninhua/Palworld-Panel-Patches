@@ -1,4 +1,4 @@
-$ /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/apply-source-patch.sh /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track/source/0010-fix-missing-base-worker-handler.patch
+$ /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/apply-source-patch.sh /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track/source/0022-add-host-save-migrator.patch
 [exit=0]
 $ git diff --check
 [exit=0]
@@ -12,12 +12,13 @@ $ git diff --check
 [exit=0]
 $ go test -run ^$ ./...
 ok  	palpanel/cmd/openapi-types	(cached) [no tests to run]
-ok  	palpanel/cmd/palpanel	0.025s [no tests to run]
+ok  	palpanel/cmd/palpanel	0.027s [no tests to run]
 ok  	palpanel/cmd/palpanel-launcher	(cached) [no tests to run]
 ok  	palpanel/internal/aitranslation	(cached) [no tests to run]
-ok  	palpanel/internal/api	0.029s [no tests to run]
+ok  	palpanel/internal/api	0.028s [no tests to run]
 ok  	palpanel/internal/appconfig	(cached) [no tests to run]
 ok  	palpanel/internal/astrbotclient	(cached) [no tests to run]
+ok  	palpanel/internal/auditdetail	(cached) [no tests to run]
 ok  	palpanel/internal/auth	(cached) [no tests to run]
 ok  	palpanel/internal/breeding	(cached) [no tests to run]
 ?   	palpanel/internal/buildinfo	[no test files]
@@ -34,6 +35,7 @@ ok  	palpanel/internal/palconfig	(cached) [no tests to run]
 ok  	palpanel/internal/paldefender	(cached) [no tests to run]
 ok  	palpanel/internal/pallocalize	(cached) [no tests to run]
 ok  	palpanel/internal/palrest	(cached) [no tests to run]
+ok  	palpanel/internal/playerpresence	(cached) [no tests to run]
 ok  	palpanel/internal/saveindex	(cached) [no tests to run]
 ok  	palpanel/internal/scheduler	(cached) [no tests to run]
 ok  	palpanel/internal/server	(cached) [no tests to run]
@@ -46,5 +48,5 @@ $ npm run lint
 > oxlint
 
 Found 0 warnings and 0 errors.
-Finished in 23ms on 133 files with 103 rules using 4 threads.
+Finished in 25ms on 133 files with 103 rules using 4 threads.
 [exit=0]

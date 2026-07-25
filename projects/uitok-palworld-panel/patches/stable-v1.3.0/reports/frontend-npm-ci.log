@@ -1,9 +1,17 @@
 $ npm ci
 
-added 222 packages, and audited 223 packages in 6s
+added 222 packages, and audited 223 packages in 5s
 
 47 packages are looking for funding
   run `npm fund` for details
 
-found 0 vulnerabilities
+3 high severity vulnerabilities
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
 [exit=0]

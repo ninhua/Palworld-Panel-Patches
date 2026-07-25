@@ -1,11 +1,14 @@
 {
   "schema_version": 2,
   "target_version": "v1.3.0",
-  "generated_at": "2026-07-24T16:48:44Z",
-  "state": "released",
+  "generated_at": "2026-07-25T16:12:43Z",
+  "state": "releasable",
   "required_features": [
     "base-custom-names",
-    "patch-info-api"
+    "global-inventory-browser",
+    "host-save-migrator",
+    "patch-info-api",
+    "player-presence-history"
   ],
   "preserved_features": [
     "audit-log-response-display",
@@ -13,15 +16,16 @@
     "base-feed-box-summary",
     "base-storage-browser",
     "base-worker-browser",
+    "global-inventory-browser",
     "guild-detail-browser",
+    "host-save-migrator",
     "insecure-endpoint-support",
     "panel-patch-hot-update",
     "patch-info-api",
-    "player-notes"
-  ],
-  "optional_features": [
+    "player-notes",
     "player-presence-history"
   ],
+  "optional_features": [],
   "patches": [
     {
       "order": 1,
@@ -509,9 +513,9 @@
     {
       "order": 18,
       "file": "0018-add-player-presence-history.patch",
-      "sha256": "ab1439f61413cf3f4551245906fbbcb8a9430d02b59c4b61b05af75f195812a2",
+      "sha256": "fd9c5a54710785b6555f2fb2897aa3e958d5c18076fe2fe47cade1667ad1646a",
       "feature": "player-presence-history",
-      "required": false,
+      "required": true,
       "depends_on": [
         "0001-add-patch-info-api.patch",
         "0006-add-player-notes.patch"
@@ -534,12 +538,13 @@
         "frontend/src/pages/Players.tsx",
         "frontend/src/types/index.ts"
       ],
-      "apply_status": "failed",
-      "compile_status": "not-run",
-      "final_status": "incompatible",
-      "reason": "命令失败（exit=1）：/home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/apply-source-patch.sh /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track/source/0018-add-player-presence-history.patch\nerror: patch failed: backend/internal/api/patch_info.go:1\nerror: backend/internal/api/patch_info.go: patch does not apply\nerror: patch failed: backend/internal/api/patch_info_test.go:1\nerror: backend/internal/api/patch_info_test.go: patch does not apply\nerror: patch failed: frontend/src/pages/Players.tsx:1\nerror: frontend/src/pages/Players.tsx: patch does not apply\nerror: patch failed: frontend/src/types/index.ts:1\nerror: frontend/src/types/index.ts: patch does not apply\n错误：已知测试路径必须在补丁中恰好出现一次，实际 0 次。\n错误：补丁无法直接应用，且不满足 PalPanel v1.3.0 的精确测试重定位规则。\nerror: patch failed: backend/internal/api/patch_info.go:1\nerror: backend/internal/api/patch_info.go: patch does not apply\nerror: patch failed: backend/internal/api/patch_info_test.go:1\nerror: backend/internal/api/patch_info_test.go: patch does not apply\nerror: patch failed: frontend/src/pages/Players.tsx:1\nerror: frontend/src/pages/Players.tsx: patch does not apply\nerror: patch failed: frontend/src/types/index.ts:1\nerror: frontend/src/types/index.ts: patch does not apply\n",
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
       "log": "reports/0018-add-player-presence-history.patch.log",
-      "included_in_merged": false
+      "validated_at_checkpoint": "0018-add-player-presence-history.patch",
+      "included_in_merged": true
     },
     {
       "order": 19,
@@ -583,13 +588,103 @@
       "log": "reports/0020-fix-audit-response-dialog-portal.patch.log",
       "validated_at_checkpoint": "0020-fix-audit-response-dialog-portal.patch",
       "included_in_merged": true
+    },
+    {
+      "order": 21,
+      "file": "0021-capture-audit-response-details.patch",
+      "sha256": "418e2ca31d7ab0a4257c099166649cf16c1e741d3688da5fd821bf66457c967f",
+      "feature": "audit-log-response-display",
+      "required": true,
+      "depends_on": [
+        "0020-fix-audit-response-dialog-portal.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/audit_response.go",
+        "backend/internal/api/audit_response_test.go",
+        "backend/internal/api/response.go",
+        "backend/internal/api/routes.go",
+        "backend/internal/auditdetail/detail.go",
+        "backend/internal/auditdetail/detail_test.go"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0021-capture-audit-response-details.patch.log",
+      "validated_at_checkpoint": "0021-capture-audit-response-details.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 22,
+      "file": "0022-add-host-save-migrator.patch",
+      "sha256": "d3dd7f6e8d2199110a4445a93895d9d64170fef627492f5ff9720fe9ec8cd1cc",
+      "feature": "host-save-migrator",
+      "required": true,
+      "depends_on": [
+        "0001-add-patch-info-api.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/host_save_migration.go",
+        "backend/internal/api/host_save_migration_test.go",
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/patch_info_test.go",
+        "backend/internal/api/routes.go",
+        "backend/internal/api/save_sources.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/saveSources.ts",
+        "frontend/src/pages/SaveSources.tsx",
+        "tools/palworld-uid-remap/src/host.rs",
+        "tools/palworld-uid-remap/src/lib.rs",
+        "tools/palworld-uid-remap/src/main.rs"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0022-add-host-save-migrator.patch.log",
+      "validated_at_checkpoint": "0022-add-host-save-migrator.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 23,
+      "file": "0023-add-global-inventory-browser.patch",
+      "sha256": "2978a3d2a9c772c36039f2a7b70a2b61567623e52917b976e7e1fde4b1272e6c",
+      "feature": "global-inventory-browser",
+      "required": true,
+      "depends_on": [
+        "0001-add-patch-info-api.patch",
+        "0002-add-base-custom-names.patch",
+        "0005-enhance-base-storage-display.patch",
+        "0022-add-host-save-migrator.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/global_inventory.go",
+        "backend/internal/api/global_inventory_test.go",
+        "backend/internal/api/routes.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/inventory.test.ts",
+        "frontend/src/api/inventory.ts",
+        "frontend/src/i18n/index.tsx",
+        "frontend/src/pages/Inventory.tsx",
+        "frontend/src/routes.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0023-add-global-inventory-browser.patch.log",
+      "validated_at_checkpoint": "0023-add-global-inventory-browser.patch",
+      "included_in_merged": true
     }
   ],
   "adaptations": [
     {
       "name": "retarget-stable-source",
       "status": "applied",
-      "details": "Retargeted patch metadata to v1.3.0 / 0.8.6"
+      "details": "Retargeted patch metadata to v1.3.0 / 0.8.9"
     },
     {
       "name": "frontend-axios-test-fixture-adapter",
@@ -598,31 +693,32 @@
     }
   ],
   "summary": {
-    "pending": 0,
-    "superseded": 0,
-    "compatible": 18,
+    "compatible": 22,
     "adapted": 1,
+    "superseded": 0,
+    "incompatible": 0,
     "blocked": 0,
-    "incompatible": 1
+    "pending": 0
   },
-  "excluded_features": [
-    "player-presence-history"
-  ],
+  "excluded_features": [],
   "effective_features": [
     "audit-log-response-display",
     "base-custom-names",
     "base-feed-box-summary",
     "base-storage-browser",
     "base-worker-browser",
+    "global-inventory-browser",
     "guild-detail-browser",
+    "host-save-migrator",
     "insecure-endpoint-support",
     "panel-patch-hot-update",
     "patch-info-api",
-    "player-notes"
+    "player-notes",
+    "player-presence-history"
   ],
   "merged_patch": {
-    "file": "merged/stable-v1.3.0-patch-0.8.6.patch",
-    "sha256": "62001969ff0d657229878c0c6f6e8d4cd2fc590d08bcf15964f886e8b4075da0",
+    "file": "merged/stable-v1.3.0-patch-0.8.9.patch",
+    "sha256": "92f985e1973c867cbff58463fefb41b214c798650ec1b368e0a2e008bc14d63f",
     "base_commit": "3c8d698abf1d9c4e271e3e62dcc736960f27e8eb"
   },
   "verified": true,

@@ -1,0 +1,1406 @@
+diff --git a/backend/internal/api/host_save_migration.go b/backend/internal/api/host_save_migration.go
+new file mode 100644
+index 0000000..9b47b4c
+--- /dev/null
++++ b/backend/internal/api/host_save_migration.go
+@@ -0,0 +1,446 @@
++package api
++
++import (
++	"archive/tar"
++	"bytes"
++	"compress/gzip"
++	"context"
++	"crypto/sha256"
++	"database/sql"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"net/http"
++	"net/url"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"strings"
++	"sync"
++	"time"
++
++	"github.com/gin-gonic/gin"
++
++	"palpanel/internal/db"
++	internalid "palpanel/internal/id"
++)
++
++const (
++	hostMigrationRequestLimit = 64 << 10
++	hostMigrationPackageLimit = 512 << 20
++)
++
++var (
++	hostMigrationHelperSHA256 string
++	hostMigrationInstallMu    sync.Mutex
++)
++
++type hostMigrationRequest struct {
++	MigrationSourceID string `json:"migration_source_id"`
++	SteamID           string `json:"steam_id"`
++	Name              string `json:"name,omitempty"`
++	Confirm           bool   `json:"confirm,omitempty"`
++}
++
++type hostMigrationPlan struct {
++	SteamID            string   `json:"steam_id"`
++	SourceUID          string   `json:"source_uid"`
++	TargetUID          string   `json:"target_uid"`
++	Strategy           string   `json:"strategy"`
++	CanExecute         bool     `json:"can_execute"`
++	SourcePlayerFile   string   `json:"source_player_file"`
++	SourceDPSExists    bool     `json:"source_dps_exists"`
++	TargetPlayerExists bool     `json:"target_player_exists"`
++	TargetDPSExists    bool     `json:"target_dps_exists"`
++	Warnings           []string `json:"warnings"`
++}
++
++type hostMigrationExecution struct {
++	Plan         hostMigrationPlan `json:"plan"`
++	Verification any               `json:"verification"`
++}
++
++var runHostMigrationHelper = runHostMigrationCommand
++
++func (s Server) inspectSaveSourceImportDispatch(c *gin.Context) {
++	input, claimed, err := readHostMigrationRequest(c)
++	if err != nil {
++		fail(c, http.StatusBadRequest, "host_migration_request_invalid", err.Error())
++		return
++	}
++	if !claimed {
++		s.inspectSaveSourceImport(c)
++		return
++	}
++	s.inspectHostSaveMigration(c, input)
++}
++
++func (s Server) dispatchSaveSourceImport(c *gin.Context) {
++	input, claimed, err := readHostMigrationRequest(c)
++	if err != nil {
++		fail(c, http.StatusBadRequest, "host_migration_request_invalid", err.Error())
++		return
++	}
++	if !claimed {
++		s.handleSaveSourceImport(c)
++		return
++	}
++	s.executeHostSaveMigration(c, input)
++}
++
++func readHostMigrationRequest(c *gin.Context) (hostMigrationRequest, bool, error) {
++	if c.ContentType() != "application/json" {
++		return hostMigrationRequest{}, false, nil
++	}
++	raw, err := io.ReadAll(io.LimitReader(c.Request.Body, hostMigrationRequestLimit+1))
++	if err != nil {
++		return hostMigrationRequest{}, false, fmt.Errorf("read request body: %w", err)
++	}
++	c.Request.Body = io.NopCloser(bytes.NewReader(raw))
++	if len(raw) > hostMigrationRequestLimit {
++		return hostMigrationRequest{}, false, errors.New("request body is too large")
++	}
++	var input hostMigrationRequest
++	if err := json.Unmarshal(raw, &input); err != nil {
++		return hostMigrationRequest{}, false, nil
++	}
++	input.MigrationSourceID = strings.TrimSpace(input.MigrationSourceID)
++	input.SteamID = strings.TrimSpace(input.SteamID)
++	input.Name = strings.TrimSpace(input.Name)
++	if input.MigrationSourceID == "" && input.SteamID == "" {
++		return hostMigrationRequest{}, false, nil
++	}
++	if input.MigrationSourceID == "" || input.SteamID == "" {
++		return hostMigrationRequest{}, true, errors.New("migration_source_id and steam_id are required")
++	}
++	return input, true, nil
++}
++
++func (s Server) inspectHostSaveMigration(c *gin.Context, input hostMigrationRequest) {
++	source, err := s.hostMigrationSource(c.Request.Context(), input.MigrationSourceID)
++	if err != nil {
++		writeHostMigrationSourceError(c, err)
++		return
++	}
++	plan, err := hostMigrationPlanFor(c.Request.Context(), source.Path, input.SteamID)
++	if err != nil {
++		fail(c, http.StatusBadGateway, "host_migration_plan_failed", err.Error())
++		return
++	}
++	ok(c, plan)
++}
++
++func (s Server) executeHostSaveMigration(c *gin.Context, input hostMigrationRequest) {
++	if !input.Confirm {
++		fail(c, http.StatusBadRequest, "host_migration_confirmation_required", "confirm must be true")
++		return
++	}
++	source, err := s.hostMigrationSource(c.Request.Context(), input.MigrationSourceID)
++	if err != nil {
++		writeHostMigrationSourceError(c, err)
++		return
++	}
++	plan, err := hostMigrationPlanFor(c.Request.Context(), source.Path, input.SteamID)
++	if err != nil {
++		fail(c, http.StatusBadGateway, "host_migration_plan_failed", err.Error())
++		return
++	}
++	if !plan.CanExecute {
++		fail(c, http.StatusConflict, "host_migration_blocked", strings.Join(plan.Warnings, " "))
++		return
++	}
++	name := input.Name
++	if name == "" {
++		name = source.Name + "（主机迁移）"
++	}
++	if len([]rune(name)) > 80 {
++		fail(c, http.StatusBadRequest, "save_source_name_too_long", "save source name is too long")
++		return
++	}
++	if err := os.MkdirAll(s.cfg.SaveSourcesDir, 0o750); err != nil {
++		fail(c, http.StatusInternalServerError, "host_migration_output_failed", err.Error())
++		return
++	}
++	newID := internalid.New("save")
++	output := filepath.Join(s.cfg.SaveSourcesDir, newID)
++	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Minute)
++	defer cancel()
++	raw, err := runHostMigrationHelper(ctx, "host-execute", "--input", source.Path, "--output", output, "--steam-id", input.SteamID)
++	if err != nil {
++		_ = os.RemoveAll(output)
++		fail(c, http.StatusBadGateway, "host_migration_execute_failed", err.Error())
++		return
++	}
++	var execution hostMigrationExecution
++	if err := json.Unmarshal(raw, &execution); err != nil {
++		_ = os.RemoveAll(output)
++		fail(c, http.StatusBadGateway, "host_migration_response_invalid", err.Error())
++		return
++	}
++	if _, err := os.Stat(filepath.Join(output, "Level.sav")); err != nil {
++		_ = os.RemoveAll(output)
++		fail(c, http.StatusBadGateway, "host_migration_output_invalid", "migration output does not contain Level.sav")
++		return
++	}
++	created := db.SaveSource{ID: newID, Name: name, Kind: "import", Path: output, Active: false}
++	if err := s.store.UpsertSaveSource(c.Request.Context(), created); err != nil {
++		_ = os.RemoveAll(output)
++		fail(c, http.StatusInternalServerError, "host_migration_register_failed", err.Error())
++		return
++	}
++	stored, err := s.store.GetSaveSource(c.Request.Context(), newID)
++	if err == nil {
++		created = stored
++	}
++	ok(c, gin.H{"source": created, "plan": execution.Plan, "verification": execution.Verification})
++}
++
++func (s Server) hostMigrationSource(ctx context.Context, sourceID string) (db.SaveSource, error) {
++	source, err := s.store.GetSaveSource(ctx, sourceID)
++	if err != nil {
++		return db.SaveSource{}, err
++	}
++	if source.Kind != "import" || !pathWithin(s.cfg.SaveSourcesDir, source.Path) {
++		return db.SaveSource{}, errHostMigrationSourceRejected
++	}
++	if _, err := os.Stat(filepath.Join(source.Path, "Level.sav")); err != nil {
++		return db.SaveSource{}, fmt.Errorf("imported save is unavailable: %w", err)
++	}
++	if info, err := os.Stat(filepath.Join(source.Path, "Players")); err != nil || !info.IsDir() {
++		return db.SaveSource{}, errors.New("imported save does not contain Players directory")
++	}
++	return source, nil
++}
++
++var errHostMigrationSourceRejected = errors.New("only managed imported save sources can be migrated")
++
++func writeHostMigrationSourceError(c *gin.Context, err error) {
++	status := http.StatusConflict
++	code := "host_migration_source_rejected"
++	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, os.ErrNotExist) {
++		code = "save_source_not_found"
++		status = http.StatusNotFound
++	}
++	fail(c, status, code, err.Error())
++}
++
++func hostMigrationPlanFor(ctx context.Context, sourcePath, steamID string) (hostMigrationPlan, error) {
++	raw, err := runHostMigrationHelper(ctx, "host-plan", "--input", sourcePath, "--steam-id", steamID)
++	if err != nil {
++		return hostMigrationPlan{}, err
++	}
++	var plan hostMigrationPlan
++	if err := json.Unmarshal(raw, &plan); err != nil {
++		return hostMigrationPlan{}, fmt.Errorf("decode helper response: %w", err)
++	}
++	return plan, nil
++}
++
++func runHostMigrationCommand(ctx context.Context, args ...string) ([]byte, error) {
++	binary, err := resolveHostMigrationBinary(ctx)
++	if err != nil {
++		return nil, err
++	}
++	command := exec.CommandContext(ctx, binary, args...)
++	var stdout bytes.Buffer
++	var stderr bytes.Buffer
++	command.Stdout = &stdout
++	command.Stderr = &stderr
++	if err := command.Run(); err != nil {
++		message := strings.TrimSpace(stderr.String())
++		if message == "" {
++			message = err.Error()
++		}
++		return nil, errors.New(message)
++	}
++	if stdout.Len() > 8<<20 {
++		return nil, errors.New("helper response is too large")
++	}
++	return stdout.Bytes(), nil
++}
++
++func resolveHostMigrationBinary(ctx context.Context) (string, error) {
++	if configured := strings.TrimSpace(os.Getenv("PALPANEL_UID_REMAPPER_BIN")); configured != "" {
++		if info, err := os.Stat(configured); err == nil && !info.IsDir() {
++			return configured, nil
++		}
++		return "", fmt.Errorf("configured UID remapper is unavailable: %s", configured)
++	}
++	var bootstrapErr error
++	if executable, err := os.Executable(); err == nil {
++		candidate := filepath.Join(filepath.Dir(executable), "palworld-uid-remap")
++		if hostMigrationHelperMatches(candidate) {
++			return candidate, nil
++		}
++		bootstrapErr = bootstrapHostMigrationHelper(ctx, candidate)
++		if bootstrapErr == nil {
++			return candidate, nil
++		}
++	}
++	if candidate, err := exec.LookPath("palworld-uid-remap"); err == nil {
++		if hostMigrationHelperMatches(candidate) {
++			return candidate, nil
++		}
++		return "", fmt.Errorf("palworld-uid-remap helper checksum mismatch: %s", candidate)
++	}
++	if bootstrapErr != nil {
++		return "", fmt.Errorf("palworld-uid-remap helper bootstrap failed: %w", bootstrapErr)
++	}
++	return "", errors.New("palworld-uid-remap helper is unavailable")
++}
++
++func hostMigrationHelperMatches(path string) bool {
++	info, err := os.Stat(path)
++	if err != nil || info.IsDir() {
++		return false
++	}
++	expected := strings.ToLower(strings.TrimSpace(hostMigrationHelperSHA256))
++	if len(expected) != 64 {
++		return true
++	}
++	actual, err := hostMigrationFileSHA256(path)
++	return err == nil && strings.EqualFold(actual, expected)
++}
++
++func bootstrapHostMigrationHelper(ctx context.Context, destination string) error {
++	hostMigrationInstallMu.Lock()
++	defer hostMigrationInstallMu.Unlock()
++	if hostMigrationHelperMatches(destination) {
++		return nil
++	}
++	expected := strings.ToLower(strings.TrimSpace(hostMigrationHelperSHA256))
++	if len(expected) != 64 {
++		return errors.New("UID remapper helper checksum was not embedded at build time")
++	}
++	packageURL := strings.TrimSpace(os.Getenv("PALPANEL_UID_REMAPPER_PACKAGE_URL"))
++	if packageURL == "" {
++		packageURL = fmt.Sprintf(
++			"https://github.com/%s/releases/download/uitok-stable-%s-p%s/uitok-palworld-panel_stable-%s_patch-%s_linux-amd64.tar.gz",
++			patchRepository, patchTargetVersion, patchVersion, patchTargetVersion, patchVersion,
++		)
++	}
++	parsed, err := url.Parse(packageURL)
++	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
++		return fmt.Errorf("invalid UID remapper package URL: %s", packageURL)
++	}
++	request, err := http.NewRequestWithContext(ctx, http.MethodGet, packageURL, nil)
++	if err != nil {
++		return err
++	}
++	response, err := http.DefaultClient.Do(request)
++	if err != nil {
++		return fmt.Errorf("download UID remapper package: %w", err)
++	}
++	defer response.Body.Close()
++	if response.StatusCode != http.StatusOK {
++		return fmt.Errorf("download UID remapper package: HTTP %d", response.StatusCode)
++	}
++	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
++		return err
++	}
++	archive, err := os.CreateTemp(filepath.Dir(destination), ".palworld-uid-remap-package-*.tar.gz")
++	if err != nil {
++		return err
++	}
++	archivePath := archive.Name()
++	defer os.Remove(archivePath)
++	written, copyErr := io.Copy(archive, io.LimitReader(response.Body, hostMigrationPackageLimit+1))
++	closeErr := archive.Close()
++	if copyErr != nil {
++		return copyErr
++	}
++	if closeErr != nil {
++		return closeErr
++	}
++	if written > hostMigrationPackageLimit {
++		return errors.New("UID remapper package is too large")
++	}
++	temporary := destination + ".bootstrap"
++	_ = os.Remove(temporary)
++	if err := extractHostMigrationHelperArchive(archivePath, temporary); err != nil {
++		return err
++	}
++	defer os.Remove(temporary)
++	actual, err := hostMigrationFileSHA256(temporary)
++	if err != nil {
++		return err
++	}
++	if !strings.EqualFold(actual, expected) {
++		return fmt.Errorf("UID remapper helper checksum mismatch: got %s, expected %s", actual, expected)
++	}
++	if err := os.Chmod(temporary, 0o755); err != nil {
++		return err
++	}
++	if err := os.Rename(temporary, destination); err != nil {
++		return fmt.Errorf("install UID remapper helper: %w", err)
++	}
++	return nil
++}
++
++func extractHostMigrationHelperArchive(archivePath, destination string) error {
++	archive, err := os.Open(archivePath)
++	if err != nil {
++		return err
++	}
++	defer archive.Close()
++	gzipReader, err := gzip.NewReader(archive)
++	if err != nil {
++		return err
++	}
++	defer gzipReader.Close()
++	reader := tar.NewReader(gzipReader)
++	found := 0
++	for {
++		header, err := reader.Next()
++		if err == io.EOF {
++			break
++		}
++		if err != nil {
++			return err
++		}
++		clean := filepath.ToSlash(filepath.Clean(header.Name))
++		if filepath.IsAbs(header.Name) || clean == ".." || strings.HasPrefix(clean, "../") {
++			return fmt.Errorf("unsafe archive path: %s", header.Name)
++		}
++		if !strings.HasSuffix(clean, "/overlay/bin/palworld-uid-remap") {
++			continue
++		}
++		if header.Typeflag != tar.TypeReg || header.Size <= 0 || header.Size > 128<<20 {
++			return errors.New("UID remapper helper archive entry is invalid")
++		}
++		found++
++		if found > 1 {
++			return errors.New("UID remapper package contains multiple helpers")
++		}
++		output, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o700)
++		if err != nil {
++			return err
++		}
++		_, copyErr := io.CopyN(output, reader, header.Size)
++		closeErr := output.Close()
++		if copyErr != nil {
++			return copyErr
++		}
++		if closeErr != nil {
++			return closeErr
++		}
++	}
++	if found != 1 {
++		return errors.New("UID remapper helper is missing from package")
++	}
++	return nil
++}
++
++func hostMigrationFileSHA256(path string) (string, error) {
++	file, err := os.Open(path)
++	if err != nil {
++		return "", err
++	}
++	defer file.Close()
++	hash := sha256.New()
++	if _, err := io.Copy(hash, file); err != nil {
++		return "", err
++	}
++	return fmt.Sprintf("%x", hash.Sum(nil)), nil
++}
+diff --git a/backend/internal/api/host_save_migration_test.go b/backend/internal/api/host_save_migration_test.go
+new file mode 100644
+index 0000000..0b47fe9
+--- /dev/null
++++ b/backend/internal/api/host_save_migration_test.go
+@@ -0,0 +1,151 @@
++package api
++
++import (
++	"archive/tar"
++	"bytes"
++	"compress/gzip"
++	"context"
++	"crypto/sha256"
++	"fmt"
++	"io"
++	"net/http"
++	"net/http/httptest"
++	"os"
++	"path/filepath"
++	"strings"
++	"testing"
++
++	"github.com/gin-gonic/gin"
++)
++
++func TestReadHostMigrationRequestClaimsMigrationPayload(t *testing.T) {
++	gin.SetMode(gin.TestMode)
++	request := httptest.NewRequest("POST", "/api/save-sources/import/inspect", strings.NewReader(`{"migration_source_id":"save-1","steam_id":"76561198000000000"}`))
++	request.Header.Set("Content-Type", "application/json")
++	context, _ := gin.CreateTestContext(httptest.NewRecorder())
++	context.Request = request
++	input, claimed, err := readHostMigrationRequest(context)
++	if err != nil || !claimed {
++		t.Fatalf("claimed=%v err=%v", claimed, err)
++	}
++	if input.MigrationSourceID != "save-1" || input.SteamID != "76561198000000000" {
++		t.Fatalf("unexpected input: %#v", input)
++	}
++}
++
++func TestReadHostMigrationRequestPreservesExistingImportPayload(t *testing.T) {
++	gin.SetMode(gin.TestMode)
++	body := `{"inspection_id":"inspect-1","name":"fixture"}`
++	request := httptest.NewRequest("POST", "/api/save-sources/import", strings.NewReader(body))
++	request.Header.Set("Content-Type", "application/json")
++	context, _ := gin.CreateTestContext(httptest.NewRecorder())
++	context.Request = request
++	_, claimed, err := readHostMigrationRequest(context)
++	if err != nil || claimed {
++		t.Fatalf("claimed=%v err=%v", claimed, err)
++	}
++	restored, err := io.ReadAll(context.Request.Body)
++	if err != nil || string(restored) != body {
++		t.Fatalf("body=%q err=%v", restored, err)
++	}
++}
++
++func TestReadHostMigrationRequestRejectsPartialPayload(t *testing.T) {
++	gin.SetMode(gin.TestMode)
++	request := httptest.NewRequest("POST", "/api/save-sources/import", strings.NewReader(`{"migration_source_id":"save-1"}`))
++	request.Header.Set("Content-Type", "application/json")
++	context, _ := gin.CreateTestContext(httptest.NewRecorder())
++	context.Request = request
++	_, claimed, err := readHostMigrationRequest(context)
++	if !claimed || err == nil {
++		t.Fatalf("claimed=%v err=%v", claimed, err)
++	}
++}
++
++func TestExtractHostMigrationHelperArchive(t *testing.T) {
++	root := t.TempDir()
++	archivePath := filepath.Join(root, "package.tar.gz")
++	archive, err := os.Create(archivePath)
++	if err != nil {
++		t.Fatal(err)
++	}
++	gzipWriter := gzip.NewWriter(archive)
++	tarWriter := tar.NewWriter(gzipWriter)
++	body := []byte("uid-remapper")
++	if err := tarWriter.WriteHeader(&tar.Header{
++		Name:     "release/overlay/bin/palworld-uid-remap",
++		Mode:     0o755,
++		Size:     int64(len(body)),
++		Typeflag: tar.TypeReg,
++	}); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := tarWriter.Write(body); err != nil {
++		t.Fatal(err)
++	}
++	if err := tarWriter.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if err := gzipWriter.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if err := archive.Close(); err != nil {
++		t.Fatal(err)
++	}
++	destination := filepath.Join(root, "palworld-uid-remap")
++	if err := extractHostMigrationHelperArchive(archivePath, destination); err != nil {
++		t.Fatal(err)
++	}
++	actual, err := os.ReadFile(destination)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if string(actual) != string(body) {
++		t.Fatalf("helper = %q", actual)
++	}
++}
++
++func TestBootstrapHostMigrationHelper(t *testing.T) {
++	body := []byte("uid-remapper-bootstrap")
++	var packageBytes bytes.Buffer
++	gzipWriter := gzip.NewWriter(&packageBytes)
++	tarWriter := tar.NewWriter(gzipWriter)
++	if err := tarWriter.WriteHeader(&tar.Header{
++		Name:     "release/overlay/bin/palworld-uid-remap",
++		Mode:     0o755,
++		Size:     int64(len(body)),
++		Typeflag: tar.TypeReg,
++	}); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := tarWriter.Write(body); err != nil {
++		t.Fatal(err)
++	}
++	if err := tarWriter.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if err := gzipWriter.Close(); err != nil {
++		t.Fatal(err)
++	}
++	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
++		writer.WriteHeader(http.StatusOK)
++		_, _ = writer.Write(packageBytes.Bytes())
++	}))
++	defer server.Close()
++	t.Setenv("PALPANEL_UID_REMAPPER_PACKAGE_URL", server.URL)
++	previousSHA := hostMigrationHelperSHA256
++	digest := sha256.Sum256(body)
++	hostMigrationHelperSHA256 = fmt.Sprintf("%x", digest[:])
++	t.Cleanup(func() { hostMigrationHelperSHA256 = previousSHA })
++	destination := filepath.Join(t.TempDir(), "palworld-uid-remap")
++	if err := bootstrapHostMigrationHelper(context.Background(), destination); err != nil {
++		t.Fatal(err)
++	}
++	actual, err := os.ReadFile(destination)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if string(actual) != string(body) {
++		t.Fatalf("helper = %q", actual)
++	}
++}
+diff --git a/backend/internal/api/patch_info.go b/backend/internal/api/patch_info.go
+index 589753b..2601083 100644
+--- a/backend/internal/api/patch_info.go
++++ b/backend/internal/api/patch_info.go
+@@ -3,7 +3,7 @@ const (
+ 	patchRepository       = "ninhua/Palworld-Panel-Patches"
+ )
+ 
+-var patchFeatures = []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display", "player-presence-history"}
++var patchFeatures = []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display", "player-presence-history", "host-save-migrator"}
+ 
+ func (s Server) patchInfo(c *gin.Context) {
+ 	info := buildinfo.Current()
+diff --git a/backend/internal/api/patch_info_test.go b/backend/internal/api/patch_info_test.go
+index a7bc690..174ff22 100644
+--- a/backend/internal/api/patch_info_test.go
++++ b/backend/internal/api/patch_info_test.go
+@@ -3,7 +3,7 @@ func TestPatchInfo(t *testing.T) {
+ 	for _, feature := range response.Data.Patch.Features {
+ 		features[feature] = true
+ 	}
+-	for _, expected := range []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display", "player-presence-history"} {
++	for _, expected := range []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display", "player-presence-history", "host-save-migrator"} {
+ 		if !features[expected] {
+ 			t.Fatalf("missing feature %q in %#v", expected, response.Data.Patch.Features)
+ 		}
+diff --git a/backend/internal/api/routes.go b/backend/internal/api/routes.go
+index 9829bb2..f3eb659 100644
+--- a/backend/internal/api/routes.go
++++ b/backend/internal/api/routes.go
+@@ -4,7 +4,7 @@ func (s Server) registerSecurityRoutes(api *gin.RouterGroup) {
+ 
+ func (s Server) registerWorldRoutes(api *gin.RouterGroup) {
+ 	api.GET("/save-sources", s.listSaveSources)
+-	api.POST("/save-sources/import/inspect", Require(PermServerControl), s.inspectSaveSourceImport)
++	api.POST("/save-sources/import/inspect", Require(PermServerControl), s.inspectSaveSourceImportDispatch)
+ 	api.POST("/save-sources/import/inspect/:id/select", Require(PermServerControl), s.selectSaveSourceImportCandidate)
+ 	api.POST("/save-sources/import", Require(PermServerControl), s.importSaveSource)
+ 	api.POST("/save-sources/:id/activate", Require(PermServerControl), s.activateSaveSource)
+diff --git a/backend/internal/api/save_sources.go b/backend/internal/api/save_sources.go
+index b01cb6e..50aeb48 100644
+--- a/backend/internal/api/save_sources.go
++++ b/backend/internal/api/save_sources.go
+@@ -3,7 +3,7 @@ func (s Server) listSaveSources(c *gin.Context) {
+ }
+ 
+ func (s Server) importSaveSource(c *gin.Context) {
+-	s.handleSaveSourceImport(c)
++	s.dispatchSaveSourceImport(c)
+ }
+ 
+ func (s Server) activateSaveSource(c *gin.Context) {
+diff --git a/docs/openapi.yaml b/docs/openapi.yaml
+index d6d0b81..206ba9a 100644
+--- a/docs/openapi.yaml
++++ b/docs/openapi.yaml
+@@ -995,8 +995,17 @@
+         content:
+           multipart/form-data:
+             schema: {$ref: '#/components/schemas/SaveImportInspectRequest'}
++          application/json:
++            schema: {$ref: '#/components/schemas/HostMigrationRequest'}
+       responses:
+-        '200': *saveImportInspection
++        '200':
++          description: Save archive inspection or host-role migration preflight.
++          content:
++            application/json:
++              schema:
++                oneOf:
++                  - {$ref: '#/components/schemas/SaveImportInspectionEnvelope'}
++                  - {$ref: '#/components/schemas/HostMigrationPlanEnvelope'}
+         '400': *error
+         '401': *error
+         '403': *error
+@@ -1919,11 +1931,87 @@
+     SaveImportCommitRequest:
+       type: object
+-      required: [inspection_id]
+       additionalProperties: false
+       properties:
+         inspection_id: {type: string, minLength: 1}
+         candidate_id: {type: string, minLength: 1}
+         name: {type: string}
++        migration_source_id: {type: string, minLength: 1}
++        steam_id: {type: string, pattern: '^[0-9]{15,20}$'}
++        confirm: {type: boolean, const: true}
++      oneOf:
++        - required: [inspection_id]
++        - required: [migration_source_id, steam_id, confirm]
++    SaveSource:
++      type: object
++      required: [id, name, kind, active, created_at, updated_at]
++      additionalProperties: false
++      properties:
++        id: {type: string}
++        name: {type: string}
++        kind: {type: string, enum: [server, import]}
++        path: {type: string}
++        active: {type: boolean}
++        fingerprint: {type: string}
++        parser_version: {type: string}
++        warnings: {type: array, items: {type: string}}
++        indexed_at: {type: string}
++        created_at: {type: string}
++        updated_at: {type: string}
++    HostMigrationRequest:
++      type: object
++      required: [migration_source_id, steam_id]
++      additionalProperties: false
++      properties:
++        migration_source_id: {type: string, minLength: 1}
++        steam_id: {type: string, pattern: '^[0-9]{15,20}$'}
++    HostMigrationExecuteRequest:
++      type: object
++      required: [migration_source_id, steam_id, confirm]
++      additionalProperties: false
++      properties:
++        migration_source_id: {type: string, minLength: 1}
++        steam_id: {type: string, pattern: '^[0-9]{15,20}$'}
++        name: {type: string, maxLength: 80}
++        confirm: {type: boolean, const: true}
++    HostMigrationPlan:
++      type: object
++      required: [steam_id, source_uid, target_uid, strategy, can_execute, source_player_file, source_dps_exists, target_player_exists, target_dps_exists, warnings]
++      additionalProperties: false
++      properties:
++        steam_id: {type: string}
++        source_uid: {type: string, format: uuid}
++        target_uid: {type: string, format: uuid}
++        strategy: {type: string, enum: [direct, target_exists, already_migrated]}
++        can_execute: {type: boolean}
++        source_player_file: {type: string}
++        source_dps_exists: {type: boolean}
++        target_player_exists: {type: boolean}
++        target_dps_exists: {type: boolean}
++        warnings: {type: array, items: {type: string}}
++    HostMigrationPlanEnvelope:
++      type: object
++      required: [ok, data]
++      additionalProperties: false
++      properties:
++        ok: {type: boolean, const: true}
++        data: {$ref: '#/components/schemas/HostMigrationPlan'}
++    HostMigrationResult:
++      type: object
++      required: [source, plan, verification]
++      additionalProperties: false
++      properties:
++        source: {$ref: '#/components/schemas/SaveSource'}
++        plan: {$ref: '#/components/schemas/HostMigrationPlan'}
++        verification:
++          type: object
++          additionalProperties: true
++    HostMigrationResultEnvelope:
++      type: object
++      required: [ok, data]
++      additionalProperties: false
++      properties:
++        ok: {type: boolean, const: true}
++        data: {$ref: '#/components/schemas/HostMigrationResult'}
+     SaveImportCandidate:
+       type: object
+       required: [id, relative_path, player_count, level_sha256, level_size, valid, warnings, errors]
+diff --git a/frontend/src/api/saveSources.ts b/frontend/src/api/saveSources.ts
+index 0830026..be706bd 100644
+--- a/frontend/src/api/saveSources.ts
++++ b/frontend/src/api/saveSources.ts
+@@ -8,6 +8,30 @@ export interface SaveImportInspection {
+   expires_at: string;
+ }
+ 
++export interface HostMigrationPlan {
++  steam_id: string;
++  source_uid: string;
++  target_uid: string;
++  strategy: 'direct' | 'target_exists' | 'already_migrated' | string;
++  can_execute: boolean;
++  source_player_file: string;
++  source_dps_exists: boolean;
++  target_player_exists: boolean;
++  target_dps_exists: boolean;
++  warnings: string[];
++}
++
++export interface HostMigrationResult {
++  source: SaveSource;
++  plan: HostMigrationPlan;
++  verification: Record<string, unknown>;
++}
++
++const mapHostMigrationPlan = (raw: unknown): HostMigrationPlan => {
++  const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
++  return { steam_id: String(data.steam_id || ''), source_uid: String(data.source_uid || ''), target_uid: String(data.target_uid || ''), strategy: String(data.strategy || ''), can_execute: Boolean(data.can_execute), source_player_file: String(data.source_player_file || ''), source_dps_exists: Boolean(data.source_dps_exists), target_player_exists: Boolean(data.target_player_exists), target_dps_exists: Boolean(data.target_dps_exists), warnings: Array.isArray(data.warnings) ? data.warnings.map(String) : [] };
++};
++
+ const mapSource = (raw: unknown): SaveSource => {
+   const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+   return {
+@@ -24,6 +48,22 @@ export const saveSourcesApi = {
+       mapSource({}),
+       { fallbackOnError: false, map: mapSource },
+     ),
++  planHostMigration: (sourceID: string, steamID: string) => handleRequest<unknown, HostMigrationPlan>(
++    () => apiClient.post('/save-sources/import/inspect', { migration_source_id: sourceID, steam_id: steamID }, { timeout: SAVE_INDEX_OPERATION_TIMEOUT_MS }),
++    mapHostMigrationPlan({}),
++    { fallbackOnError: false, map: mapHostMigrationPlan },
++  ),
++  executeHostMigration: (sourceID: string, steamID: string, name: string) => handleRequest<unknown, HostMigrationResult>(
++    () => apiClient.post('/save-sources/import', { migration_source_id: sourceID, steam_id: steamID, name, confirm: true }, { timeout: SAVE_ARCHIVE_IMPORT_TIMEOUT_MS }),
++    { source: mapSource({}), plan: mapHostMigrationPlan({}), verification: {} },
++    {
++      fallbackOnError: false,
++      map: (raw) => {
++        const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
++        return { source: mapSource(data.source), plan: mapHostMigrationPlan(data.plan), verification: data.verification && typeof data.verification === 'object' ? data.verification as Record<string, unknown> : {} };
++      },
++    },
++  ),
+   activate: (id: string) => handleRequest(
+     () => apiClient.post(`/save-sources/${encodeURIComponent(id)}/activate`, undefined, { timeout: SAVE_INDEX_OPERATION_TIMEOUT_MS }),
+     {},
+diff --git a/frontend/src/pages/SaveSources.tsx b/frontend/src/pages/SaveSources.tsx
+index 4f9816c..667e519 100644
+--- a/frontend/src/pages/SaveSources.tsx
++++ b/frontend/src/pages/SaveSources.tsx
+@@ -1,8 +1,9 @@
+ import React, { useState } from 'react';
+ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+-import { ArchiveRestore, CheckCircle2, Database, FileArchive, Pencil, RefreshCw, Server, Trash2, Upload } from 'lucide-react';
++import { ArchiveRestore, ArrowRightLeft, CheckCircle2, Database, FileArchive, Pencil, RefreshCw, Server, Trash2, Upload } from 'lucide-react';
+ import { getErrorMessage } from '../api/client';
+ import { saveSourcesApi, type SaveImportInspection } from '../api/saveSources';
++import type { SaveSource } from '../types';
+ 
+ export const SaveSources: React.FC = () => {
+   const queryClient = useQueryClient();
+@@ -13,6 +14,7 @@ export const SaveSources: React.FC = () => {
+   const [candidateID, setCandidateID] = useState('');
+   const [renamingID, setRenamingID] = useState('');
+   const [renameValue, setRenameValue] = useState('');
++  const [migrationID, setMigrationID] = useState('');
+   const sources = useQuery({ queryKey: ['save-sources'], queryFn: saveSourcesApi.list });
+   const refresh = () => queryClient.invalidateQueries({ queryKey: ['save-sources'] });
+   const importMutation = useMutation({
+@@ -64,6 +66,31 @@ export const SaveSources: React.FC = () => {
+     onError: (error) => setNotice(getErrorMessage(error)),
+   });
+ 
++  const migrateHost = async (source: SaveSource) => {
++    const steamID = window.prompt(`输入联机主机的 SteamID64\n源存档：${source.name}`, '');
++    if (!steamID?.trim()) return;
++    setMigrationID(source.id);
++    setNotice('正在只读预检主机角色迁移……');
++    try {
++      const plan = await saveSourcesApi.planHostMigration(source.id, steamID.trim());
++      if (!plan.can_execute) {
++        setNotice(plan.warnings.join(' ') || `当前迁移策略不可执行：${plan.strategy}`);
++        return;
++      }
++      const confirmed = window.confirm(
++        `只读预检通过。\n\n源 UID：${plan.source_uid}\n目标 UID：${plan.target_uid}\n\n将生成新的导入存档，不覆盖原存档，也不会自动部署到服务器。继续吗？`,
++      );
++      if (!confirmed) { setNotice('已取消主机角色迁移。'); return; }
++      const result = await saveSourcesApi.executeHostMigration(source.id, steamID.trim(), `${source.name}（主机迁移）`);
++      setNotice(`迁移完成：${result.source.name}。请先激活并核对玩家、公会、基地和背包，再决定是否部署。地图探索 LocalData.sav 不在服务端迁移范围内。`);
++      await refresh();
++    } catch (error) {
++      setNotice(getErrorMessage(error));
++    } finally {
++      setMigrationID('');
++    }
++  };
++
+   const submitRename = (id: string, current: string) => {
+     const next = renameValue.trim();
+     if (!next || next === current) { setRenamingID(''); return; }
+@@ -115,6 +142,7 @@ export const SaveSources: React.FC = () => {
+                     <button type="button" className="pp-button" onClick={() => setRenamingID('')}>取消</button>
+                   </> : <>
+                     <button type="button" className="pp-button" onClick={() => { setRenamingID(source.id); setRenameValue(source.name); }}><Pencil size={14} />重命名</button>
++                    {source.kind !== 'server' && <button type="button" className="pp-button" disabled={migrationID === source.id} onClick={() => void migrateHost(source)}>{migrationID === source.id ? <RefreshCw className="animate-spin" size={14} /> : <ArrowRightLeft size={14} />}主机迁移</button>}
+                     {!source.active && <button type="button" className="pp-button accent" onClick={() => action.mutate({ type: 'activate', id: source.id })}><CheckCircle2 size={14} />激活</button>}
+                     {source.active && <button type="button" className="pp-button" onClick={() => action.mutate({ type: 'rebuild', id: source.id })}><RefreshCw size={14} />重建</button>}
+                     {source.kind !== 'server' && !source.active && <button type="button" className="icon-danger" aria-label="删除存档" onClick={() => window.confirm('删除这个导入存档？') && action.mutate({ type: 'remove', id: source.id })}><Trash2 size={15} /></button>}
+diff --git a/tools/palworld-uid-remap/src/host.rs b/tools/palworld-uid-remap/src/host.rs
+new file mode 100644
+index 0000000..bbfc8a3
+--- /dev/null
++++ b/tools/palworld-uid-remap/src/host.rs
+@@ -0,0 +1,377 @@
++use std::fs;
++use std::path::{Path, PathBuf};
++
++use serde::Serialize;
++use thiserror::Error;
++
++use crate::{remap_world, MappingSet, RemapError, RemapOptions, VerificationReport};
++
++pub const SOURCE_HOST_UID: &str = "00000000-0000-0000-0000-000000000001";
++
++#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
++pub struct HostMigrationPlan {
++    pub steam_id: String,
++    pub source_uid: String,
++    pub target_uid: String,
++    pub strategy: String,
++    pub can_execute: bool,
++    pub source_player_file: String,
++    pub source_dps_exists: bool,
++    pub target_player_exists: bool,
++    pub target_dps_exists: bool,
++    pub warnings: Vec<String>,
++}
++
++#[derive(Debug, Serialize)]
++pub struct HostMigrationResult {
++    pub plan: HostMigrationPlan,
++    pub verification: VerificationReport,
++}
++
++#[derive(Debug, Error)]
++pub enum HostMigrationError {
++    #[error("SteamID64 must contain 15 to 20 decimal digits")]
++    InvalidSteamId,
++    #[error("world root must contain Level.sav and Players/")]
++    InvalidWorld,
++    #[error("co-op host player file is missing: {0}")]
++    SourcePlayerMissing(PathBuf),
++    #[error("target UID already exists; automatic target cleanup is not enabled: {0}")]
++    TargetExists(String),
++    #[error("host UID is already the derived target UID")]
++    AlreadyMigrated,
++    #[error("could not create UID mapping: {0}")]
++    Mapping(String),
++    #[error(transparent)]
++    Remap(#[from] RemapError),
++    #[error("I/O failed for {path}: {source}")]
++    Io {
++        path: PathBuf,
++        #[source]
++        source: std::io::Error,
++    },
++}
++
++pub fn steam_id_to_player_uid(steam_id: &str) -> Result<String, HostMigrationError> {
++    let steam_id = steam_id.trim();
++    if !(15..=20).contains(&steam_id.len()) || !steam_id.bytes().all(|byte| byte.is_ascii_digit()) {
++        return Err(HostMigrationError::InvalidSteamId);
++    }
++    let utf16le = steam_id
++        .encode_utf16()
++        .flat_map(u16::to_le_bytes)
++        .collect::<Vec<_>>();
++    let hashed = city_hash64(&utf16le);
++    let value = (hashed as u32).wrapping_add(((hashed >> 32) as u32).wrapping_mul(23));
++    Ok(format!("{value:08x}-0000-0000-0000-000000000000"))
++}
++
++pub fn analyze_host_migration(
++    input_dir: impl AsRef<Path>,
++    steam_id: &str,
++) -> Result<HostMigrationPlan, HostMigrationError> {
++    let input = input_dir.as_ref();
++    let players = input.join("Players");
++    if !input.join("Level.sav").is_file() || !players.is_dir() {
++        return Err(HostMigrationError::InvalidWorld);
++    }
++    let target_uid = steam_id_to_player_uid(steam_id)?;
++    let source_name = player_file_name(SOURCE_HOST_UID);
++    let source_file = players.join(&source_name);
++    if !source_file.is_file() {
++        return Err(HostMigrationError::SourcePlayerMissing(source_file));
++    }
++    let source_dps_exists = players.join(dps_file_name(SOURCE_HOST_UID)).is_file();
++    let target_player_exists = players.join(player_file_name(&target_uid)).exists();
++    let target_dps_exists = players.join(dps_file_name(&target_uid)).exists();
++    let already_migrated = target_uid == SOURCE_HOST_UID;
++    let blocked = target_player_exists || target_dps_exists;
++    let mut warnings = Vec::new();
++    let strategy = if already_migrated {
++        warnings.push("主机 UID 已与目标 UID 相同，无需迁移。".to_owned());
++        "already_migrated"
++    } else if blocked {
++        warnings.push(
++            "目标 UID 已存在。当前安全接入不会自动删除临时角色、帕鲁、公会或基地；请使用尚未加入过专服的存档，或先在离线副本中完成目标角色清理。".to_owned(),
++        );
++        "target_exists"
++    } else {
++        "direct"
++    };
++    Ok(HostMigrationPlan {
++        steam_id: steam_id.trim().to_owned(),
++        source_uid: SOURCE_HOST_UID.to_owned(),
++        target_uid,
++        strategy: strategy.to_owned(),
++        can_execute: !already_migrated && !blocked,
++        source_player_file: format!("Players/{source_name}"),
++        source_dps_exists,
++        target_player_exists,
++        target_dps_exists,
++        warnings,
++    })
++}
++
++pub fn execute_host_migration(
++    input_dir: impl AsRef<Path>,
++    output_dir: impl AsRef<Path>,
++    steam_id: &str,
++) -> Result<HostMigrationResult, HostMigrationError> {
++    let input = input_dir.as_ref();
++    let plan = analyze_host_migration(input, steam_id)?;
++    if plan.strategy == "already_migrated" {
++        return Err(HostMigrationError::AlreadyMigrated);
++    }
++    if !plan.can_execute {
++        return Err(HostMigrationError::TargetExists(plan.target_uid.clone()));
++    }
++    let mapping_json = serde_json::to_vec(&serde_json::json!({
++        "source_uid": plan.source_uid,
++        "target_uid": plan.target_uid,
++    }))
++    .map_err(|error| HostMigrationError::Mapping(error.to_string()))?;
++    let mapping = MappingSet::from_json(&mapping_json)
++        .map_err(|error| HostMigrationError::Mapping(error.to_string()))?;
++    let verification = remap_world(input, output_dir, &mapping, &RemapOptions::default())?;
++    Ok(HostMigrationResult { plan, verification })
++}
++
++fn player_file_name(uid: &str) -> String {
++    format!("{}.sav", uid.replace('-', "").to_uppercase())
++}
++
++fn dps_file_name(uid: &str) -> String {
++    format!("{}_dps.sav", uid.replace('-', "").to_uppercase())
++}
++
++const K0: u64 = 0xc3a5c85c97cb3127;
++const K1: u64 = 0xb492b66fbe98f273;
++const K2: u64 = 0x9ae16a3b2f90404f;
++const K_MUL: u64 = 0x9ddfea08eb382d69;
++
++fn fetch64(input: &[u8], offset: usize) -> u64 {
++    u64::from_le_bytes(input[offset..offset + 8].try_into().expect("eight bytes"))
++}
++
++fn fetch32(input: &[u8], offset: usize) -> u32 {
++    u32::from_le_bytes(input[offset..offset + 4].try_into().expect("four bytes"))
++}
++
++fn rotate(value: u64, shift: u32) -> u64 {
++    value.rotate_right(shift)
++}
++
++fn shift_mix(value: u64) -> u64 {
++    value ^ (value >> 47)
++}
++
++fn hash_len_16_mul(u: u64, v: u64, mul: u64) -> u64 {
++    let mut a = (u ^ v).wrapping_mul(mul);
++    a ^= a >> 47;
++    let mut b = (v ^ a).wrapping_mul(mul);
++    b ^= b >> 47;
++    b.wrapping_mul(mul)
++}
++
++fn hash_len_16(u: u64, v: u64) -> u64 {
++    hash_len_16_mul(u, v, K_MUL)
++}
++
++fn hash_len_0_to_16(input: &[u8]) -> u64 {
++    let len = input.len();
++    if len >= 8 {
++        let mul = K2.wrapping_add((len as u64).wrapping_mul(2));
++        let a = fetch64(input, 0).wrapping_add(K2);
++        let b = fetch64(input, len - 8);
++        let c = rotate(b, 37).wrapping_mul(mul).wrapping_add(a);
++        let d = rotate(a, 25).wrapping_add(b).wrapping_mul(mul);
++        return hash_len_16_mul(c, d, mul);
++    }
++    if len >= 4 {
++        let mul = K2.wrapping_add((len as u64).wrapping_mul(2));
++        let a = fetch32(input, 0) as u64;
++        return hash_len_16_mul(
++            (len as u64).wrapping_add(a << 3),
++            fetch32(input, len - 4) as u64,
++            mul,
++        );
++    }
++    if len > 0 {
++        let a = input[0] as u64;
++        let b = input[len >> 1] as u64;
++        let c = input[len - 1] as u64;
++        let y = a.wrapping_add(b << 8);
++        let z = (len as u64).wrapping_add(c << 2);
++        return shift_mix(y.wrapping_mul(K2) ^ z.wrapping_mul(K0)).wrapping_mul(K2);
++    }
++    K2
++}
++
++fn hash_len_17_to_32(input: &[u8]) -> u64 {
++    let len = input.len();
++    let mul = K2.wrapping_add((len as u64).wrapping_mul(2));
++    let a = fetch64(input, 0).wrapping_mul(K1);
++    let b = fetch64(input, 8);
++    let c = fetch64(input, len - 8).wrapping_mul(mul);
++    let d = fetch64(input, len - 16).wrapping_mul(K2);
++    hash_len_16_mul(
++        rotate(a.wrapping_add(b), 43)
++            .wrapping_add(rotate(c, 30))
++            .wrapping_add(d),
++        a.wrapping_add(rotate(b.wrapping_add(K2), 18))
++            .wrapping_add(c),
++        mul,
++    )
++}
++
++fn hash_len_33_to_64(input: &[u8]) -> u64 {
++    let len = input.len();
++    let mul = K2.wrapping_add((len as u64).wrapping_mul(2));
++    let mut a = fetch64(input, 0).wrapping_mul(K2);
++    let mut b = fetch64(input, 8);
++    let c = fetch64(input, len - 24);
++    let d = fetch64(input, len - 32);
++    let e = fetch64(input, 16).wrapping_mul(K2);
++    let f = fetch64(input, 24).wrapping_mul(9);
++    let g = fetch64(input, len - 8);
++    let h = fetch64(input, len - 16).wrapping_mul(mul);
++    let u = rotate(a.wrapping_add(g), 43)
++        .wrapping_add(rotate(b, 30).wrapping_add(c).wrapping_mul(9));
++    let v = a.wrapping_add(g) ^ d;
++    let v = v.wrapping_add(f).wrapping_add(1);
++    let w = u.wrapping_add(v).wrapping_mul(mul).swap_bytes().wrapping_add(h);
++    let x = rotate(e.wrapping_add(f), 42).wrapping_add(c);
++    let y = v
++        .wrapping_add(w)
++        .wrapping_mul(mul)
++        .swap_bytes()
++        .wrapping_add(g)
++        .wrapping_mul(mul);
++    let z = e.wrapping_add(f).wrapping_add(c);
++    a = x
++        .wrapping_add(z)
++        .wrapping_mul(mul)
++        .wrapping_add(y)
++        .swap_bytes()
++        .wrapping_add(b);
++    b = shift_mix(
++        z.wrapping_add(a)
++            .wrapping_mul(mul)
++            .wrapping_add(d)
++            .wrapping_add(h),
++    )
++    .wrapping_mul(mul);
++    b.wrapping_add(x)
++}
++
++fn weak_hash_len_32_with_seeds(input: &[u8], a: u64, b: u64) -> (u64, u64) {
++    let w = fetch64(input, 0);
++    let x = fetch64(input, 8);
++    let y = fetch64(input, 16);
++    let z = fetch64(input, 24);
++    let a = a.wrapping_add(w);
++    let mut b = rotate(b.wrapping_add(a).wrapping_add(z), 21);
++    let c = a;
++    let a = a.wrapping_add(x).wrapping_add(y);
++    b = b.wrapping_add(rotate(a, 44));
++    (a.wrapping_add(z), b.wrapping_add(c))
++}
++
++fn city_hash64(input: &[u8]) -> u64 {
++    let len = input.len();
++    if len <= 16 {
++        return hash_len_0_to_16(input);
++    }
++    if len <= 32 {
++        return hash_len_17_to_32(input);
++    }
++    if len <= 64 {
++        return hash_len_33_to_64(input);
++    }
++
++    let mut x = fetch64(input, len - 40);
++    let mut y = fetch64(input, len - 16).wrapping_add(fetch64(input, len - 56));
++    let mut z = hash_len_16(
++        fetch64(input, len - 48).wrapping_add(len as u64),
++        fetch64(input, len - 24),
++    );
++    let mut v = weak_hash_len_32_with_seeds(&input[len - 64..], len as u64, z);
++    let mut w = weak_hash_len_32_with_seeds(&input[len - 32..], y.wrapping_add(K1), x);
++    x = x.wrapping_mul(K1).wrapping_add(fetch64(input, 0));
++    let mut offset = 0usize;
++    let mut remaining = (len - 1) & !63;
++    while remaining != 0 {
++        x = rotate(
++            x.wrapping_add(y)
++                .wrapping_add(v.0)
++                .wrapping_add(fetch64(input, offset + 8)),
++            37,
++        )
++        .wrapping_mul(K1);
++        y = rotate(
++            y.wrapping_add(v.1)
++                .wrapping_add(fetch64(input, offset + 48)),
++            42,
++        )
++        .wrapping_mul(K1);
++        x ^= w.1;
++        y = y.wrapping_add(v.0).wrapping_add(fetch64(input, offset + 40));
++        z = rotate(z.wrapping_add(w.0), 33).wrapping_mul(K1);
++        v = weak_hash_len_32_with_seeds(
++            &input[offset..offset + 32],
++            v.1.wrapping_mul(K1),
++            x.wrapping_add(w.0),
++        );
++        w = weak_hash_len_32_with_seeds(
++            &input[offset + 32..offset + 64],
++            z.wrapping_add(w.1),
++            y.wrapping_add(fetch64(input, offset + 16)),
++        );
++        std::mem::swap(&mut z, &mut x);
++        offset += 64;
++        remaining -= 64;
++    }
++    hash_len_16(
++        hash_len_16(v.0, w.0)
++            .wrapping_add(shift_mix(y).wrapping_mul(K1))
++            .wrapping_add(z),
++        hash_len_16(v.1, w.1).wrapping_add(x),
++    )
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use tempfile::tempdir;
++
++    #[test]
++    fn derives_palworld_uid_from_steam_id() {
++        assert_eq!(
++            steam_id_to_player_uid("76561198000000000").unwrap(),
++            "a5d406b9-0000-0000-0000-000000000000"
++        );
++    }
++
++    #[test]
++    fn rejects_invalid_steam_id() {
++        assert!(matches!(
++            steam_id_to_player_uid("not-a-steam-id"),
++            Err(HostMigrationError::InvalidSteamId)
++        ));
++    }
++
++    #[test]
++    fn plan_blocks_existing_target() {
++        let root = tempdir().unwrap();
++        fs::write(root.path().join("Level.sav"), b"fixture").unwrap();
++        let players = root.path().join("Players");
++        fs::create_dir(&players).unwrap();
++        fs::write(players.join(player_file_name(SOURCE_HOST_UID)), b"source").unwrap();
++        let target = steam_id_to_player_uid("76561198000000000").unwrap();
++        fs::write(players.join(player_file_name(&target)), b"target").unwrap();
++        let plan = analyze_host_migration(root.path(), "76561198000000000").unwrap();
++        assert_eq!(plan.strategy, "target_exists");
++        assert!(!plan.can_execute);
++        assert!(plan.target_player_exists);
++    }
++}
+diff --git a/tools/palworld-uid-remap/src/lib.rs b/tools/palworld-uid-remap/src/lib.rs
+index c32de95..ebdd6dc 100644
+--- a/tools/palworld-uid-remap/src/lib.rs
++++ b/tools/palworld-uid-remap/src/lib.rs
+@@ -4,8 +4,13 @@ use uesave::FGuid;
+ 
+ mod visitor;
+ mod engine;
++mod host;
+ 
+ pub use engine::{remap_world, RemapError, RemapOptions, VerificationReport};
++pub use host::{
++    analyze_host_migration, execute_host_migration, steam_id_to_player_uid,
++    HostMigrationError, HostMigrationPlan, HostMigrationResult, SOURCE_HOST_UID,
++};
+ pub use visitor::{
+     rewrite_typed_tree, CandidateKind, FieldCategory, OpaqueCandidate, RewriteReport,
+ };
+diff --git a/tools/palworld-uid-remap/src/main.rs b/tools/palworld-uid-remap/src/main.rs
+index 5bbfbcf..76e8fab 100644
+--- a/tools/palworld-uid-remap/src/main.rs
++++ b/tools/palworld-uid-remap/src/main.rs
+@@ -1,18 +1,54 @@
+ use std::path::PathBuf;
+ use std::process::ExitCode;
+ 
+-use clap::Parser;
+-use palworld_uid_remap::{remap_world, MappingSet, RemapOptions};
++use clap::{Parser, Subcommand};
++use palworld_uid_remap::{
++    analyze_host_migration, execute_host_migration, remap_world, steam_id_to_player_uid,
++    MappingSet, RemapOptions,
++};
+ 
+ #[derive(Debug, Parser)]
+ #[command(name = "palworld-uid-remap")]
+ struct Args {
++    #[command(subcommand)]
++    command: Option<Command>,
++
+     #[arg(long, value_name = "WORLD_DIR")]
+-    input: PathBuf,
++    input: Option<PathBuf>,
+     #[arg(long, value_name = "OUTPUT_DIR")]
+-    output: PathBuf,
++    output: Option<PathBuf>,
+     #[arg(long, value_name = "PRIVATE_JSON")]
+-    mapping: PathBuf,
++    mapping: Option<PathBuf>,
++}
++
++#[derive(Debug, Subcommand)]
++enum Command {
++    Remap {
++        #[arg(long, value_name = "WORLD_DIR")]
++        input: PathBuf,
++        #[arg(long, value_name = "OUTPUT_DIR")]
++        output: PathBuf,
++        #[arg(long, value_name = "PRIVATE_JSON")]
++        mapping: PathBuf,
++    },
++    HostPlan {
++        #[arg(long, value_name = "WORLD_DIR")]
++        input: PathBuf,
++        #[arg(long)]
++        steam_id: String,
++    },
++    HostExecute {
++        #[arg(long, value_name = "WORLD_DIR")]
++        input: PathBuf,
++        #[arg(long, value_name = "OUTPUT_DIR")]
++        output: PathBuf,
++        #[arg(long)]
++        steam_id: String,
++    },
++    DeriveHostUid {
++        #[arg(long)]
++        steam_id: String,
++    },
+ }
+ 
+ fn main() -> ExitCode {
+@@ -26,13 +62,42 @@ fn main() -> ExitCode {
+ }
+ 
+ fn run(args: Args) -> Result<(), String> {
+-    let mapping_bytes = std::fs::read(&args.mapping)
++    if let Some(command) = args.command {
++        return match command {
++            Command::Remap { input, output, mapping } => run_remap(input, output, mapping),
++            Command::HostPlan { input, steam_id } => {
++                write_json(&analyze_host_migration(input, &steam_id).map_err(|error| error.to_string())?)
++            }
++            Command::HostExecute { input, output, steam_id } => {
++                write_json(&execute_host_migration(input, output, &steam_id).map_err(|error| error.to_string())?)
++            }
++            Command::DeriveHostUid { steam_id } => {
++                let target_uid = steam_id_to_player_uid(&steam_id).map_err(|error| error.to_string())?;
++                write_json(&serde_json::json!({
++                    "steam_id": steam_id,
++                    "target_uid": target_uid,
++                }))
++            }
++        };
++    }
++    let input = args.input.ok_or_else(|| "--input is required".to_owned())?;
++    let output = args.output.ok_or_else(|| "--output is required".to_owned())?;
++    let mapping = args.mapping.ok_or_else(|| "--mapping is required".to_owned())?;
++    run_remap(input, output, mapping)
++}
++
++fn run_remap(input: PathBuf, output: PathBuf, mapping: PathBuf) -> Result<(), String> {
++    let mapping_bytes = std::fs::read(&mapping)
+         .map_err(|error| format!("could not read mapping file: {error}"))?;
+     let mapping = MappingSet::from_json(&mapping_bytes).map_err(|error| error.to_string())?;
+-    let report = remap_world(&args.input, &args.output, &mapping, &RemapOptions::default())
++    let report = remap_world(&input, &output, &mapping, &RemapOptions::default())
+         .map_err(|error| error.to_string())?;
+-    serde_json::to_writer_pretty(std::io::stdout().lock(), &report)
+-        .map_err(|error| format!("could not serialize verification report: {error}"))?;
++    write_json(&report)
++}
++
++fn write_json(value: &impl serde::Serialize) -> Result<(), String> {
++    serde_json::to_writer_pretty(std::io::stdout().lock(), value)
++        .map_err(|error| format!("could not serialize response: {error}"))?;
+     println!();
+     Ok(())
+ }
