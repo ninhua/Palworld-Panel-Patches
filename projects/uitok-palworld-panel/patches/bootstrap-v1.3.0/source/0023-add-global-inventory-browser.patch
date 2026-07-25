@@ -1,0 +1,952 @@
+diff --git a/backend/internal/api/global_inventory.go b/backend/internal/api/global_inventory.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..eafa75371379752727e8568f303f69c07ea82677
+--- /dev/null
++++ b/backend/internal/api/global_inventory.go
+@@ -0,0 +1,367 @@
++package api
++
++import (
++	"net/http"
++	"sort"
++	"strconv"
++	"strings"
++
++	"github.com/gin-gonic/gin"
++
++	"palpanel/internal/pallocalize"
++	"palpanel/internal/saveindex"
++)
++
++type globalInventoryLocation struct {
++	OwnerType     string `json:"owner_type"`
++	OwnerID       string `json:"owner_id"`
++	OwnerName     string `json:"owner_name"`
++	GuildName     string `json:"guild_name,omitempty"`
++	ContainerID   string `json:"container_id"`
++	ContainerType string `json:"container_type"`
++	ContainerName string `json:"container_name"`
++	Slot          int    `json:"slot"`
++	Count         int64  `json:"count"`
++}
++
++type globalInventoryItem struct {
++	ItemID     string                    `json:"item_id"`
++	ItemName   string                    `json:"item_name"`
++	ItemIcon   string                    `json:"item_icon"`
++	Category   string                    `json:"category"`
++	TotalCount int64                     `json:"total_count"`
++	Locations  []globalInventoryLocation `json:"locations"`
++}
++
++type globalInventorySummary struct {
++	ItemTypes            int   `json:"item_types"`
++	TotalCount           int64 `json:"total_count"`
++	ContainerCount       int   `json:"container_count"`
++	LocationCount        int   `json:"location_count"`
++	UnresolvedContainers int   `json:"unresolved_containers"`
++	Returned             int   `json:"returned"`
++	Offset               int   `json:"offset"`
++	Limit                int   `json:"limit"`
++}
++
++type inventoryOwner struct {
++	Type      string
++	ID        string
++	Name      string
++	GuildName string
++}
++
++func (s Server) listGlobalInventory(c *gin.Context) {
++	index, status, err := s.currentSaveIndex(c)
++	if err != nil && !status.Stale && status.State != "disabled" {
++		fail(c, http.StatusServiceUnavailable, "save_index_unavailable", err.Error())
++		return
++	}
++	customNames, sourceID, namesErr := s.activeBaseCustomNames(c)
++	if namesErr != nil {
++		fail(c, http.StatusInternalServerError, "base_custom_names_read_failed", namesErr.Error())
++		return
++	}
++
++	ownerType := strings.ToLower(strings.TrimSpace(c.Query("owner_type")))
++	if ownerType == "" {
++		ownerType = "all"
++	}
++	if ownerType != "all" && ownerType != "base" && ownerType != "player" && ownerType != "unknown" {
++		fail(c, http.StatusBadRequest, "inventory_owner_type_invalid", "owner_type must be all, base, player, or unknown")
++		return
++	}
++	sortBy := strings.ToLower(strings.TrimSpace(c.Query("sort")))
++	if sortBy == "" {
++		sortBy = "count_desc"
++	}
++	if sortBy != "count_desc" && sortBy != "name_asc" && sortBy != "name_desc" {
++		fail(c, http.StatusBadRequest, "inventory_sort_invalid", "sort must be count_desc, name_asc, or name_desc")
++		return
++	}
++
++	items, categories := buildGlobalInventory(index, customNames, ownerType)
++	items = filterGlobalInventory(items, c.Query("q"), c.Query("category"))
++	sortGlobalInventory(items, sortBy)
++
++	limit, offset := inventoryLimitOffset(c)
++	totalItems := len(items)
++	if offset > totalItems {
++		offset = totalItems
++	}
++	end := offset + limit
++	if end > totalItems {
++		end = totalItems
++	}
++	paged := items[offset:end]
++	summary := summarizeGlobalInventory(items, paged, offset, limit)
++
++	ok(c, gin.H{
++		"items":     paged,
++		"summary":   summary,
++		"filters":   gin.H{"categories": categories, "owner_types": []string{"all", "base", "player", "unknown"}},
++		"status":    status,
++		"source_id": sourceID,
++	})
++}
++
++func inventoryLimitOffset(c *gin.Context) (int, int) {
++	limit := 200
++	if value, err := strconv.Atoi(strings.TrimSpace(c.Query("limit"))); err == nil && value > 0 {
++		limit = value
++	}
++	if limit > 500 {
++		limit = 500
++	}
++	offset := 0
++	if value, err := strconv.Atoi(strings.TrimSpace(c.Query("offset"))); err == nil && value > 0 {
++		offset = value
++	}
++	return limit, offset
++}
++
++func buildGlobalInventory(index saveindex.Index, customNames map[string]string, ownerType string) ([]globalInventoryItem, []string) {
++	playerOwners := make(map[string]inventoryOwner)
++	for _, player := range index.Players {
++		name := strings.TrimSpace(player.Nickname)
++		if name == "" {
++			name = strings.TrimSpace(player.PlayerUID)
++		}
++		owner := inventoryOwner{Type: "player", ID: player.PlayerUID, Name: name}
++		for _, id := range []string{player.PlayerUID, player.SteamID} {
++			if key := normalizeQuery(id); key != "" {
++				playerOwners[key] = owner
++			}
++		}
++	}
++
++	baseOwners := make(map[string]inventoryOwner)
++	containerOwners := make(map[string]inventoryOwner)
++	for _, base := range index.Bases {
++		name := strings.TrimSpace(customNames[base.ID])
++		if name == "" {
++			name = pallocalize.BaseName(base.Name)
++		}
++		owner := inventoryOwner{
++			Type:      "base",
++			ID:        base.ID,
++			Name:      name,
++			GuildName: pallocalize.GuildName(base.GuildName),
++		}
++		baseOwners[normalizeQuery(base.ID)] = owner
++		for _, containerID := range base.Containers {
++			if key := normalizeQuery(containerID); key != "" {
++				containerOwners[key] = owner
++			}
++		}
++	}
++
++	entityByID := make(map[string]saveindex.MapEntity, len(index.MapEntities))
++	for _, entity := range index.MapEntities {
++		entityByID[normalizeQuery(entity.ID)] = entity
++	}
++
++	byItem := make(map[string]*globalInventoryItem)
++	seenContainers := make(map[string]struct{})
++	for _, container := range index.Containers {
++		containerKey := normalizeQuery(container.ContainerID)
++		if containerKey == "" {
++			continue
++		}
++		if _, duplicate := seenContainers[containerKey]; duplicate {
++			continue
++		}
++		seenContainers[containerKey] = struct{}{}
++
++		owner := resolveInventoryOwner(container, playerOwners, baseOwners, containerOwners)
++		if ownerType != "all" && owner.Type != ownerType {
++			continue
++		}
++		containerType, containerName := baseStorageContainerIdentity(container, entityByID)
++		for _, slot := range container.Slots {
++			itemID := strings.TrimSpace(slot.ItemID)
++			count := int64(slot.Count)
++			if itemID == "" || count <= 0 {
++				continue
++			}
++			key := normalizeQuery(itemID)
++			item := byItem[key]
++			if item == nil {
++				item = &globalInventoryItem{
++					ItemID:   itemID,
++					ItemName: pallocalize.ItemName(itemID),
++					ItemIcon: pallocalize.ItemIcon(itemID),
++					Category: inventoryItemCategory(itemID),
++				}
++				byItem[key] = item
++			}
++			item.TotalCount += count
++			item.Locations = append(item.Locations, globalInventoryLocation{
++				OwnerType:     owner.Type,
++				OwnerID:       owner.ID,
++				OwnerName:     owner.Name,
++				GuildName:     owner.GuildName,
++				ContainerID:   container.ContainerID,
++				ContainerType: containerType,
++				ContainerName: containerName,
++				Slot:          slot.Slot,
++				Count:         count,
++			})
++		}
++	}
++
++	items := make([]globalInventoryItem, 0, len(byItem))
++	categorySet := make(map[string]struct{})
++	for _, item := range byItem {
++		sort.Slice(item.Locations, func(i, j int) bool {
++			left, right := item.Locations[i], item.Locations[j]
++			if left.OwnerType != right.OwnerType {
++				return left.OwnerType < right.OwnerType
++			}
++			if left.OwnerName != right.OwnerName {
++				return strings.ToLower(left.OwnerName) < strings.ToLower(right.OwnerName)
++			}
++			if left.ContainerID != right.ContainerID {
++				return left.ContainerID < right.ContainerID
++			}
++			return left.Slot < right.Slot
++		})
++		categorySet[item.Category] = struct{}{}
++		items = append(items, *item)
++	}
++	categories := make([]string, 0, len(categorySet))
++	for category := range categorySet {
++		categories = append(categories, category)
++	}
++	sort.Strings(categories)
++	return items, categories
++}
++
++func resolveInventoryOwner(container saveindex.Container, players, bases, containerBases map[string]inventoryOwner) inventoryOwner {
++	if owner, found := containerBases[normalizeQuery(container.ContainerID)]; found {
++		return owner
++	}
++	switch strings.ToLower(strings.TrimSpace(container.OwnerType)) {
++	case "player":
++		if owner, found := players[normalizeQuery(container.OwnerID)]; found {
++			return owner
++		}
++		return inventoryOwner{Type: "player", ID: container.OwnerID, Name: fallbackInventoryOwnerName(container.OwnerID, "未知玩家")}
++	case "base":
++		if owner, found := bases[normalizeQuery(container.OwnerID)]; found {
++			return owner
++		}
++		return inventoryOwner{Type: "base", ID: container.OwnerID, Name: fallbackInventoryOwnerName(container.OwnerID, "未知基地")}
++	default:
++		return inventoryOwner{Type: "unknown", ID: container.OwnerID, Name: "未识别容器"}
++	}
++}
++
++func fallbackInventoryOwnerName(id, fallback string) string {
++	if value := strings.TrimSpace(id); value != "" {
++		return value
++	}
++	return fallback
++}
++
++func filterGlobalInventory(items []globalInventoryItem, query, category string) []globalInventoryItem {
++	query = normalizeQuery(query)
++	category = strings.TrimSpace(category)
++	out := make([]globalInventoryItem, 0, len(items))
++	for _, item := range items {
++		if category != "" && category != "all" && item.Category != category {
++			continue
++		}
++		if query != "" && !globalInventoryItemMatches(item, query) {
++			continue
++		}
++		out = append(out, item)
++	}
++	return out
++}
++
++func globalInventoryItemMatches(item globalInventoryItem, query string) bool {
++	if containsAny(query, item.ItemID, item.ItemName, item.Category) {
++		return true
++	}
++	for _, location := range item.Locations {
++		if containsAny(query, location.OwnerName, location.GuildName, location.ContainerName, location.ContainerType, location.ContainerID) {
++			return true
++		}
++	}
++	return false
++}
++
++func sortGlobalInventory(items []globalInventoryItem, sortBy string) {
++	sort.SliceStable(items, func(i, j int) bool {
++		left, right := items[i], items[j]
++		switch sortBy {
++		case "name_asc":
++			return strings.ToLower(left.ItemName+left.ItemID) < strings.ToLower(right.ItemName+right.ItemID)
++		case "name_desc":
++			return strings.ToLower(left.ItemName+left.ItemID) > strings.ToLower(right.ItemName+right.ItemID)
++		default:
++			if left.TotalCount != right.TotalCount {
++				return left.TotalCount > right.TotalCount
++			}
++			return strings.ToLower(left.ItemName+left.ItemID) < strings.ToLower(right.ItemName+right.ItemID)
++		}
++	})
++}
++
++func summarizeGlobalInventory(all, returned []globalInventoryItem, offset, limit int) globalInventorySummary {
++	containers := make(map[string]struct{})
++	unresolved := make(map[string]struct{})
++	var totalCount int64
++	locationCount := 0
++	for _, item := range all {
++		totalCount += item.TotalCount
++		for _, location := range item.Locations {
++			locationCount++
++			containers[normalizeQuery(location.ContainerID)] = struct{}{}
++			if location.OwnerType == "unknown" {
++				unresolved[normalizeQuery(location.ContainerID)] = struct{}{}
++			}
++		}
++	}
++	return globalInventorySummary{
++		ItemTypes:            len(all),
++		TotalCount:           totalCount,
++		ContainerCount:       len(containers),
++		LocationCount:        locationCount,
++		UnresolvedContainers: len(unresolved),
++		Returned:             len(returned),
++		Offset:               offset,
++		Limit:                limit,
++	}
++}
++
++func inventoryItemCategory(itemID string) string {
++	value := strings.ToLower(strings.TrimSpace(itemID))
++	switch {
++	case strings.Contains(value, "blueprint") || strings.Contains(value, "schematic"):
++		return "蓝图"
++	case strings.Contains(value, "sphere"):
++		return "帕鲁球"
++	case strings.Contains(value, "ammo") || strings.Contains(value, "bullet") || strings.Contains(value, "arrow") || strings.Contains(value, "missile"):
++		return "弹药"
++	case strings.Contains(value, "weapon") || strings.Contains(value, "sword") || strings.Contains(value, "spear") || strings.Contains(value, "gun") || strings.Contains(value, "bow"):
++		return "武器"
++	case strings.Contains(value, "armor") || strings.Contains(value, "helm") || strings.Contains(value, "cloth"):
++		return "防具"
++	case strings.Contains(value, "accessory") || strings.Contains(value, "ring") || strings.Contains(value, "pendant"):
++		return "饰品"
++	case strings.Contains(value, "medicine") || strings.Contains(value, "drug") || strings.Contains(value, "remedy"):
++		return "药品"
++	case strings.Contains(value, "seed"):
++		return "种子"
++	case strings.Contains(value, "food") || strings.Contains(value, "berry") || strings.Contains(value, "meat") || strings.Contains(value, "bread") || strings.Contains(value, "milk") || strings.Contains(value, "egg"):
++		return "食物"
++	case strings.Contains(value, "key") || strings.Contains(value, "note") || strings.Contains(value, "journal"):
++		return "关键物品"
++	case strings.Contains(value, "wood") || strings.Contains(value, "stone") || strings.Contains(value, "fiber") || strings.Contains(value, "ore") || strings.Contains(value, "ingot") || strings.Contains(value, "material") || strings.Contains(value, "parts"):
++		return "材料"
++	default:
++		return "其他"
++	}
++}
+diff --git a/backend/internal/api/global_inventory_test.go b/backend/internal/api/global_inventory_test.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..0e731f5c6b465c7ce96d64914328371697de74cd
+--- /dev/null
++++ b/backend/internal/api/global_inventory_test.go
+@@ -0,0 +1,85 @@
++package api
++
++import (
++	"testing"
++
++	"palpanel/internal/saveindex"
++)
++
++func TestBuildGlobalInventoryAggregatesPlayerBaseAndUnknownLocations(t *testing.T) {
++	index := saveindex.Index{
++		Players: []saveindex.Player{{PlayerUID: "player-1", SteamID: "steam-1", Nickname: "Alice"}},
++		Bases: []saveindex.Base{{
++			ID:         "base-1",
++			Name:       "MainBase",
++			GuildName:  "GuildOne",
++			Containers: []string{"base-chest"},
++		}},
++		MapEntities: []saveindex.MapEntity{{Type: "map_object", ID: "map-chest", Label: "Infra_ItemChest_Grade_02"}},
++		Containers: []saveindex.Container{
++			{ContainerID: "player-bag", OwnerType: "player", OwnerID: "player-1", Slots: []saveindex.Slot{{Slot: 0, ItemID: "Stone", Count: 7}}},
++			{ContainerID: "base-chest", OwnerType: "map_object", OwnerID: "map-chest", Slots: []saveindex.Slot{{Slot: 1, ItemID: "Stone", Count: 20}, {Slot: 2, ItemID: "Wood", Count: 5}}},
++			{ContainerID: "orphan", OwnerType: "map_object", OwnerID: "unknown-object", Slots: []saveindex.Slot{{Slot: 0, ItemID: "Stone", Count: 3}}},
++		},
++	}
++
++	items, categories := buildGlobalInventory(index, map[string]string{"base-1": "北境仓库"}, "all")
++	if len(items) != 2 || len(categories) == 0 {
++		t.Fatalf("items/categories = %#v / %#v", items, categories)
++	}
++	var stone globalInventoryItem
++	for _, item := range items {
++		if item.ItemID == "Stone" {
++			stone = item
++		}
++	}
++	if stone.TotalCount != 30 || len(stone.Locations) != 3 {
++		t.Fatalf("stone aggregate = %#v", stone)
++	}
++	owners := map[string]bool{}
++	for _, location := range stone.Locations {
++		owners[location.OwnerType+":"+location.OwnerName] = true
++	}
++	for _, expected := range []string{"player:Alice", "base:北境仓库", "unknown:未识别容器"} {
++		if !owners[expected] {
++			t.Fatalf("missing owner %q in %#v", expected, owners)
++		}
++	}
++}
++
++func TestBuildGlobalInventoryOwnerScopeAndSearch(t *testing.T) {
++	index := saveindex.Index{
++		Players: []saveindex.Player{{PlayerUID: "player-1", Nickname: "Alice"}},
++		Bases:   []saveindex.Base{{ID: "base-1", Name: "MainBase", Containers: []string{"base-chest"}}},
++		Containers: []saveindex.Container{
++			{ContainerID: "player-bag", OwnerType: "player", OwnerID: "player-1", Slots: []saveindex.Slot{{Slot: 0, ItemID: "BerrySeeds", Count: 4}}},
++			{ContainerID: "base-chest", OwnerType: "map_object", OwnerID: "object-1", Slots: []saveindex.Slot{{Slot: 0, ItemID: "BerrySeeds", Count: 9}}},
++		},
++	}
++
++	items, _ := buildGlobalInventory(index, map[string]string{"base-1": "农场"}, "base")
++	if len(items) != 1 || items[0].TotalCount != 9 || len(items[0].Locations) != 1 || items[0].Category != "种子" {
++		t.Fatalf("base-scoped inventory = %#v", items)
++	}
++	if filtered := filterGlobalInventory(items, "农场", "种子"); len(filtered) != 1 {
++		t.Fatalf("filtered inventory = %#v", filtered)
++	}
++	if filtered := filterGlobalInventory(items, "Alice", "all"); len(filtered) != 0 {
++		t.Fatalf("unexpected player match in base scope: %#v", filtered)
++	}
++}
++
++func TestInventoryItemCategory(t *testing.T) {
++	cases := map[string]string{
++		"BerrySeeds":       "种子",
++		"AssaultRifleAmmo": "弹药",
++		"PalSphere":        "帕鲁球",
++		"Stone":            "材料",
++		"FutureItem":       "其他",
++	}
++	for itemID, expected := range cases {
++		if got := inventoryItemCategory(itemID); got != expected {
++			t.Fatalf("inventoryItemCategory(%q) = %q, want %q", itemID, got, expected)
++		}
++	}
++}
+diff --git a/backend/internal/api/patch_info.go b/backend/internal/api/patch_info.go
+index 12b4de659c4d43e35c42730b0e7ab3bfcd6a3314..99123edd9c45b2ce6d6b29351a3ba32a58ca2995 100644
+--- a/backend/internal/api/patch_info.go
++++ b/backend/internal/api/patch_info.go
+@@ -1,3 +1,3 @@
+ package api
+ 
+-var patchFeatures = []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display", "player-presence-history", "host-save-migrator"}
++var patchFeatures = []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display", "player-presence-history", "host-save-migrator", "global-inventory-browser"}
+diff --git a/backend/internal/api/patch_info_test.go b/backend/internal/api/patch_info_test.go
+index 04e45f846d2f7aab3b1b408bd56d74b28280143c..360c95d446346ea8f9324f4763cfb63137322387 100644
+--- a/backend/internal/api/patch_info_test.go
++++ b/backend/internal/api/patch_info_test.go
+@@ -1,7 +1,7 @@
+ package api
+ 
+ func TestPatchInfo(t *testing.T) {
+-	for _, expected := range []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display", "player-presence-history", "host-save-migrator"} {
++	for _, expected := range []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display", "player-presence-history", "host-save-migrator", "global-inventory-browser"} {
+ 		if !features[expected] {
+ 			t.Fatalf("missing feature %q in %#v", expected, response.Data.Patch.Features)
+ 		}
+diff --git a/backend/internal/api/routes.go b/backend/internal/api/routes.go
+index c74b3edb832ae0c59eb57e5eb43356e02b5a37c0..415e429d4115c908ac8aadc36f82da58cccfb52e 100644
+--- a/backend/internal/api/routes.go
++++ b/backend/internal/api/routes.go
+@@ -16,5 +16,6 @@ func (s Server) registerWorldRoutes(api *gin.RouterGroup) {
+ 	api.PUT("/bases/:id/name", Require(PermServerControl), s.putBaseCustomName)
+ 	api.DELETE("/bases/:id/name", Require(PermServerControl), s.deleteBaseCustomName)
+ 	api.GET("/bases/:id/storage", s.getSaveBaseStorage)
++	api.GET("/inventory", s.listGlobalInventory)
+ 	api.GET("/pals", s.listSavePals)
+ }
+diff --git a/docs/openapi.yaml b/docs/openapi.yaml
+index c9d3dcb105776015b03f4c223c0ff4d3a1050996..db899aa67fd0601c5be85f944ed1dd6048f4dcac 100644
+--- a/docs/openapi.yaml
++++ b/docs/openapi.yaml
+@@ -2,6 +2,19 @@ paths:
+   /bases/{id}/storage:
+     parameters: [*idParameter]
+     get: {operationId: getBaseStorage, tags: [world], x-palpanel-permission: read, responses: *readResponses}
++  /inventory:
++    get:
++      operationId: listGlobalInventory
++      tags: [world]
++      x-palpanel-permission: read
++      parameters:
++        - {name: q, in: query, schema: {type: string}}
++        - {name: category, in: query, schema: {type: string}}
++        - {name: owner_type, in: query, schema: {type: string, enum: [all, base, player, unknown], default: all}}
++        - {name: sort, in: query, schema: {type: string, enum: [count_desc, name_asc, name_desc], default: count_desc}}
++        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 500, default: 200}}
++        - {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
++      responses: *readResponses
+   /pals:
+     get: {operationId: listPals, tags: [world], x-palpanel-permission: read, responses: *readResponses}
+ components:
+@@ -26,5 +39,58 @@ components:
+         container_type: {type: string}
+         container_name: {type: string}
+         slots: {type: array, items: {$ref: '#/components/schemas/SaveInventorySlot'}}
++    GlobalInventoryLocation:
++      type: object
++      required: [owner_type, owner_id, owner_name, container_id, container_type, container_name, slot, count]
++      additionalProperties: false
++      properties:
++        owner_type: {type: string, enum: [base, player, unknown]}
++        owner_id: {type: string}
++        owner_name: {type: string}
++        guild_name: {type: string}
++        container_id: {type: string}
++        container_type: {type: string}
++        container_name: {type: string}
++        slot: {type: integer, minimum: 0}
++        count: {type: integer, format: int64, minimum: 1}
++    GlobalInventoryItem:
++      type: object
++      required: [item_id, item_name, item_icon, category, total_count, locations]
++      additionalProperties: false
++      properties:
++        item_id: {type: string}
++        item_name: {type: string}
++        item_icon: {type: string}
++        category: {type: string}
++        total_count: {type: integer, format: int64, minimum: 1}
++        locations: {type: array, items: {$ref: '#/components/schemas/GlobalInventoryLocation'}}
++    GlobalInventorySummary:
++      type: object
++      required: [item_types, total_count, container_count, location_count, unresolved_containers, returned, offset, limit]
++      additionalProperties: false
++      properties:
++        item_types: {type: integer, minimum: 0}
++        total_count: {type: integer, format: int64, minimum: 0}
++        container_count: {type: integer, minimum: 0}
++        location_count: {type: integer, minimum: 0}
++        unresolved_containers: {type: integer, minimum: 0}
++        returned: {type: integer, minimum: 0}
++        offset: {type: integer, minimum: 0}
++        limit: {type: integer, minimum: 1, maximum: 500}
++    GlobalInventoryResult:
++      type: object
++      required: [items, summary, filters, status, source_id]
++      additionalProperties: false
++      properties:
++        items: {type: array, items: {$ref: '#/components/schemas/GlobalInventoryItem'}}
++        summary: {$ref: '#/components/schemas/GlobalInventorySummary'}
++        filters:
++          type: object
++          required: [categories, owner_types]
++          properties:
++            categories: {type: array, items: {type: string}}
++            owner_types: {type: array, items: {type: string, enum: [all, base, player, unknown]}}
++        status: {$ref: '#/components/schemas/SaveIndexStatus'}
++        source_id: {type: string}
+     ListSummary:
+       type: object
+diff --git a/frontend/src/api/inventory.test.ts b/frontend/src/api/inventory.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..8804cfa1ebeb060de56b65b8c7f7b36374ba17e4
+--- /dev/null
++++ b/frontend/src/api/inventory.test.ts
+@@ -0,0 +1,10 @@
++import { describe, expect, it } from 'vitest';
++import { inventoryApi } from './inventory';
++
++// The runtime client mapper is covered through the public API contract in the generated source patch.
++// This smoke assertion prevents accidental removal of the endpoint wrapper.
++describe('inventoryApi', () => {
++  it('exposes the global inventory list operation', () => {
++    expect(typeof inventoryApi.list).toBe('function');
++  });
++});
+diff --git a/frontend/src/api/inventory.ts b/frontend/src/api/inventory.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..666ac4af9e2aadc7d9df907dd1c3c57301a12997
+--- /dev/null
++++ b/frontend/src/api/inventory.ts
+@@ -0,0 +1,136 @@
++import { apiClient, handleRequest } from './client';
++import { emptySaveIndexStatus, mapSaveIndexStatus } from './saveIndex';
++import type { SaveIndexStatus } from '../types';
++
++export type InventoryOwnerType = 'all' | 'base' | 'player' | 'unknown';
++export type InventorySort = 'count_desc' | 'name_asc' | 'name_desc';
++
++export interface GlobalInventoryLocation {
++  owner_type: Exclude<InventoryOwnerType, 'all'>;
++  owner_id: string;
++  owner_name: string;
++  guild_name?: string;
++  container_id: string;
++  container_type: string;
++  container_name: string;
++  slot: number;
++  count: number;
++}
++
++export interface GlobalInventoryItem {
++  item_id: string;
++  item_name: string;
++  item_icon: string;
++  category: string;
++  total_count: number;
++  locations: GlobalInventoryLocation[];
++}
++
++export interface GlobalInventorySummary {
++  item_types: number;
++  total_count: number;
++  container_count: number;
++  location_count: number;
++  unresolved_containers: number;
++  returned: number;
++  offset: number;
++  limit: number;
++}
++
++export interface GlobalInventoryResponse {
++  items: GlobalInventoryItem[];
++  summary: GlobalInventorySummary;
++  filters: { categories: string[]; owner_types: InventoryOwnerType[] };
++  status: SaveIndexStatus;
++  source_id: string;
++}
++
++export interface GlobalInventoryQuery {
++  q?: string;
++  category?: string;
++  owner_type?: InventoryOwnerType;
++  sort?: InventorySort;
++  limit?: number;
++  offset?: number;
++}
++
++const emptySummary: GlobalInventorySummary = {
++  item_types: 0,
++  total_count: 0,
++  container_count: 0,
++  location_count: 0,
++  unresolved_containers: 0,
++  returned: 0,
++  offset: 0,
++  limit: 200,
++};
++
++const mapLocation = (raw: unknown): GlobalInventoryLocation => {
++  const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
++  const ownerType = String(data.owner_type || 'unknown');
++  return {
++    owner_type: ownerType === 'base' || ownerType === 'player' ? ownerType : 'unknown',
++    owner_id: String(data.owner_id || ''),
++    owner_name: String(data.owner_name || '未识别容器'),
++    guild_name: data.guild_name ? String(data.guild_name) : undefined,
++    container_id: String(data.container_id || ''),
++    container_type: String(data.container_type || 'unknown'),
++    container_name: String(data.container_name || '存储容器'),
++    slot: Number(data.slot || 0),
++    count: Number(data.count || 0),
++  };
++};
++
++const mapItem = (raw: unknown): GlobalInventoryItem => {
++  const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
++  return {
++    item_id: String(data.item_id || ''),
++    item_name: String(data.item_name || data.item_id || '未知物品'),
++    item_icon: String(data.item_icon || ''),
++    category: String(data.category || '其他'),
++    total_count: Number(data.total_count || 0),
++    locations: (Array.isArray(data.locations) ? data.locations : []).map(mapLocation),
++  };
++};
++
++const mapResponse = (raw: unknown): GlobalInventoryResponse => {
++  const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
++  const rawSummary = (data.summary && typeof data.summary === 'object' ? data.summary : {}) as Record<string, unknown>;
++  const rawFilters = (data.filters && typeof data.filters === 'object' ? data.filters : {}) as Record<string, unknown>;
++  return {
++    items: (Array.isArray(data.items) ? data.items : []).map(mapItem),
++    summary: {
++      item_types: Number(rawSummary.item_types || 0),
++      total_count: Number(rawSummary.total_count || 0),
++      container_count: Number(rawSummary.container_count || 0),
++      location_count: Number(rawSummary.location_count || 0),
++      unresolved_containers: Number(rawSummary.unresolved_containers || 0),
++      returned: Number(rawSummary.returned || 0),
++      offset: Number(rawSummary.offset || 0),
++      limit: Number(rawSummary.limit || 200),
++    },
++    filters: {
++      categories: (Array.isArray(rawFilters.categories) ? rawFilters.categories : []).map(String),
++      owner_types: (Array.isArray(rawFilters.owner_types) ? rawFilters.owner_types : ['all', 'base', 'player', 'unknown']) as InventoryOwnerType[],
++    },
++    status: data.status ? mapSaveIndexStatus(data.status) : emptySaveIndexStatus,
++    source_id: String(data.source_id || ''),
++  };
++};
++
++export const inventoryApi = {
++  list: (query: GlobalInventoryQuery = {}) => handleRequest<unknown, GlobalInventoryResponse>(
++    () => apiClient.get('/inventory', {
++      params: {
++        q: query.q?.trim() || undefined,
++        category: query.category && query.category !== 'all' ? query.category : undefined,
++        owner_type: query.owner_type || 'all',
++        sort: query.sort || 'count_desc',
++        limit: query.limit || 200,
++        offset: query.offset || 0,
++      },
++    }),
++    { items: [], summary: emptySummary, filters: { categories: [], owner_types: ['all', 'base', 'player', 'unknown'] }, status: emptySaveIndexStatus, source_id: '' },
++    { fallbackOnError: false, map: mapResponse },
++  ),
++};
+diff --git a/frontend/src/i18n/index.tsx b/frontend/src/i18n/index.tsx
+index dcf028bfadb74ef70acdef56b8cbcc4d26cbc647..5f8b7c520eeb96c30e9c97f9521bb709e8909e62 100644
+--- a/frontend/src/i18n/index.tsx
++++ b/frontend/src/i18n/index.tsx
+@@ -1,6 +1,7 @@
+ const zhCN = {
+   'route.playerCenter': '玩家中心',
+   'route.saveSources': '存档中心',
++  'route.inventory': '库存管理',
+   'route.worldArchive': '世界档案',
+   'route.palInventory': '帕鲁仓库',
+   'route.breeding': '配种实验室',
+@@ -9,5 +10,5 @@ const zhCN = {
+ export type TranslationKey = keyof typeof zhCN;
+ 
+ const enUS: Record<TranslationKey, string> = {
+-  'route.setup': 'Server setup', 'route.dashboard': 'Server overview', 'route.monitor': 'Live monitoring', 'route.communityServers': 'Community servers', 'route.playerCenter': 'Player center', 'route.saveSources': 'Save center', 'route.worldArchive': 'World archive', 'route.palInventory': 'Pal inventory', 'route.breeding': 'Breeding lab', 'route.liveMap': 'Live map', 'route.mods': 'Mod management', 'route.backups': 'Backups & restore', 'route.tasks': 'Task queue', 'route.security': 'Security', 'route.banlist': 'Ban list', 'route.audit': 'Audit log', 'route.settings': 'System settings', 'route.panel': 'Admin panel',
++  'route.setup': 'Server setup', 'route.dashboard': 'Server overview', 'route.monitor': 'Live monitoring', 'route.communityServers': 'Community servers', 'route.playerCenter': 'Player center', 'route.saveSources': 'Save center', 'route.inventory': 'Inventory', 'route.worldArchive': 'World archive', 'route.palInventory': 'Pal inventory', 'route.breeding': 'Breeding lab', 'route.liveMap': 'Live map', 'route.mods': 'Mod management', 'route.backups': 'Backups & restore', 'route.tasks': 'Task queue', 'route.security': 'Security', 'route.banlist': 'Ban list', 'route.audit': 'Audit log', 'route.settings': 'System settings', 'route.panel': 'Admin panel',
+ };
+diff --git a/frontend/src/pages/Inventory.tsx b/frontend/src/pages/Inventory.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..90f9cd16eef0a0b79f054d9bf0cc7ae9c0b333da
+--- /dev/null
++++ b/frontend/src/pages/Inventory.tsx
+@@ -0,0 +1,160 @@
++import React, { useEffect, useMemo, useState } from 'react';
++import { useQuery } from '@tanstack/react-query';
++import {
++  AlertTriangle, Boxes, ChevronDown, ChevronUp, Database, MapPin, Package, PackageSearch,
++  RefreshCw, Search, UserRound, Warehouse,
++} from 'lucide-react';
++import { getErrorMessage } from '../api/client';
++import {
++  inventoryApi, type GlobalInventoryItem, type GlobalInventoryLocation,
++  type InventoryOwnerType, type InventorySort,
++} from '../api/inventory';
++
++export const Inventory: React.FC = () => {
++  const [query, setQuery] = useState('');
++  const [deferredQuery, setDeferredQuery] = useState('');
++  const [category, setCategory] = useState('all');
++  const [ownerType, setOwnerType] = useState<InventoryOwnerType>('all');
++  const [sort, setSort] = useState<InventorySort>('count_desc');
++  const [expanded, setExpanded] = useState<string | null>(null);
++
++  useEffect(() => {
++    const timer = window.setTimeout(() => setDeferredQuery(query.trim()), 250);
++    return () => window.clearTimeout(timer);
++  }, [query]);
++
++  const inventory = useQuery({
++    queryKey: ['global-inventory', deferredQuery, category, ownerType, sort],
++    queryFn: () => inventoryApi.list({ q: deferredQuery, category, owner_type: ownerType, sort, limit: 500 }),
++  });
++  const data = inventory.data;
++  const items = data?.items || [];
++  const summary = data?.summary;
++  const categories = useMemo(() => data?.filters.categories || [], [data?.filters.categories]);
++
++  useEffect(() => {
++    if (category !== 'all' && !categories.includes(category)) setCategory('all');
++  }, [categories, category]);
++
++  return (
++    <div className="page-shell">
++      <div className="page-titlebar">
++        <div>
++          <p className="eyebrow">Global inventory</p>
++          <h1>库存管理</h1>
++          <p>聚合当前激活存档中的玩家背包、据点仓储和尚未识别归属的容器。所有数据均为只读。</p>
++        </div>
++        <button type="button" className="pp-button" disabled={inventory.isFetching} onClick={() => void inventory.refetch()}>
++          <RefreshCw className={inventory.isFetching ? 'animate-spin' : ''} size={15} />刷新
++        </button>
++      </div>
++
++      <section className="status-strip compact-status">
++        <InventoryMetric label="物品种类" value={summary?.item_types || 0} />
++        <InventoryMetric label="物品总量" value={summary?.total_count || 0} />
++        <InventoryMetric label="有效容器" value={summary?.container_count || 0} />
++        <InventoryMetric label="库存位置" value={summary?.location_count || 0} />
++        <InventoryMetric label="未知容器" value={summary?.unresolved_containers || 0} warning={Boolean(summary?.unresolved_containers)} />
++      </section>
++
++      {inventory.error && <div className="pp-notice pp-notice--danger"><AlertTriangle size={16} />{getErrorMessage(inventory.error)}</div>}
++      {data?.status.warnings?.length ? <div className="pp-notice"><AlertTriangle size={16} />{data.status.warnings.join('；')}</div> : null}
++
++      <section className="pp-card">
++        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_180px_180px]">
++          <label className="relative">
++            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
++            <input
++              type="search"
++              value={query}
++              onChange={(event) => setQuery(event.target.value)}
++              className="pp-input w-full pl-9"
++              placeholder="搜索物品、玩家、据点或容器"
++              aria-label="搜索全服库存"
++            />
++          </label>
++          <select className="pp-input" value={ownerType} onChange={(event) => setOwnerType(event.target.value as InventoryOwnerType)} aria-label="库存归属">
++            <option value="all">全部归属</option>
++            <option value="base">据点仓储</option>
++            <option value="player">玩家背包</option>
++            <option value="unknown">未知容器</option>
++          </select>
++          <select className="pp-input" value={category} onChange={(event) => setCategory(event.target.value)} aria-label="物品分类">
++            <option value="all">全部分类</option>
++            {categories.map((value) => <option value={value} key={value}>{value}</option>)}
++          </select>
++          <select className="pp-input" value={sort} onChange={(event) => setSort(event.target.value as InventorySort)} aria-label="库存排序">
++            <option value="count_desc">总量从高到低</option>
++            <option value="name_asc">名称升序</option>
++            <option value="name_desc">名称降序</option>
++          </select>
++        </div>
++        <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-500">
++          <span><Database className="mr-1 inline" size={13} />数据源 {data?.source_id || '当前激活存档'}</span>
++          <span>分类依据物品内部 ID，仅用于浏览筛选。</span>
++        </div>
++      </section>
++
++      <section className="pp-card p-0 overflow-hidden">
++        <div className="grid grid-cols-[minmax(0,1fr)_120px_120px_42px] gap-3 border-b border-slate-100 bg-slate-50 px-5 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">
++          <span>物品</span><span>分类</span><span className="text-right">总量</span><span />
++        </div>
++        {inventory.isLoading ? (
++          <InventoryEmpty icon={<RefreshCw className="animate-spin" size={28} />} title="正在读取库存索引" detail="数据来自当前激活的只读存档源" />
++        ) : items.length ? items.map((item) => {
++          const open = expanded === item.item_id;
++          return <InventoryRow key={item.item_id} item={item} open={open} onToggle={() => setExpanded(open ? null : item.item_id)} />;
++        }) : (
++          <InventoryEmpty icon={<PackageSearch size={30} />} title="没有匹配的库存" detail="调整搜索、归属或分类条件后重试" />
++        )}
++      </section>
++    </div>
++  );
++};
++
++const InventoryRow: React.FC<{ item: GlobalInventoryItem; open: boolean; onToggle: () => void }> = ({ item, open, onToggle }) => (
++  <article className="border-b border-slate-100 last:border-b-0">
++    <button type="button" onClick={onToggle} aria-expanded={open} className="grid w-full grid-cols-[minmax(0,1fr)_120px_120px_42px] items-center gap-3 px-5 py-4 text-left hover:bg-slate-50">
++      <span className="flex min-w-0 items-center gap-3">
++        <InventoryItemIcon icon={item.item_icon} name={item.item_name} />
++        <span className="min-w-0"><strong className="block truncate text-sm text-slate-800">{item.item_name}</strong><small className="block truncate font-mono text-[10px] text-slate-400">{item.item_id}</small></span>
++      </span>
++      <span><i className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-bold not-italic text-slate-600">{item.category}</i></span>
++      <strong className="text-right text-sm text-sky-700">{formatNumber(item.total_count)}</strong>
++      <span className="flex justify-end text-slate-400">{open ? <ChevronUp size={17} /> : <ChevronDown size={17} />}</span>
++    </button>
++    {open && <div className="border-t border-slate-100 bg-slate-50/70 px-5 py-4"><InventoryLocations locations={item.locations} /></div>}
++  </article>
++);
++
++const InventoryLocations: React.FC<{ locations: GlobalInventoryLocation[] }> = ({ locations }) => (
++  <div className="grid gap-2 lg:grid-cols-2">
++    {locations.map((location) => <div key={`${location.container_id}:${location.slot}`} className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white px-3 py-3">
++      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-slate-500">
++        {location.owner_type === 'base' ? <Warehouse size={17} /> : location.owner_type === 'player' ? <UserRound size={17} /> : <MapPin size={17} />}
++      </span>
++      <span className="min-w-0 flex-1">
++        <strong className="block truncate text-xs text-slate-700">{location.owner_name}</strong>
++        <small className="block truncate text-[10px] text-slate-400" title={location.container_id}>{location.container_name} · 槽位 {location.slot}{location.guild_name ? ` · ${location.guild_name}` : ''}</small>
++      </span>
++      <b className="shrink-0 text-xs text-sky-700">×{formatNumber(location.count)}</b>
++    </div>)}
++  </div>
++);
++
++const InventoryItemIcon: React.FC<{ icon: string; name: string }> = ({ icon, name }) => {
++  const [failed, setFailed] = useState(false);
++  useEffect(() => setFailed(false), [icon]);
++  if (!icon || failed) return <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-100 bg-slate-50 text-slate-300"><Package size={18} /></span>;
++  return <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-100 bg-slate-50 p-1"><img src={`/assets/items/${encodeURIComponent(icon)}.webp`} alt={`${name}图标`} loading="lazy" className="h-full w-full object-contain" onError={() => setFailed(true)} /></span>;
++};
++
++const InventoryMetric: React.FC<{ label: string; value: number; warning?: boolean }> = ({ label, value, warning }) => (
++  <div className={warning ? 'metric text-amber-700' : 'metric'}><span className="eyebrow">{label}</span><strong>{formatNumber(value)}</strong><span>当前筛选</span></div>
++);
++
++const InventoryEmpty: React.FC<{ icon: React.ReactNode; title: string; detail: string }> = ({ icon, title, detail }) => (
++  <div className="flex min-h-56 flex-col items-center justify-center gap-2 p-8 text-center text-slate-400">{icon}<strong className="text-sm text-slate-600">{title}</strong><span className="text-xs">{detail}</span></div>
++);
++
++const formatNumber = (value: number) => new Intl.NumberFormat('zh-CN').format(Number(value) || 0);
+diff --git a/frontend/src/routes.tsx b/frontend/src/routes.tsx
+index 28ec3a75ef81f53d76063f79b9bff9e31a7d6bb4..fb6a3f6e368c2731183b5af42d559840788dd5ed 100644
+--- a/frontend/src/routes.tsx
++++ b/frontend/src/routes.tsx
+@@ -1,7 +1,7 @@
+ import React from 'react';
+ import {
+   Activity, Archive, ClipboardList, Database, Dna, FolderArchive, Globe2, LayoutDashboard,
+-  ListTodo, Map as MapIcon, Puzzle, Settings as SettingsIcon, Shield, Sparkles,
++  ListTodo, Map as MapIcon, PackageSearch, Puzzle, Settings as SettingsIcon, Shield, Sparkles,
+   UserCog, UserX, Users,
+ } from 'lucide-react';
+ import type { TranslationKey } from './i18n';
+@@ -24,6 +24,7 @@ const Pals = lazyPage(() => import('./pages/Pals'), 'Pals');
+ const PalDefenderGM = lazyPage(() => import('./pages/PalDefenderGM'), 'PalDefenderGM');
+ const Players = lazyPage(() => import('./pages/Players'), 'Players');
+ const SaveSources = lazyPage(() => import('./pages/SaveSources'), 'SaveSources');
++const Inventory = lazyPage(() => import('./pages/Inventory'), 'Inventory');
+ const Security = lazyPage(() => import('./pages/Security'), 'Security');
+ const Settings = lazyPage(() => import('./pages/Settings'), 'Settings');
+ const Setup = lazyPage(() => import('./pages/Setup'), 'Setup');
+@@ -51,6 +52,7 @@ export const appRoutes: AppRoute[] = [
+   { id: 'community-servers', path: '/community-servers', title: '社区服务器', navLabel: '社区服务器', titleKey: 'route.communityServers', navGroup: 'workspace', icon: <Globe2 size={18} />, element: <CommunityServers /> },
+   { id: 'player-center', path: '/player-center', title: '玩家中心', navLabel: '玩家中心', titleKey: 'route.playerCenter', navGroup: 'world', activePaths: ['/gm'], icon: <UserCog size={18} />, element: <PalDefenderGM /> },
+   { id: 'save-sources', path: '/save-sources', title: '存档中心', navLabel: '存档中心', titleKey: 'route.saveSources', navGroup: 'world', icon: <FolderArchive size={18} />, element: <SaveSources /> },
++  { id: 'global-inventory', path: '/inventory', title: '库存管理', navLabel: '库存管理', titleKey: 'route.inventory', navGroup: 'world', icon: <PackageSearch size={18} />, element: <Inventory /> },
+   { id: 'world-archive', path: '/world', title: '世界档案', navLabel: '世界档案', titleKey: 'route.worldArchive', navGroup: 'world', activePaths: ['/players', '/guilds', '/bases'], icon: <Database size={18} />, element: <Players /> },
+   { id: 'pal-inventory', path: '/pal-inventory', title: '帕鲁仓库', navLabel: '帕鲁仓库', titleKey: 'route.palInventory', navGroup: 'world', activePaths: ['/pals'], icon: <Dna size={18} />, element: <Pals /> },
+   { id: 'breeding', path: '/breeding', title: '配种实验室', navLabel: '配种实验室', titleKey: 'route.breeding', navGroup: 'world', icon: <Dna size={18} />, element: <BreedingLab /> },

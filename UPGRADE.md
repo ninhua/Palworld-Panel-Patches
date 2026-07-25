@@ -1,42 +1,48 @@
-# Upgrade v0.12.17 → v0.12.18
+# Upgrade v0.12.18 → v0.12.19
 
-本次更新接入联机主机角色到专服 UID 的安全迁移流程，stable patch 目标为 `0.8.8`。
+本次更新新增只读全服库存浏览器，stable patch 目标为 `0.8.9`。
 
-应用增量包后应确认：
+应用增量包后应确认存在：
 
 ```text
-projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source/0022-add-host-save-migrator.patch
+projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source/0023-add-global-inventory-browser.patch
 ```
 
-以及 manifest 的 features 中包含：
+并确认 manifest 和 required features 包含：
 
 ```json
-"host-save-migrator"
+"global-inventory-browser"
 ```
-
-Release overlay 中另外包含 `bin/palworld-uid-remap`。该 helper 不作为 manifest 的安装前置文件，避免旧安装器因目标文件尚不存在而拒绝升级。
 
 下一次 Release 标签：
 
 ```text
-uitok-stable-v1.3.0-p0.8.8
+uitok-stable-v1.3.0-p0.8.9
 ```
 
-GitHub Action 需要 Rust toolchain。构建产物中的 `palworld-uid-remap` 必须通过：
+功能入口：
 
-```bash
-bin/palworld-uid-remap derive-host-uid --steam-id 76561198000000000
+```text
+世界管理 → 库存管理
 ```
 
+接口：
 
-兼容现有部署脚本：部署脚本无需增加额外复制步骤。完整 overlay 安装会自然复制 helper；若旧部署或热更新只替换 `palpanel`，0.8.8 面板会在首次主机迁移预检时从同版本 Release 包提取 helper，并使用构建时嵌入的 SHA-256 校验。离线环境可提前把 helper 放到面板同目录，或设置：
-
-```bash
-PALPANEL_UID_REMAPPER_BIN=/absolute/path/palworld-uid-remap
+```http
+GET /api/inventory?q=&owner_type=all&category=&sort=count_desc&limit=200&offset=0
 ```
 
-需要使用镜像包时可设置：
+该功能直接读取现有 save index，不增加 sidecar 或新运行时依赖。现有一键部署脚本无需修改。
 
-```bash
-PALPANEL_UID_REMAPPER_PACKAGE_URL=https://mirror.example/uitok-palworld-panel_stable-v1.3.0_patch-0.8.8_linux-amd64.tar.gz
+升级后的兼容性报告必须满足：
+
+```json
+{
+  "excluded_features": [],
+  "effective_features": [
+    "global-inventory-browser"
+  ]
+}
 ```
+
+`effective_features` 实际还会包含其他已启用功能；上例只列出本次新增项。

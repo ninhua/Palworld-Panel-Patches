@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.12.19
+
+### Added
+
+- 新增 `0023-add-global-inventory-browser.patch` 与 required feature `global-inventory-browser`。
+- 新增只读 `GET /api/inventory`，聚合玩家背包、据点关联仓储和未识别归属容器中的非空槽位。
+- 库存结果按物品 ID 汇总总量，并保留归属、容器、槽位和数量明细。
+- 新增库存管理页面，支持搜索、归属范围、分类、排序和位置展开。
+- 据点归属复用自定义据点名称，物品与容器复用现有本地化和图标。
+
+### Safety
+
+- 功能只读取当前激活 save index，不扩展 `sav-cli`，不写入或替换 Palworld 存档。
+- 无法确认归属的容器保留为 `unknown`，不静默丢弃。
+- 重复容器 ID 去重，空槽位和非正数量不进入聚合。
+
+### Changed
+
+- 仓库版本升级到 `v0.12.19`。
+- stable patch 升级到 `0.8.9`；下次 Release 为 `uitok-stable-v1.3.0-p0.8.9`。
+
 ## v0.12.18
 
 ### Added

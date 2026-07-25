@@ -122,3 +122,17 @@ features:
       - frontend/src/pages/Settings.tsx
     notes: Adds explicit HTTP/HTTPS support for configurable AstrBot, WebDAV, AI-provider, upstream/download, and public remote Mod endpoints while retaining URL, credential, redirect, public-address, remote-path, and size validation. HTTP transport is not encrypted.
 
+
+  - id: global-inventory-browser
+    reference_label: 全服库存管理
+    status: implemented-independently
+    patch_version: 0.8.9
+    implementation: behavior-reimplementation
+    source_paths: []
+    target_paths:
+      - backend/internal/api/global_inventory.go
+      - backend/internal/api/routes.go
+      - frontend/src/api/inventory.ts
+      - frontend/src/pages/Inventory.tsx
+      - frontend/src/routes.tsx
+    notes: Aggregates the target project's existing localized save-index container slots across player, base-linked, and unresolved owners. It is read-only, copies no Jiaayu source code, does not extend sav-cli, and does not modify Palworld saves.

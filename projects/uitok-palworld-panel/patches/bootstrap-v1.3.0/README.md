@@ -61,3 +61,12 @@ fallback. Sensitive keys and Bearer tokens are redacted before the existing
 - 当前拒绝目标 UID 已存在的存档。
 - helper 随 Release overlay 分发，但不列为安装前必须已存在的 manifest 目标；完整 overlay 安装会复制它。若旧部署或热更新只替换 `palpanel`，面板会从同版本 Release 直链包自举 helper，并校验构建时嵌入的 SHA-256。
 - 离线环境可用 `PALPANEL_UID_REMAPPER_BIN` 指定预装 helper；镜像环境可用 `PALPANEL_UID_REMAPPER_PACKAGE_URL` 覆盖自举包地址。
+## 0023 global-inventory-browser
+
+- 新增只读 `/inventory` 世界数据接口和独立库存管理页面。
+- 聚合现有 save index 的玩家、据点关联和未知归属容器，不扩展 `sav-cli`。
+- 同一物品跨容器合并总量，同时保留每个实际槽位的位置明细。
+- 支持物品/归属/容器搜索、归属范围、启发式分类和总量/名称排序。
+- 据点显示名称复用 `base-custom-names`，容器名称和物品图标复用 `base-storage-browser`。
+- 未识别容器明确标为 `unknown`，不会静默忽略；不提供任何库存写操作。
+

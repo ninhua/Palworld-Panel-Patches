@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "uitok-palworld-panel",
-  "patch_version": "0.8.8",
+  "patch_version": "0.8.9",
   "patch_type": "source-build",
   "upstream": {
     "repository": "uitok/palworld-panel",
@@ -35,7 +35,8 @@
     "panel-patch-hot-update",
     "audit-log-response-display",
     "player-presence-history",
-    "host-save-migrator"
+    "host-save-migrator",
+    "global-inventory-browser"
   ],
-  "notes": "Self-contained v1.3.0 stable maintenance source track. Includes required player presence history, bounded redacted audit response details, and a managed co-op host-to-dedicated UID migration flow backed by PalPanel's first-party Rust remapper. Migration always creates a new imported save source and does not overwrite or deploy the input world."
+  "notes": "Self-contained v1.3.0 stable maintenance source track. Includes required player presence history, bounded redacted audit response details, managed co-op host-to-dedicated UID migration, and a read-only global inventory browser that aggregates player, base, and unresolved container slots from the active save index."
 }

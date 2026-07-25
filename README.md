@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.18`
+仓库版本：`v0.12.19`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -11,7 +11,7 @@
 上游项目：uitok/palworld-panel
 当前维护目标：v1.3.0
 bootstrap 源轨道：patches/bootstrap-v1.3.0
-稳定补丁版本：0.8.8
+稳定补丁版本：0.8.9
 候选状态：candidate / 未发布前 verified=false
 ```
 
@@ -47,6 +47,8 @@ insecure-endpoint-support
 panel-patch-hot-update
 audit-log-response-display
 player-presence-history（stable 必需功能，迁移或构建失败时禁止发布）
+host-save-migrator（stable 必需功能）
+global-inventory-browser（stable 必需功能，只读全服库存聚合）
 ```
 
 `player-presence-history` 提供：
@@ -59,6 +61,16 @@ player-presence-history（stable 必需功能，迁移或构建失败时禁止�
 - 下一次成功采样最多补记 60 秒，避免面板停机或网络中断形成虚假在线时长；
 - 只对当前服务器存档源展示实时历史，导入存档不复用服务器在线记录；
 - 数据保存在 PalPanel SQLite KV 中，不修改 Palworld 存档。
+
+
+`global-inventory-browser` 提供：
+
+- 聚合当前激活存档中的玩家背包、据点关联仓储与未识别归属容器；
+- 按物品 ID 合并总量，同时保留每个容器槽位的位置、数量、归属和容器名称；
+- 支持物品、玩家、据点、公会、容器名称或内部 ID 搜索；
+- 支持玩家、据点、未知容器范围筛选，以及分类和总量/名称排序；
+- 据点位置使用 `base-custom-names` 的自定义显示名称，容器和物品复用现有本地化与图标目录；
+- 只读取现有 save index，不扩展 `sav-cli`，不修改 Palworld 存档，也不提供物品写入操作。
 
 `audit-log-response-display` 提供：
 
@@ -336,11 +348,11 @@ bash common/scripts/validate-repository.sh
 
 ```text
 目标上游：v1.3.0
-稳定补丁版本：0.8.8
-预期 Release：uitok-stable-v1.3.0-p0.8.8
+稳定补丁版本：0.8.9
+预期 Release：uitok-stable-v1.3.0-p0.8.9
+```
 
 `host-save-migrator` 使用随 Release 分发的 `palworld-uid-remap`。helper 作为 overlay 附加文件分发，但不列为安装前必须已存在的 manifest 目标，以兼容旧安装器。旧部署脚本或热更新只替换主二进制时，面板会在首次预检时从同版本 Release 包自举 helper 并按构建时 SHA-256 校验；离线环境可设置 `PALPANEL_UID_REMAPPER_BIN`。
-```
 
 `manifest.files["bin/palpanel"].original_sha256` 现在直接取自上游正式 Release
 `palpanel_v1.3.0_linux_amd64.tar.gz` 内的 `bin/palpanel`。构建过程仍会从源码重建
