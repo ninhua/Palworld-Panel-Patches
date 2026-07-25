@@ -28,7 +28,7 @@ detail dialog for desktop rows and mobile cards. It displays the complete
 already-redacted audit message and record metadata, pretty-prints JSON, supports keyboard controls
 and copying on secure or HTTP pages, and does not collect raw HTTP bodies.
 
-Patch `0018` adds `player-presence-history`. It reuses the existing 15-second
+Patch `0018` adds the required `player-presence-history` feature. It reuses the existing 15-second
 monitor loop to sample the official REST players endpoint, stores bounded
 sessions and totals in SQLite KV, caps recovery accrual after outages, and
 attaches history only to the live server save source.
@@ -44,3 +44,10 @@ attached to `document.body`. This keeps the fixed overlay outside `#app-main`'s
 scroll, isolation and page-enter transform context, preventing the visible
 empty-frame failure while preserving response metadata, formatting and copy
 behavior.
+
+
+Patch `0021` replaces generic audit success markers with bounded, recursively
+redacted structured response details. Standard API helpers record their actual
+`data` or `error` payload; direct JSON responses are captured as a compatibility
+fallback. Sensitive keys and Bearer tokens are redacted before the existing
+`audit_logs.message` field is written, and the final JSON is capped at 32 KiB.

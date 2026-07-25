@@ -1,0 +1,385 @@
+diff --git a/backend/internal/api/audit_response.go b/backend/internal/api/audit_response.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..adc3530c30d22d2a9f0be9042db58102e56aa365
+--- /dev/null
++++ b/backend/internal/api/audit_response.go
+@@ -0,0 +1,134 @@
++package api
++
++import (
++	"bytes"
++	"crypto/rand"
++	"encoding/hex"
++	"encoding/json"
++	"fmt"
++	"net/http"
++	"strings"
++	"time"
++
++	"github.com/gin-gonic/gin"
++
++	"palpanel/internal/auditdetail"
++	"palpanel/internal/db"
++)
++
++const (
++	auditResponseKey        = "patch.audit.response-detail"
++	maxAuditCaptureBodySize = 64 * 1024
++)
++
++type auditCaptureWriter struct {
++	gin.ResponseWriter
++	body      bytes.Buffer
++	truncated bool
++}
++
++func (w *auditCaptureWriter) Write(data []byte) (int, error) {
++	w.capture(data)
++	return w.ResponseWriter.Write(data)
++}
++
++func (w *auditCaptureWriter) WriteString(data string) (int, error) {
++	w.capture([]byte(data))
++	return w.ResponseWriter.WriteString(data)
++}
++
++func (w *auditCaptureWriter) capture(data []byte) {
++	remaining := maxAuditCaptureBodySize - w.body.Len()
++	if remaining <= 0 {
++		w.truncated = true
++		return
++	}
++	if len(data) > remaining {
++		_, _ = w.body.Write(data[:remaining])
++		w.truncated = true
++		return
++	}
++	_, _ = w.body.Write(data)
++}
++
++// DetailedAuditMiddleware records bounded, recursively redacted API response details for write operations.
++// Standard ok/fail helpers provide the original data/error object. Direct JSON responses are captured as a fallback.
++func DetailedAuditMiddleware(store *db.Store) gin.HandlerFunc {
++	return func(c *gin.Context) {
++		if requestIsSafe(c.Request.Method) {
++			c.Next()
++			return
++		}
++
++		capture := &auditCaptureWriter{ResponseWriter: c.Writer}
++		c.Writer = capture
++		c.Next()
++
++		statusCode := c.Writer.Status()
++		success := statusCode < http.StatusBadRequest
++		status := "success"
++		if !success {
++			status = "failed"
++		}
++		detail, _ := c.Get(auditResponseKey)
++		message, _ := detail.(string)
++		if strings.TrimSpace(message) == "" {
++			message = capturedAuditResponse(statusCode, success, capture)
++		}
++
++		principal := CurrentPrincipal(c)
++		_ = store.CreateAuditLog(c.Request.Context(), db.AuditLog{
++			ID:      newDetailedAuditLogID(),
++			Actor:   principal.Name,
++			Role:    string(principal.Role),
++			Action:  detailedAuditAction(c),
++			Target:  detailedAuditTarget(c),
++			Status:  status,
++			Message: message,
++			IP:      c.ClientIP(),
++		})
++	}
++}
++
++func capturedAuditResponse(status int, success bool, capture *auditCaptureWriter) string {
++	if capture.body.Len() > 0 && !capture.truncated {
++		var payload any
++		if err := json.Unmarshal(capture.body.Bytes(), &payload); err == nil {
++			return auditdetail.Encode(status, success, payload)
++		}
++	}
++	return auditdetail.Encode(status, success, map[string]any{
++		"captured":  capture.body.Len() > 0,
++		"truncated": capture.truncated,
++		"note":      "handler response was not a complete JSON document",
++	})
++}
++
++func detailedAuditAction(c *gin.Context) string {
++	path := strings.TrimSpace(c.FullPath())
++	if path == "" {
++		path = c.Request.URL.Path
++	}
++	return strings.TrimSpace(c.Request.Method + " " + path)
++}
++
++func detailedAuditTarget(c *gin.Context) string {
++	if len(c.Params) == 0 {
++		return ""
++	}
++	parts := make([]string, 0, len(c.Params))
++	for _, parameter := range c.Params {
++		if value := strings.TrimSpace(parameter.Value); value != "" {
++			parts = append(parts, parameter.Key+"="+value)
++		}
++	}
++	return strings.Join(parts, ", ")
++}
++
++func newDetailedAuditLogID() string {
++	buffer := make([]byte, 16)
++	if _, err := rand.Read(buffer); err == nil {
++		return "audit-" + hex.EncodeToString(buffer)
++	}
++	return fmt.Sprintf("audit-%d", time.Now().UTC().UnixNano())
++}
+diff --git a/backend/internal/api/response.go b/backend/internal/api/response.go
+index 1b85f095fe7b639162f8520eceb3ce9faa2c423e..e448fa8258efcd23b84c8b501b2af85ac8e48e0d 100644
+--- a/backend/internal/api/response.go
++++ b/backend/internal/api/response.go
+@@ -4,6 +4,8 @@ import (
+ 	"net/http"
+ 
+ 	"github.com/gin-gonic/gin"
++
++	"palpanel/internal/auditdetail"
+ )
+ 
+ func ok(c *gin.Context, data any) {
+@@ -19,9 +21,12 @@ func created(c *gin.Context, data any) {
+ }
+ 
+ func succeed(c *gin.Context, status int, data any) {
++	c.Set(auditResponseKey, auditdetail.Encode(status, true, data))
+ 	c.JSON(status, gin.H{"ok": true, "data": data})
+ }
+ 
+ func fail(c *gin.Context, status int, code, message string) {
+-	c.JSON(status, gin.H{"ok": false, "error": gin.H{"code": code, "message": message}})
++	detail := gin.H{"code": code, "message": message}
++	c.Set(auditResponseKey, auditdetail.Encode(status, false, detail))
++	c.JSON(status, gin.H{"ok": false, "error": detail})
+ }
+diff --git a/backend/internal/api/routes.go b/backend/internal/api/routes.go
+index b4149cc92735f81b13c4e70a6216585fe8d4129f..f364c24a2e122adc6952962b4aa5572c2224c076 100644
+--- a/backend/internal/api/routes.go
++++ b/backend/internal/api/routes.go
+@@ -46,7 +46,7 @@ func (s Server) registerRoutes(router *gin.Engine) {
+ 	integration.POST("/community-servers", s.astrBotCommunityServers)
+ 
+ 	api := router.Group("/api")
+-	api.Use(Auth(s.cfg, s.auth), AuditMiddleware(s.store))
++	api.Use(Auth(s.cfg, s.auth), DetailedAuditMiddleware(s.store))
+ 	s.registerSystemRoutes(api)
+ 	s.registerServerRoutes(api)
+ 	s.registerContentRoutes(api)
+diff --git a/backend/internal/auditdetail/detail.go b/backend/internal/auditdetail/detail.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..ceb3ebcac674bd317bfa706dad1cdb87301dc953
+--- /dev/null
++++ b/backend/internal/auditdetail/detail.go
+@@ -0,0 +1,130 @@
++package auditdetail
++
++import (
++	"encoding/json"
++	"fmt"
++	"regexp"
++	"sort"
++	"strings"
++)
++
++const (
++	maxDepth       = 8
++	maxArrayItems  = 32
++	maxStringRunes = 2048
++	maxEncodedSize = 32 * 1024
++)
++
++var (
++	bearerPattern     = regexp.MustCompile(`(?i)(bearer\s+)[A-Za-z0-9._~+/=-]+`)
++	assignmentPattern = regexp.MustCompile(`(?i)(password|passwd|secret|token|api[_-]?key|access[_-]?key|authorization|cookie)(\s*[:=]\s*)([^\s,;]+)`)
++)
++
++// Encode returns a bounded, recursively redacted JSON description of an API response.
++// The result is suitable for PalPanel's existing audit_logs.message column.
++func Encode(status int, success bool, payload any) string {
++	key := "data"
++	if !success {
++		key = "error"
++	}
++	detail := map[string]any{
++		"http_status": status,
++		"ok":          success,
++		key:           sanitize(payload, 0),
++	}
++	encoded, err := json.Marshal(detail)
++	if err == nil && len(encoded) <= maxEncodedSize {
++		return string(encoded)
++	}
++	fallback, _ := json.Marshal(map[string]any{
++		"http_status": status,
++		"ok":          success,
++		"truncated":   true,
++		"summary":     "response detail exceeded the audit size limit",
++	})
++	return string(fallback)
++}
++
++func sanitize(value any, depth int) any {
++	if depth >= maxDepth {
++		return "[MAX_DEPTH]"
++	}
++	switch typed := value.(type) {
++	case nil, bool, json.Number:
++		return typed
++	case string:
++		return sanitizeString(typed)
++	case []byte:
++		return sanitizeString(string(typed))
++	case float32, float64, int, int8, int16, int32, int64,
++		uint, uint8, uint16, uint32, uint64:
++		return typed
++	case []any:
++		limit := len(typed)
++		if limit > maxArrayItems {
++			limit = maxArrayItems
++		}
++		items := make([]any, 0, limit+1)
++		for _, item := range typed[:limit] {
++			items = append(items, sanitize(item, depth+1))
++		}
++		if len(typed) > limit {
++			items = append(items, fmt.Sprintf("[TRUNCATED %d ITEMS]", len(typed)-limit))
++		}
++		return items
++	case map[string]any:
++		return sanitizeMap(typed, depth)
++	}
++
++	encoded, err := json.Marshal(value)
++	if err != nil {
++		return sanitizeString(fmt.Sprint(value))
++	}
++	var normalized any
++	decoder := json.NewDecoder(strings.NewReader(string(encoded)))
++	decoder.UseNumber()
++	if err := decoder.Decode(&normalized); err != nil {
++		return sanitizeString(fmt.Sprint(value))
++	}
++	return sanitize(normalized, depth+1)
++}
++
++func sanitizeMap(value map[string]any, depth int) map[string]any {
++	keys := make([]string, 0, len(value))
++	for key := range value {
++		keys = append(keys, key)
++	}
++	sort.Strings(keys)
++	result := make(map[string]any, len(value))
++	for _, key := range keys {
++		if sensitiveKey(key) {
++			result[key] = "[REDACTED]"
++			continue
++		}
++		result[key] = sanitize(value[key], depth+1)
++	}
++	return result
++}
++
++func sensitiveKey(key string) bool {
++	normalized := strings.ToLower(strings.NewReplacer("-", "_", " ", "_").Replace(strings.TrimSpace(key)))
++	for _, marker := range []string{
++		"password", "passwd", "secret", "token", "authorization", "cookie", "csrf",
++		"credential", "private_key", "api_key", "access_key", "refresh_key",
++	} {
++		if strings.Contains(normalized, marker) {
++			return true
++		}
++	}
++	return false
++}
++
++func sanitizeString(value string) string {
++	value = bearerPattern.ReplaceAllString(value, `${1}[REDACTED]`)
++	value = assignmentPattern.ReplaceAllString(value, `${1}${2}[REDACTED]`)
++	runes := []rune(value)
++	if len(runes) <= maxStringRunes {
++		return value
++	}
++	return string(runes[:maxStringRunes]) + fmt.Sprintf("…[TRUNCATED %d RUNES]", len(runes)-maxStringRunes)
++}
+diff --git a/backend/internal/auditdetail/detail_test.go b/backend/internal/auditdetail/detail_test.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..81a22c2beea8ed5e93d12083881715c95f7e9986
+--- /dev/null
++++ b/backend/internal/auditdetail/detail_test.go
+@@ -0,0 +1,63 @@
++package auditdetail
++
++import (
++	"encoding/json"
++	"strings"
++	"testing"
++)
++
++func TestEncodeKeepsDetailedResponseAndRedactsSecrets(t *testing.T) {
++	encoded := Encode(202, true, map[string]any{
++		"job": map[string]any{
++			"id": "job-1", "type": "patch_hot_update", "status": "waiting",
++			"message": "已进入任务队列", "token": "do-not-store",
++		},
++		"authorization": "Bearer abc.def.ghi",
++	})
++	var detail map[string]any
++	if err := json.Unmarshal([]byte(encoded), &detail); err != nil {
++		t.Fatalf("decode detail: %v", err)
++	}
++	if detail["http_status"] != float64(202) || detail["ok"] != true {
++		t.Fatalf("unexpected envelope: %#v", detail)
++	}
++	data := detail["data"].(map[string]any)
++	job := data["job"].(map[string]any)
++	if job["id"] != "job-1" || job["message"] != "已进入任务队列" {
++		t.Fatalf("detailed response missing: %#v", job)
++	}
++	if job["token"] != "[REDACTED]" || data["authorization"] != "[REDACTED]" {
++		t.Fatalf("secret was not redacted: %#v", data)
++	}
++}
++
++func TestEncodeBoundsLargeResponses(t *testing.T) {
++	items := make([]any, 100)
++	for index := range items {
++		items[index] = strings.Repeat("x", 4096)
++	}
++	encoded := Encode(200, true, map[string]any{"items": items})
++	if len(encoded) > maxEncodedSize {
++		t.Fatalf("encoded audit detail is too large: %d", len(encoded))
++	}
++	if !strings.Contains(encoded, "TRUNCATED") && !strings.Contains(encoded, `"truncated":true`) {
++		t.Fatalf("large response was not marked truncated: %s", encoded)
++	}
++}
++
++func TestEncodeRedactsBearerText(t *testing.T) {
++	encoded := Encode(500, false, map[string]any{"message": "upstream rejected Bearer abc.def.ghi"})
++	if strings.Contains(encoded, "abc.def.ghi") || !strings.Contains(encoded, "[REDACTED]") {
++		t.Fatalf("bearer token was not redacted: %s", encoded)
++	}
++}
++
++func TestEncodeRedactsCredentialAssignmentsInText(t *testing.T) {
++	encoded := Encode(200, true, map[string]any{"message": "password=hunter2 token: abc123 safe=value"})
++	if strings.Contains(encoded, "hunter2") || strings.Contains(encoded, "abc123") {
++		t.Fatalf("credential assignment was not redacted: %s", encoded)
++	}
++	if !strings.Contains(encoded, "password=[REDACTED]") || !strings.Contains(encoded, "token: [REDACTED]") {
++		t.Fatalf("credential labels were not preserved: %s", encoded)
++	}
++}

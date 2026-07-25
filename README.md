@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.15`
+仓库版本：`v0.12.16`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -11,7 +11,7 @@
 上游项目：uitok/palworld-panel
 当前维护目标：v1.3.0
 bootstrap 源轨道：patches/bootstrap-v1.3.0
-稳定补丁版本：0.8.6
+稳定补丁版本：0.8.7
 候选状态：candidate / 未发布前 verified=false
 ```
 
@@ -46,7 +46,7 @@ base-feed-box-summary
 insecure-endpoint-support
 panel-patch-hot-update
 audit-log-response-display
-player-presence-history（候选可选功能，迁移失败时不阻断 stable Release）
+player-presence-history（stable 必需功能，迁移或构建失败时禁止发布）
 ```
 
 `player-presence-history` 提供：
@@ -64,11 +64,12 @@ player-presence-history（候选可选功能，迁移失败时不阻断 stable R
 
 - 操作审计桌面表格增加“响应”列，移动端操作卡片显示响应摘要；
 - 点击桌面表格行或移动端卡片打开响应详情弹窗；
-- 详情展示记录 ID、时间、操作者、角色、动作、对象、状态、来源 IP 和完整审计响应，JSON 响应自动格式化；
+- 详情展示记录 ID、时间、操作者、角色、动作、对象、状态、来源 IP 和结构化审计响应，JSON 自动格式化；
+- 写操作统一记录实际 `data` / `error` 响应，而不是只保存 `ok` 等泛化摘要；未使用标准响应助手的 JSON 处理器通过限长响应捕获补齐；
+- 响应在写入现有审计 `message` 字段前递归脱敏密码、令牌、Cookie、Authorization、凭据和密钥字段，并限制深度、数组长度、字符串长度及 32 KiB 总大小；
 - 支持 Enter/空格打开、Esc/遮罩关闭，并支持复制响应；HTTP 页面使用兼容复制回退；
 - 详情弹窗通过 `document.body` Portal 渲染，避免 `#app-main` 的滚动、隔离和页面动画上下文裁剪弹窗内容；
-- 失败响应使用醒目样式，无响应详情时显示明确占位；
-- 复用后端现有审计 `message` 字段，不保存未过滤的完整 HTTP 响应体，不扩大敏感数据记录范围。
+- 失败响应使用醒目样式，无响应详情时显示明确占位；不修改审计数据库结构。
 
 `base-custom-names` 提供：
 
@@ -243,6 +244,13 @@ GET /api/bases/{id}/feed-boxes
 - 复用 PalPanel 现有弹窗样式并提升层级；
 - 保留记录元数据、完整响应、JSON 格式化、复制和键盘关闭行为。
 
+`0021-capture-audit-response-details.patch` 修复审计响应只有 `ok` 等摘要的问题：
+
+- 将标准成功/失败响应中的实际 `data` / `error` 结构写入现有审计 `message`；
+- 对直接输出 JSON 的写操作使用最多 64 KiB 的临时响应捕获作为兼容回退；
+- 写入前递归脱敏敏感键和 Bearer Token，并将最终记录限制在 32 KiB；
+- 保持现有数据库列、权限、详情弹窗和复制行为不变。
+
 ## 补丁结构
 
 当前活动轨道：
@@ -272,6 +280,7 @@ projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/
 │   ├── 0018-add-player-presence-history.patch
 │   ├── 0019-avoid-github-api-rate-limit.patch
 │   ├── 0020-fix-audit-response-dialog-portal.patch
+│   ├── 0021-capture-audit-response-details.patch
 │   └── SHA256SUMS
 ├── build/
 │   ├── build.sh
@@ -326,8 +335,8 @@ bash common/scripts/validate-repository.sh
 
 ```text
 目标上游：v1.3.0
-稳定补丁版本：0.8.6
-预期 Release：uitok-stable-v1.3.0-p0.8.6
+稳定补丁版本：0.8.7
+预期 Release：uitok-stable-v1.3.0-p0.8.7
 ```
 
 `manifest.files["bin/palpanel"].original_sha256` 现在直接取自上游正式 Release

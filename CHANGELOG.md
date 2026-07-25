@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.12.16
+
+### Fixed
+
+- 将 `player-presence-history` 从 optional feature 提升为 stable 必需功能；后续 Action 无法再在 `0018` 失败时静默排除在线历史并继续发布。
+- 为 `0018-add-player-presence-history.patch` 增加 PalPanel v1.3.0 严格语义迁移，修复累计补丁导致 `patch_info.go`、`patch_info_test.go`、`Players.tsx` 和 `types/index.ts` 上下文失配。
+- 新增 `0021-capture-audit-response-details.patch`，写操作审计现在保存实际结构化 `data` / `error` 响应，而不是只有 `ok` 等泛化摘要。
+- 标准响应助手直接提供原始响应对象；直接 JSON 处理器使用限长响应捕获回退。
+- 审计响应写入现有 `message` 字段前递归脱敏密码、令牌、Cookie、Authorization、凭据和密钥，并限制深度、数组、字符串及 32 KiB 总大小。
+- stable patch version 提升到 `0.8.7`，预期 Release 为 `uitok-stable-v1.3.0-p0.8.7`。
+
+### Validation
+
+- 新增在线历史语义迁移永久回归测试，验证四个冲突文件被精确改写且其余补丁文件仍正常应用。
+- 新增审计响应保真、嵌套敏感字段脱敏、Bearer Token 脱敏和大响应限长测试。
+- 审计数据库 schema、权限模型和详情弹窗数据契约保持不变。
+
 ## v0.12.15
 
 ### Fixed

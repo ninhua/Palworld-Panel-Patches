@@ -231,4 +231,108 @@ expect_failure deleted-known-line "${apply_script}" "${work}/deleted-known-line"
 test ! -e "${work}/deleted-known-line/backend/internal/pallocalize/patch_storage_localize_test.go"
 ! grep -Fq 'return "stone"' "${work}/deleted-known-line/backend/internal/pallocalize/localize.go"
 
+
+# 0018 使用严格语义迁移：四个已知上下文文件按锚点改写，其余补丁内容仍须正常应用。
+presence_target="${work}/presence-adapter"
+mkdir -p \
+    "${presence_target}/backend/internal/api" \
+    "${presence_target}/frontend/src/pages" \
+    "${presence_target}/frontend/src/types" \
+    "${presence_target}/backend/internal/playerpresence"
+git -C "${presence_target}" init -q
+git_config "${presence_target}"
+cat > "${presence_target}/backend/internal/api/patch_info.go" <<'GO'
+package api
+var patchFeatures = []string{"patch-info-api", "player-notes", "audit-log-response-display"}
+GO
+cat > "${presence_target}/backend/internal/api/patch_info_test.go" <<'GO'
+package api
+import "testing"
+func TestPatchFeatures(t *testing.T) {
+	for _, expected := range []string{"patch-info-api", "player-notes", "audit-log-response-display"} {
+		_ = expected
+	}
+}
+GO
+cat > "${presence_target}/frontend/src/types/index.ts" <<'TS'
+export interface Player {
+  id: string;
+  annotation_updated_at?: string;
+}
+TS
+cat > "${presence_target}/frontend/src/pages/Players.tsx" <<'TS'
+const pageSize = 50;
+
+function PlayerIdentity({ player }: { player: any }) {
+  return <div>
+      {(player.tags?.length ?? 0) > 0 && (
+        <div className="mt-1 flex max-w-[220px] flex-wrap gap-1">
+          {player.tags!.slice(0, 3).map((tag) => (
+            <span key={tag} className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[9px] font-bold text-violet-600">{tag}</span>
+          ))}
+          {(player.tags?.length ?? 0) > 3 && <span className="text-[9px] font-bold text-slate-400">+{player.tags!.length - 3}</span>}
+        </div>
+      )}
+  </div>;
+}
+
+function PlayerDetail({ player }: { player: any }) {
+  return <div>
+            <Detail label="坐标" value={`${player.x.toFixed(0)}, ${player.y.toFixed(0)}, ${player.z.toFixed(0)}`} mono />
+            <Detail label="Ping" value={player.ping == null ? '-' : `${player.ping} ms`} />
+          </div>
+
+          <section className="mt-5 rounded-2xl border border-violet-100 bg-violet-50/40 p-4">
+  </section>;
+}
+TS
+git -C "${presence_target}" add .
+git -C "${presence_target}" commit -qm "presence base"
+
+presence_patch="${work}/0018-add-player-presence-history.patch"
+cat > "${presence_patch}" <<'PATCH'
+diff --git a/backend/internal/api/patch_info.go b/backend/internal/api/patch_info.go
+--- a/backend/internal/api/patch_info.go
++++ b/backend/internal/api/patch_info.go
+@@ -1 +1,2 @@
+-old patch info
++old patch info
++"player-presence-history"
+diff --git a/backend/internal/api/patch_info_test.go b/backend/internal/api/patch_info_test.go
+--- a/backend/internal/api/patch_info_test.go
++++ b/backend/internal/api/patch_info_test.go
+@@ -1 +1,2 @@
+-old patch test
++old patch test
++"player-presence-history"
+diff --git a/frontend/src/pages/Players.tsx b/frontend/src/pages/Players.tsx
+--- a/frontend/src/pages/Players.tsx
++++ b/frontend/src/pages/Players.tsx
+@@ -1 +1,2 @@
+-old players
++old players
++formatPresenceDuration
+diff --git a/frontend/src/types/index.ts b/frontend/src/types/index.ts
+--- a/frontend/src/types/index.ts
++++ b/frontend/src/types/index.ts
+@@ -1 +1,2 @@
+-old types
++old types
++PlayerPresenceSession
+diff --git a/backend/internal/playerpresence/adapter_probe.go b/backend/internal/playerpresence/adapter_probe.go
+new file mode 100644
+--- /dev/null
++++ b/backend/internal/playerpresence/adapter_probe.go
+@@ -0,0 +1,3 @@
++package playerpresence
++
++const AdapterProbe = true
+PATCH
+expect_success presence-adapter "${apply_script}" "${presence_target}" "${presence_patch}"
+grep -Fq '"player-presence-history"' "${presence_target}/backend/internal/api/patch_info.go"
+grep -Fq 'export interface PlayerPresenceSession' "${presence_target}/frontend/src/types/index.ts"
+grep -Fq 'const formatPresenceDuration' "${presence_target}/frontend/src/pages/Players.tsx"
+test -f "${presence_target}/backend/internal/playerpresence/adapter_probe.go"
+grep -Fq '已精确适配 PalPanel v1.3.0 的玩家在线历史补丁。' "${work}/presence-adapter.out"
+
 echo "apply-source-patch regression tests passed."

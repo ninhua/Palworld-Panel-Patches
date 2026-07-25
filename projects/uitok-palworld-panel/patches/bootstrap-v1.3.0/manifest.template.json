@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "uitok-palworld-panel",
-  "patch_version": "0.8.6",
+  "patch_version": "0.8.7",
   "patch_type": "source-build",
   "upstream": {
     "repository": "uitok/palworld-panel",
@@ -36,5 +36,5 @@
     "audit-log-response-display",
     "player-presence-history"
   ],
-  "notes": "Self-contained v1.3.0 stable maintenance source track. Player presence history is sampled from the official REST players endpoint every 15 seconds, persisted conservatively in panel KV storage, and never treats an unavailable source as an all-player logout."
+  "notes": "Self-contained v1.3.0 stable maintenance source track. Player presence history is a required feature sampled conservatively from the official REST players endpoint. Write-operation audit records store bounded, recursively redacted structured response details in the existing audit message field."
 }

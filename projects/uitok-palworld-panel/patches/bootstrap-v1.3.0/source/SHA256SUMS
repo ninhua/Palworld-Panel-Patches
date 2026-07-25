@@ -18,3 +18,4 @@ d72099bc6ec2cc6618d303ba393382fad61b6442ecf5fa8ba16617a1fc3ef173  0015-add-audit
 ab1439f61413cf3f4551245906fbbcb8a9430d02b59c4b61b05af75f195812a2  0018-add-player-presence-history.patch
 7f71a6128a1cff6f037cba766cabe8d893ed539da97d887057a7ea9c9bc59658  0019-avoid-github-api-rate-limit.patch
 c250616d19bdb39cc39c67b5c9e5609720033e279d25374d8190bf658f14bad2  0020-fix-audit-response-dialog-portal.patch
+52ee364b51df0b5fffe18eb7f15616ad9779945e3fac7401a0839218defd46f2  0021-capture-audit-response-details.patch
