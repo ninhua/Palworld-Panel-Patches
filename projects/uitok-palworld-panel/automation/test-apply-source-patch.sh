@@ -515,6 +515,147 @@ grep -Fq "titleKey: 'route.inventory'" "${inventory_target}/frontend/src/routes.
 ! grep -Fq 'diff --git a/backend/internal/api/patch_info.go' "${inventory_source}"
 ! grep -Fq 'diff --git a/backend/internal/api/patch_info_test.go' "${inventory_source}"
 
+# 0021 详细审计必须保留上游单路径参数 Target 语义，避免破坏 GM 幂等审计契约。
+audit_target_repo="${work}/audit-target-direct"
+mkdir -p "${audit_target_repo}"
+git -C "${audit_target_repo}" init -q
+git_config "${audit_target_repo}"
+touch "${audit_target_repo}/.gitkeep"
+git -C "${audit_target_repo}" add .
+git -C "${audit_target_repo}" commit -qm "empty audit target base"
+audit_source="${script_dir}/../patches/bootstrap-v1.3.0/source/0021-capture-audit-response-details.patch"
+audit_patch="${work}/0021-audit-target-direct.patch"
+python3 - "${audit_source}" "${audit_patch}" <<'PYAUDITTARGET'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text(encoding="utf-8")
+paths = {
+    "backend/internal/api/audit_response.go",
+    "backend/internal/api/audit_response_test.go",
+}
+sections = []
+for part in source.split("diff --git ")[1:]:
+    section = "diff --git " + part
+    first = section.splitlines()[0]
+    path = first.split(" a/", 1)[1].split(" b/", 1)[0]
+    if path in paths:
+        sections.append(section.rstrip() + "\n")
+if len(sections) != len(paths):
+    raise SystemExit(f"0021 audit target sections = {len(sections)}, want {len(paths)}")
+Path(sys.argv[2]).write_text("".join(sections), encoding="utf-8")
+PYAUDITTARGET
+expect_success audit-target-direct "${apply_script}" "${audit_target_repo}" "${audit_patch}"
+grep -Fq 'if len(c.Params) == 1 {' "${audit_target_repo}/backend/internal/api/audit_response.go"
+grep -Fq 'return strings.TrimSpace(c.Params[0].Value)' "${audit_target_repo}/backend/internal/api/audit_response.go"
+grep -Fq 'single-parameter audit target = %q, want steam_1' "${audit_target_repo}/backend/internal/api/audit_response_test.go"
+if command -v gofmt >/dev/null 2>&1; then
+  test -z "$(gofmt -d "${audit_target_repo}/backend/internal/api/audit_response.go" "${audit_target_repo}/backend/internal/api/audit_response_test.go")"
+fi
+
+# 0022 必须扩展 SaveImportCommitRequest 本身，同时保留路径级顶层 $ref，兼容上游 router_contract_test。
+openapi_target="${work}/host-migration-openapi-contract"
+mkdir -p "${openapi_target}/docs"
+git -C "${openapi_target}" init -q
+git_config "${openapi_target}"
+python3 - "${openapi_target}/docs/openapi.yaml" <<'PYOPENAPIFIXTURE'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+lines = []
+
+def write_at(start: int, block: list[str]) -> None:
+    while len(lines) < start - 1:
+        lines.append(f"# fixture {len(lines) + 1}")
+    if len(lines) != start - 1:
+        raise SystemExit(f"overlapping OpenAPI fixture at {start}")
+    lines.extend(block)
+
+write_at(995, [
+    "        content:",
+    "          multipart/form-data:",
+    "            schema: {$ref: '#/components/schemas/SaveImportInspectRequest'}",
+    "      responses:",
+    "        '200': *saveImportInspection",
+    "        '400': *error",
+    "        '401': *error",
+    "        '403': *error",
+])
+write_at(1024, [
+    "  /save-sources/import:",
+    "    post:",
+    "      requestBody:",
+    "        content:",
+    "          multipart/form-data:",
+    "            schema: {$ref: '#/components/schemas/SaveSourceImportRequest'}",
+    "          application/json:",
+    "            schema: {$ref: '#/components/schemas/SaveImportCommitRequest'}",
+    "      responses:",
+    "        '200': *success",
+])
+write_at(1919, [
+    "    SaveImportCommitRequest:",
+    "      type: object",
+    "      required: [inspection_id]",
+    "      additionalProperties: false",
+    "      properties:",
+    "        inspection_id: {type: string, minLength: 1}",
+    "        candidate_id: {type: string, minLength: 1}",
+    "        name: {type: string}",
+    "    SaveImportCandidate:",
+    "      type: object",
+    "      required: [id, relative_path, player_count, level_sha256, level_size, valid, warnings, errors]",
+])
+path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+PYOPENAPIFIXTURE
+git -C "${openapi_target}" add .
+git -C "${openapi_target}" commit -qm "PalPanel v1.3.0 OpenAPI contract base"
+host_migration_source="${script_dir}/../patches/bootstrap-v1.3.0/source/0022-add-host-save-migrator.patch"
+host_openapi_patch="${work}/0022-openapi-contract.patch"
+python3 - "${host_migration_source}" "${host_openapi_patch}" <<'PYHOSTOPENAPI'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text(encoding="utf-8")
+target = "docs/openapi.yaml"
+sections = []
+for part in source.split("diff --git ")[1:]:
+    section = "diff --git " + part
+    first = section.splitlines()[0]
+    path = first.split(" a/", 1)[1].split(" b/", 1)[0]
+    if path == target:
+        sections.append(section.rstrip() + "\n")
+if len(sections) != 1:
+    raise SystemExit(f"0022 OpenAPI sections = {len(sections)}, want 1")
+Path(sys.argv[2]).write_text(sections[0], encoding="utf-8")
+PYHOSTOPENAPI
+expect_success host-migration-openapi-contract "${apply_script}" "${openapi_target}" "${host_openapi_patch}"
+python3 - "${openapi_target}/docs/openapi.yaml" <<'PYASSERTOPENAPI'
+from pathlib import Path
+import sys
+
+text = Path(sys.argv[1]).read_text(encoding="utf-8")
+path_block = text.split("  /save-sources/import:\n", 1)[1].split("      responses:\n", 1)[0]
+expected = "            schema: {$ref: '#/components/schemas/SaveImportCommitRequest'}"
+if expected not in path_block:
+    raise SystemExit("/save-sources/import application/json lost the SaveImportCommitRequest top-level ref")
+if "HostMigrationExecuteRequest" in path_block or "oneOf:" in path_block:
+    raise SystemExit("/save-sources/import path schema must not replace the upstream top-level ref")
+schema_block = text.split("    SaveImportCommitRequest:\n", 1)[1].split("    HostMigrationRequest:\n", 1)[0]
+if "      required: [inspection_id]" in schema_block:
+    raise SystemExit("SaveImportCommitRequest kept the unconditional inspection_id requirement")
+for required in [
+    "migration_source_id: {type: string, minLength: 1}",
+    "steam_id: {type: string, pattern: '^[0-9]{15,20}$'}",
+    "confirm: {type: boolean, const: true}",
+    "- required: [inspection_id]",
+    "- required: [migration_source_id, steam_id, confirm]",
+]:
+    if required not in schema_block:
+        raise SystemExit(f"SaveImportCommitRequest is missing {required}")
+PYASSERTOPENAPI
+
 # 非 pallocalize 补丁失败时不得误入 0023 的测试重定位规则。
 unrelated_base="${work}/unrelated-base"
 mkdir -p "${unrelated_base}/frontend/src/pages"

@@ -682,22 +682,21 @@ index d6d0b81..206ba9a 100644
          '400': *error
          '401': *error
          '403': *error
-@@ -1029,7 +1038,10 @@
-           multipart/form-data:
-             schema: {$ref: '#/components/schemas/SaveSourceImportRequest'}
-           application/json:
--            schema: {$ref: '#/components/schemas/SaveImportCommitRequest'}
-+            schema:
-+              oneOf:
-+                - {$ref: '#/components/schemas/SaveImportCommitRequest'}
-+                - {$ref: '#/components/schemas/HostMigrationExecuteRequest'}
-       responses:
-         '200': *success
-         '400': *error
-@@ -1924,6 +1936,61 @@
+@@ -1919,11 +1931,71 @@
+     SaveImportCommitRequest:
+       type: object
+-      required: [inspection_id]
+       additionalProperties: false
+       properties:
          inspection_id: {type: string, minLength: 1}
          candidate_id: {type: string, minLength: 1}
          name: {type: string}
++        migration_source_id: {type: string, minLength: 1}
++        steam_id: {type: string, pattern: '^[0-9]{15,20}$'}
++        confirm: {type: boolean, const: true}
++      oneOf:
++        - required: [inspection_id]
++        - required: [migration_source_id, steam_id, confirm]
 +    HostMigrationRequest:
 +      type: object
 +      required: [migration_source_id, steam_id]

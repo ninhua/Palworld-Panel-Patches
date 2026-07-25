@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.12.23
+
+### Fixed
+
+- 修复 `0021-capture-audit-response-details.patch` 改变上游审计 `Target` 兼容语义的问题：单个 Gin 路径参数重新记录为原始值（例如 `steam_1`），多个参数继续使用 `key=value` 列表。
+- 修复 `0022-add-host-save-migrator.patch` 将 `/save-sources/import` 的 `application/json` 顶层 Schema 从 `SaveImportCommitRequest` 改为 `oneOf`，导致 PalPanel v1.3.0 `router_contract_test.go` 失败的问题。
+- 主机迁移字段改为扩展 `SaveImportCommitRequest` 本身，并通过 `oneOf.required` 区分归档导入和主机迁移请求；路径级 `$ref` 保持上游契约不变。
+- `save import inspection cleanup path is invalid` 日志是上游测试清理告警，不是本次 clean-room 阻断原因。
+
+### Validation
+
+- 新增详细审计目标回归，验证无参数、单参数和多参数格式。
+- 新增 OpenAPI 合同回归，验证 `/save-sources/import` 继续直接引用 `SaveImportCommitRequest`，同时该 Schema 接受主机迁移字段。
+- stable patch 版本保持 `0.8.9`；clean-room 失败尚未创建 immutable Release，可重新运行同一标签。
+
 ## v0.12.22
 
 ### Fixed
