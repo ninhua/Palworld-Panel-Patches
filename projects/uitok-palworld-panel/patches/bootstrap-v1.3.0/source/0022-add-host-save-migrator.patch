@@ -682,7 +682,7 @@ index d6d0b81..206ba9a 100644
          '400': *error
          '401': *error
          '403': *error
-@@ -1919,11 +1931,71 @@
+@@ -1919,11 +1931,87 @@
      SaveImportCommitRequest:
        type: object
 -      required: [inspection_id]
@@ -697,6 +697,22 @@ index d6d0b81..206ba9a 100644
 +      oneOf:
 +        - required: [inspection_id]
 +        - required: [migration_source_id, steam_id, confirm]
++    SaveSource:
++      type: object
++      required: [id, name, kind, active, created_at, updated_at]
++      additionalProperties: false
++      properties:
++        id: {type: string}
++        name: {type: string}
++        kind: {type: string, enum: [server, import]}
++        path: {type: string}
++        active: {type: boolean}
++        fingerprint: {type: string}
++        parser_version: {type: string}
++        warnings: {type: array, items: {type: string}}
++        indexed_at: {type: string}
++        created_at: {type: string}
++        updated_at: {type: string}
 +    HostMigrationRequest:
 +      type: object
 +      required: [migration_source_id, steam_id]

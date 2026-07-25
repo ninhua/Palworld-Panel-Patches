@@ -631,7 +631,7 @@ if len(sections) != 1:
 Path(sys.argv[2]).write_text(sections[0], encoding="utf-8")
 PYHOSTOPENAPI
 expect_success host-migration-openapi-contract "${apply_script}" "${openapi_target}" "${host_openapi_patch}"
-python3 - "${openapi_target}/docs/openapi.yaml" <<'PYASSERTOPENAPI'
+python3 - "${openapi_target}/docs/openapi.yaml" "${work}/host-migration-contracts.ts" <<'PYASSERTOPENAPI'
 from pathlib import Path
 import sys
 
@@ -642,7 +642,7 @@ if expected not in path_block:
     raise SystemExit("/save-sources/import application/json lost the SaveImportCommitRequest top-level ref")
 if "HostMigrationExecuteRequest" in path_block or "oneOf:" in path_block:
     raise SystemExit("/save-sources/import path schema must not replace the upstream top-level ref")
-schema_block = text.split("    SaveImportCommitRequest:\n", 1)[1].split("    HostMigrationRequest:\n", 1)[0]
+schema_block = text.split("    SaveImportCommitRequest:\n", 1)[1].split("    SaveSource:\n", 1)[0]
 if "      required: [inspection_id]" in schema_block:
     raise SystemExit("SaveImportCommitRequest kept the unconditional inspection_id requirement")
 for required in [
@@ -654,7 +654,57 @@ for required in [
 ]:
     if required not in schema_block:
         raise SystemExit(f"SaveImportCommitRequest is missing {required}")
+
+schema_names = set()
+for line in text.splitlines():
+    if line.startswith("    ") and not line.startswith("      ") and line.endswith(":"):
+        schema_names.add(line.strip()[:-1])
+host_result = text.split("    HostMigrationResult:\n", 1)[1].split("    HostMigrationResultEnvelope:\n", 1)[0]
+references = set()
+for line in host_result.splitlines():
+    marker = "#/components/schemas/"
+    if marker in line:
+        references.add(line.split(marker, 1)[1].split("'", 1)[0].split("}", 1)[0])
+missing = sorted(references - schema_names)
+if missing:
+    raise SystemExit(f"HostMigrationResult has unresolved component schemas: {missing}")
+
+save_source = text.split("    SaveSource:\n", 1)[1].split("    HostMigrationRequest:\n", 1)[0]
+for required in [
+    "required: [id, name, kind, active, created_at, updated_at]",
+    "id: {type: string}",
+    "name: {type: string}",
+    "kind: {type: string, enum: [server, import]}",
+    "active: {type: boolean}",
+    "created_at: {type: string}",
+    "updated_at: {type: string}",
+]:
+    if required not in save_source:
+        raise SystemExit(f"SaveSource schema is missing {required}")
+
+probe = [
+    "export interface components {",
+    "  schemas: {",
+]
+for name in sorted(schema_names):
+    probe.append(f"    {name}: unknown;")
+probe.extend([
+    "    __HostMigrationReferenceProbe: {",
+])
+for name in sorted(references):
+    probe.append(f"      {name}: components['schemas']['{name}'];")
+probe.extend([
+    "    };",
+    "  };",
+    "}",
+])
+Path(sys.argv[2]).write_text("\n".join(probe) + "\n", encoding="utf-8")
 PYASSERTOPENAPI
+
+# 使用实际 OpenAPI Schema 名称模拟上游生成器的索引类型，阻止再次产生悬空引用。
+if command -v tsc >/dev/null 2>&1; then
+    tsc --noEmit --strict --skipLibCheck "${work}/host-migration-contracts.ts"
+fi
 
 # 非 pallocalize 补丁失败时不得误入 0023 的测试重定位规则。
 unrelated_base="${work}/unrelated-base"

@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.23`
+仓库版本：`v0.12.24`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -353,6 +353,8 @@ bash common/scripts/validate-repository.sh
 ```
 
 `host-save-migrator` 使用随 Release 分发的 `palworld-uid-remap`。helper 作为 overlay 附加文件分发，但不列为安装前必须已存在的 manifest 目标，以兼容旧安装器。旧部署脚本或热更新只替换主二进制时，面板会在首次预检时从同版本 Release 包自举 helper 并按构建时 SHA-256 校验；离线环境可设置 `PALPANEL_UID_REMAPPER_BIN`。
+
+主机迁移 OpenAPI 同时声明 `SaveSource` component，确保 `HostMigrationResult.source` 经内置 `openapi-types` 生成后不会产生悬空的 `components['schemas']['SaveSource']` TypeScript 引用。
 
 `manifest.files["bin/palpanel"].original_sha256` 现在直接取自上游正式 Release
 `palpanel_v1.3.0_linux_amd64.tar.gz` 内的 `bin/palpanel`。构建过程仍会从源码重建

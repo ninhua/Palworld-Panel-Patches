@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.12.24
+
+### Fixed
+
+- 修复 `0022-add-host-save-migrator.patch` 的 `HostMigrationResult.source` 引用了未声明的 OpenAPI `SaveSource` component，导致生成的 `frontend/src/api/generated/contracts.ts` 出现悬空索引类型并在 `tsc` 阶段报错的问题。
+- 新增与 PalPanel v1.3.0 `SaveSource` 前端类型一致的 OpenAPI Schema，保留主机迁移结果的强类型引用。
+
+### Validation
+
+- OpenAPI 回归新增 component 引用闭包检查，确保 `HostMigrationResult` 的所有 `$ref` 都有对应 Schema。
+- 新增基于实际 Schema 名称生成的 TypeScript 索引探针，并通过 `tsc --noEmit --strict` 验证。
+- stable patch 版本保持 `0.8.9`；前端构建阻断尚未创建 immutable Release，可重新运行同一标签。
+
 ## v0.12.23
 
 ### Fixed
