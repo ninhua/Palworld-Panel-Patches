@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.12.21
+
+### Fixed
+
+- 重新生成 `0022-add-host-save-migrator.patch` 的 `frontend/src/pages/SaveSources.tsx` section，以 PalPanel v1.3.0 正式源码 `3c8d698…` 为前像。
+- 修复旧 0022 hunk 从文件第 1 行替换不完整片段、遗漏 `queryClient`、导入状态和重命名实现，导致 Action 迁移工作区无法应用的问题。
+- 主机迁移入口继续通过标准 `git apply` 应用，不新增文件名专用语义改写或重定位规则。
+
+### Validation
+
+- 新增 PalPanel v1.3.0 `SaveSources.tsx` 固定夹具，直接提取真实 0022 section 并验证应用。
+- 回归同时确认存档检查/导入状态、重命名逻辑、主机迁移预检和迁移按钮均保留。
+- stable patch 版本保持 `0.8.9`；blocked migration 尚未创建 immutable Release，可重新运行同一标签。
+
 ## v0.12.20
 
 ### Fixed

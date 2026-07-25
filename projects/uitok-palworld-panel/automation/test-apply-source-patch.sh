@@ -375,6 +375,42 @@ grep -Fq 'export interface PlayerPresenceSession' "${presence_target}/frontend/s
 grep -Fq 'const formatPresenceDuration' "${presence_target}/frontend/src/pages/Players.tsx"
 ! grep -Fq 'apply_player_presence_patch' "${apply_script}"
 
+# 0022 的 SaveSources 页面必须以 PalPanel v1.3.0 正式源码为前像直接应用。
+host_migration_target="${work}/host-migration-direct"
+mkdir -p "${host_migration_target}/frontend/src/pages"
+git -C "${host_migration_target}" init -q
+git_config "${host_migration_target}"
+cp "${script_dir}/testdata/palpanel-v1.3.0/frontend/src/pages/SaveSources.tsx" \
+    "${host_migration_target}/frontend/src/pages/SaveSources.tsx"
+git -C "${host_migration_target}" add .
+git -C "${host_migration_target}" commit -qm "PalPanel v1.3.0 SaveSources base"
+
+host_migration_source="${script_dir}/../patches/bootstrap-v1.3.0/source/0022-add-host-save-migrator.patch"
+host_migration_patch="${work}/0022-save-sources-direct.patch"
+python3 - "${host_migration_source}" "${host_migration_patch}" <<'PYHOSTMIGRATION'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text(encoding="utf-8")
+target = "frontend/src/pages/SaveSources.tsx"
+sections = []
+for part in source.split("diff --git ")[1:]:
+    section = "diff --git " + part
+    first = section.splitlines()[0]
+    path = first.split(" a/", 1)[1].split(" b/", 1)[0]
+    if path == target:
+        sections.append(section.rstrip() + "\n")
+if len(sections) != 1:
+    raise SystemExit(f"0022 SaveSources sections = {len(sections)}, want 1")
+Path(sys.argv[2]).write_text(sections[0], encoding="utf-8")
+PYHOSTMIGRATION
+expect_success host-migration-direct "${apply_script}" "${host_migration_target}" "${host_migration_patch}"
+grep -Fq 'const [file, setFile] = useState<File | null>(null);' "${host_migration_target}/frontend/src/pages/SaveSources.tsx"
+grep -Fq 'const migrateHost = async (source: SaveSource)' "${host_migration_target}/frontend/src/pages/SaveSources.tsx"
+grep -Fq 'planHostMigration' "${host_migration_target}/frontend/src/pages/SaveSources.tsx"
+grep -Fq '主机迁移</button>' "${host_migration_target}/frontend/src/pages/SaveSources.tsx"
+grep -Fq 'const next = renameValue.trim();' "${host_migration_target}/frontend/src/pages/SaveSources.tsx"
+
 # 非 pallocalize 补丁失败时不得误入 0023 的测试重定位规则。
 unrelated_base="${work}/unrelated-base"
 mkdir -p "${unrelated_base}/frontend/src/pages"

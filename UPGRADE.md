@@ -1,23 +1,19 @@
-# Upgrade v0.12.19 → v0.12.20
+# Upgrade v0.12.20 → v0.12.21
 
-本次更新修复 stable `0.8.9` 发布流程中的 `0018` 累计补丁冲突，不增加新的功能编号，也不修改一键部署脚本。
+本次更新修复 stable `0.8.9` 发布流程中的 `0022-add-host-save-migrator.patch` 前端累计补丁冲突，不增加功能编号，也不修改一键部署脚本。
 
-应用增量包后应确认以下文件已更新：
+应用增量包后应确认：
 
 ```text
-projects/uitok-palworld-panel/automation/apply-source-patch.sh
-projects/uitok-palworld-panel/automation/test-apply-source-patch.sh
-projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source/0018-add-player-presence-history.patch
+projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source/0022-add-host-save-migrator.patch
 projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source/SHA256SUMS
+projects/uitok-palworld-panel/automation/test-apply-source-patch.sh
+projects/uitok-palworld-panel/automation/testdata/palpanel-v1.3.0/frontend/src/pages/SaveSources.tsx
 ```
 
-`apply-source-patch.sh` 现在遵循：
+修复后的 0022 以 PalPanel v1.3.0 正式 `SaveSources.tsx` 为前像，保留原有存档检查、导入、激活、重建、删除和重命名流程，只增加主机迁移状态、预检与执行入口。
 
-- 补丁能直接应用时，仅执行标准 `git apply`；
-- 补丁失败且不包含已登记的 pallocalize 测试 section 时，立即保留原始冲突并失败；
-- 只有 0023 对应的固定测试 section 才允许精确重定位。
-
-`0018` 的玩家页面改动仍必须直接应用，不能被排除。下一次 Release 标签保持：
+下一次 Release 标签仍为：
 
 ```text
 uitok-stable-v1.3.0-p0.8.9
@@ -27,16 +23,20 @@ uitok-stable-v1.3.0-p0.8.9
 
 ```json
 {
+  "first_failure": null,
   "excluded_features": [],
   "effective_features": [
     "player-presence-history",
+    "host-save-migrator",
     "global-inventory-browser"
   ]
 }
 ```
 
-并且 `reports/0018-add-player-presence-history.patch.log` 中不应再出现：
+`reports/0022-add-host-save-migrator.patch.log` 中不应再出现：
 
 ```text
-已知测试路径必须在补丁中恰好出现一次，实际 0 次
+frontend/src/pages/SaveSources.tsx: patch does not apply
 ```
+
+Draft PR 创建失败与补丁兼容性无关。需要在仓库 Settings → Actions → General → Workflow permissions 中启用 “Allow GitHub Actions to create and approve pull requests”。
