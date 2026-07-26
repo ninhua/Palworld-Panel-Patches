@@ -1,10 +1,10 @@
 {
   "schema_version": 2,
   "target_version": "v1.3.0",
-  "state": "released",
+  "state": "releasable",
   "verified": true,
-  "created_at": "2026-07-25T16:12:43Z",
-  "updated_at": "2026-07-26T04:45:19Z",
+  "created_at": "2026-07-26T07:18:05Z",
+  "updated_at": "2026-07-26T07:24:21Z",
   "source_track": "/home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track",
   "derivation": {
     "schema_version": 2,
@@ -15,14 +15,13 @@
     "derived_from_target_version": null,
     "derived_from_patch_version": null,
     "derived_source_package": null,
-    "release_patch_version": "0.8.9"
+    "release_patch_version": "0.8.10"
   },
-  "release_tag": "uitok-stable-v1.3.0-p0.8.9",
+  "release_tag": "uitok-stable-v1.3.0-p0.8.10",
   "base_commit": "3c8d698abf1d9c4e271e3e62dcc736960f27e8eb",
   "merged_patch": {
-    "file": "merged/stable-v1.3.0-patch-0.8.9.patch",
-    "sha256": "92f985e1973c867cbff58463fefb41b214c798650ec1b368e0a2e008bc14d63f",
+    "file": "merged/stable-v1.3.0-patch-0.8.10.patch",
+    "sha256": "b0c9aebdeb5864e888bc8b7875246367ccf1d5ecbcfd93800a11fd15763eff42",
     "base_commit": "3c8d698abf1d9c4e271e3e62dcc736960f27e8eb"
-  },
-  "released_at": "2026-07-26T04:45:19Z"
+  }
 }

@@ -1,12 +1,13 @@
 {
   "schema_version": 2,
   "target_version": "v1.3.0",
-  "generated_at": "2026-07-25T16:12:43Z",
-  "state": "released",
+  "generated_at": "2026-07-26T07:18:05Z",
+  "state": "releasable",
   "required_features": [
     "base-custom-names",
     "global-inventory-browser",
     "host-save-migrator",
+    "new-player-starter-gift",
     "patch-info-api",
     "player-presence-history"
   ],
@@ -20,6 +21,7 @@
     "guild-detail-browser",
     "host-save-migrator",
     "insecure-endpoint-support",
+    "new-player-starter-gift",
     "panel-patch-hot-update",
     "patch-info-api",
     "player-notes",
@@ -678,13 +680,45 @@
       "log": "reports/0023-add-global-inventory-browser.patch.log",
       "validated_at_checkpoint": "0023-add-global-inventory-browser.patch",
       "included_in_merged": true
+    },
+    {
+      "order": 24,
+      "file": "0024-add-new-player-starter-gifts.patch",
+      "sha256": "ba2308aa003d6c97e4c4e453b7a05c3420a371b8bbdbd8b1a08a1f22ed64b085",
+      "feature": "new-player-starter-gift",
+      "required": true,
+      "depends_on": [
+        "0001-add-patch-info-api.patch",
+        "0018-add-player-presence-history.patch",
+        "0021-capture-audit-response-details.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/routes.go",
+        "backend/internal/api/starter_gift.go",
+        "backend/internal/monitor/player_presence.go",
+        "backend/internal/startergift/service.go",
+        "backend/internal/startergift/service_test.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/starterGift.ts",
+        "frontend/src/i18n/index.tsx",
+        "frontend/src/pages/StarterGift.tsx",
+        "frontend/src/routes.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0024-add-new-player-starter-gifts.patch.log",
+      "validated_at_checkpoint": "0024-add-new-player-starter-gifts.patch",
+      "included_in_merged": true
     }
   ],
   "adaptations": [
     {
       "name": "retarget-stable-source",
       "status": "applied",
-      "details": "Retargeted patch metadata to v1.3.0 / 0.8.9"
+      "details": "Retargeted patch metadata to v1.3.0 / 0.8.10"
     },
     {
       "name": "frontend-axios-test-fixture-adapter",
@@ -693,12 +727,12 @@
     }
   ],
   "summary": {
-    "compatible": 22,
-    "adapted": 1,
     "superseded": 0,
-    "incompatible": 0,
+    "compatible": 23,
     "blocked": 0,
-    "pending": 0
+    "incompatible": 0,
+    "pending": 0,
+    "adapted": 1
   },
   "excluded_features": [],
   "effective_features": [
@@ -711,14 +745,15 @@
     "guild-detail-browser",
     "host-save-migrator",
     "insecure-endpoint-support",
+    "new-player-starter-gift",
     "panel-patch-hot-update",
     "patch-info-api",
     "player-notes",
     "player-presence-history"
   ],
   "merged_patch": {
-    "file": "merged/stable-v1.3.0-patch-0.8.9.patch",
-    "sha256": "92f985e1973c867cbff58463fefb41b214c798650ec1b368e0a2e008bc14d63f",
+    "file": "merged/stable-v1.3.0-patch-0.8.10.patch",
+    "sha256": "b0c9aebdeb5864e888bc8b7875246367ccf1d5ecbcfd93800a11fd15763eff42",
     "base_commit": "3c8d698abf1d9c4e271e3e62dcc736960f27e8eb"
   },
   "verified": true,

@@ -2504,7 +2504,7 @@ index 0000000000000000000000000000000000000000..0b47fe9729b2c444692a19e239d8a51b
 +}
 diff --git a/backend/internal/api/patch_info.go b/backend/internal/api/patch_info.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..f5ab0d810eebfdb5fe9690a17ecded02f8810f21
+index 0000000000000000000000000000000000000000..8abf413fa5d213a9985f0661be6e2902a4357859
 --- /dev/null
 +++ b/backend/internal/api/patch_info.go
 @@ -0,0 +1,38 @@
@@ -2520,7 +2520,7 @@ index 0000000000000000000000000000000000000000..f5ab0d810eebfdb5fe9690a17ecded02
 +	patchSourceRepository = "uitok/palworld-panel"
 +	patchSourceRef        = "v1.3.0"
 +	patchTargetVersion    = "v1.3.0"
-+	patchVersion          = "0.8.9"
++	patchVersion          = "0.8.10"
 +	patchRepository       = "ninhua/Palworld-Panel-Patches"
 +)
 +
@@ -3311,7 +3311,7 @@ index bf0da2ae8962a225a72c5b4f7f950bd477a0bc67..ab5358e2e04bd4df4e748a6358079972
  		"GET /api/pals/:id",
  		"GET /api/map/entities",
 diff --git a/backend/internal/api/routes.go b/backend/internal/api/routes.go
-index 8a7be6b50c85342d686849c283b7612b678f0db5..a0120d4ad2f00ad6ba2763d6f9c7b7fd78f1d6ce 100644
+index 8a7be6b50c85342d686849c283b7612b678f0db5..86bddbe6bff995ca87ac1eea6fb54792aeb0219b 100644
 --- a/backend/internal/api/routes.go
 +++ b/backend/internal/api/routes.go
 @@ -13,6 +13,7 @@ import (
@@ -3341,7 +3341,18 @@ index 8a7be6b50c85342d686849c283b7612b678f0db5..a0120d4ad2f00ad6ba2763d6f9c7b7fd
  	api.GET("/audit-logs", Require(PermAuditRead), s.listAuditLogs)
  	api.GET("/system/debug", s.debugLoggingStatus)
  	api.PUT("/system/debug", Require(PermConfigWrite), s.putDebugLogging)
-@@ -224,7 +228,7 @@ func (s Server) registerSecurityRoutes(api *gin.RouterGroup) {
+@@ -214,6 +218,10 @@ func (s Server) registerSecurityRoutes(api *gin.RouterGroup) {
+ 	api.GET("/security/paldefender/gm/pal-templates/:name", s.palDefenderGMGetTemplate)
+ 	api.PUT("/security/paldefender/gm/pal-templates/:name", Require(PermSecurityWrite), s.palDefenderGMPutTemplate)
+ 	api.DELETE("/security/paldefender/gm/pal-templates/:name", Require(PermSecurityWrite), s.palDefenderGMDeleteTemplate)
++	api.GET("/security/paldefender/starter-gift", s.starterGiftConfig)
++	api.PUT("/security/paldefender/starter-gift", Require(PermSecurityWrite), s.putStarterGiftConfig)
++	api.POST("/security/paldefender/starter-gift/grants/:id/retry", Require(PermSecurityWrite), s.retryStarterGift)
++	api.DELETE("/security/paldefender/starter-gift/grants/:id", Require(PermSecurityWrite), s.forgetStarterGift)
+ 	api.GET("/security/paldefender/access", Require(PermSecurityWrite), s.palDefenderAccessSettings)
+ 	api.PUT("/security/paldefender/access", Require(PermSecurityWrite), s.palDefenderPutAccessSettings)
+ 	api.GET("/security/paldefender/whitelist", Require(PermSecurityWrite), s.palDefenderWhitelist)
+@@ -224,7 +232,7 @@ func (s Server) registerSecurityRoutes(api *gin.RouterGroup) {
  
  func (s Server) registerWorldRoutes(api *gin.RouterGroup) {
  	api.GET("/save-sources", s.listSaveSources)
@@ -3350,7 +3361,7 @@ index 8a7be6b50c85342d686849c283b7612b678f0db5..a0120d4ad2f00ad6ba2763d6f9c7b7fd
  	api.POST("/save-sources/import/inspect/:id/select", Require(PermServerControl), s.selectSaveSourceImportCandidate)
  	api.POST("/save-sources/import", Require(PermServerControl), s.importSaveSource)
  	api.POST("/save-sources/:id/activate", Require(PermServerControl), s.activateSaveSource)
-@@ -238,7 +242,12 @@ func (s Server) registerWorldRoutes(api *gin.RouterGroup) {
+@@ -238,7 +246,12 @@ func (s Server) registerWorldRoutes(api *gin.RouterGroup) {
  	api.GET("/guilds/:id", s.getSaveGuild)
  	api.GET("/bases", s.listSaveBases)
  	api.GET("/bases/:id", s.getSaveBase)
@@ -3363,7 +3374,7 @@ index 8a7be6b50c85342d686849c283b7612b678f0db5..a0120d4ad2f00ad6ba2763d6f9c7b7fd
  	api.GET("/pals", s.listSavePals)
  	api.GET("/pals/:id", s.getSavePal)
  	api.GET("/map/entities", s.listMapEntities)
-@@ -265,6 +274,8 @@ func (s Server) registerWorldRoutes(api *gin.RouterGroup) {
+@@ -265,6 +278,8 @@ func (s Server) registerWorldRoutes(api *gin.RouterGroup) {
  	api.POST("/players/:id/ban", Require(PermPlayersWrite), s.banPlayer)
  	api.POST("/players/:id/unban", Require(PermPlayersWrite), s.unbanPlayer)
  	api.GET("/players/:id/inventory", s.getSavePlayerInventory)
@@ -3653,6 +3664,142 @@ index adba16e86a4315c54ec7be3f8b804be7c830f828..59b1b52f64b147aa472ac85c6e855324
  }
  
  func (s Server) activateSaveSource(c *gin.Context) {
+diff --git a/backend/internal/api/starter_gift.go b/backend/internal/api/starter_gift.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..9a3aa7e249584319e0f74ff63a6eae34d6008ac7
+--- /dev/null
++++ b/backend/internal/api/starter_gift.go
+@@ -0,0 +1,130 @@
++package api
++
++import (
++	"net/http"
++	"strings"
++
++	"github.com/gin-gonic/gin"
++
++	"palpanel/internal/pallocalize"
++	"palpanel/internal/playerpresence"
++	"palpanel/internal/startergift"
++)
++
++func init() {
++	patchFeatures = append(patchFeatures, "new-player-starter-gift")
++}
++
++func (s Server) starterGiftConfig(c *gin.Context) {
++	snapshot, err := startergift.LoadSnapshot(c.Request.Context(), s.store)
++	if err != nil {
++		fail(c, http.StatusInternalServerError, "starter_gift_read_failed", err.Error())
++		return
++	}
++	ok(c, s.starterGiftResponse(snapshot))
++}
++
++func (s Server) putStarterGiftConfig(c *gin.Context) {
++	var config startergift.Config
++	if err := c.ShouldBindJSON(&config); err != nil {
++		fail(c, http.StatusBadRequest, "invalid_json", err.Error())
++		return
++	}
++	validated, err := startergift.ValidateConfig(config)
++	if err != nil {
++		fail(c, http.StatusBadRequest, "invalid_starter_gift_config", err.Error())
++		return
++	}
++	config = validated
++	if !s.canonicalizeStarterGiftTemplates(c, &config) {
++		return
++	}
++	if config.Enabled {
++		index, status, indexErr := s.serverSaveIndex.Current(c.Request.Context())
++		if indexErr == nil && status.State == "not_indexed" {
++			index, status, indexErr = s.serverSaveIndex.Rebuild(c.Request.Context())
++		}
++		if indexErr != nil && status.State != "missing" {
++			fail(c, http.StatusConflict, "starter_gift_baseline_unavailable", "Cannot safely enable starter gifts until the server save index is available: "+indexErr.Error())
++			return
++		}
++		known := make([]playerpresence.OnlinePlayer, 0, len(index.Players))
++		for _, player := range index.Players {
++			known = append(known, playerpresence.OnlinePlayer{PlayerUID: player.PlayerUID, SteamID: player.SteamID, Nickname: player.Nickname})
++		}
++		if err := startergift.BaselineKnownPlayers(c.Request.Context(), s.store, known); err != nil {
++			fail(c, http.StatusInternalServerError, "starter_gift_baseline_failed", err.Error())
++			return
++		}
++	}
++	snapshot, err := startergift.SaveConfig(c.Request.Context(), s.store, config)
++	if err != nil {
++		fail(c, http.StatusBadRequest, "invalid_starter_gift_config", err.Error())
++		return
++	}
++	ok(c, s.starterGiftResponse(snapshot))
++}
++
++func (s Server) canonicalizeStarterGiftTemplates(c *gin.Context, config *startergift.Config) bool {
++	if len(config.PalTemplates) == 0 {
++		return true
++	}
++	templates, err := s.defender.ListPalTemplates()
++	if err != nil {
++		fail(c, http.StatusConflict, "starter_gift_templates_unavailable", err.Error())
++		return false
++	}
++	available := make(map[string]string, len(templates))
++	for _, template := range templates {
++		key := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(template.Name), ".json"))
++		if key != "" {
++			available[key] = template.Name
++		}
++	}
++	selected := make([]string, 0, len(config.PalTemplates))
++	seen := map[string]bool{}
++	for _, requested := range config.PalTemplates {
++		key := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(requested), ".json"))
++		actual, found := available[key]
++		if !found {
++			fail(c, http.StatusBadRequest, "starter_gift_template_not_found", "PalDefender template was not found: "+requested)
++			return false
++		}
++		if !seen[actual] {
++			seen[actual] = true
++			selected = append(selected, actual)
++		}
++	}
++	config.PalTemplates = selected
++	return true
++}
++
++func (s Server) retryStarterGift(c *gin.Context) {
++	if err := startergift.Retry(c.Request.Context(), s.store, c.Param("id")); err != nil {
++		fail(c, http.StatusNotFound, "starter_gift_not_found", err.Error())
++		return
++	}
++	ok(c, gin.H{"queued": true, "message": "The grant will resume on the next online-player observation."})
++}
++
++func (s Server) forgetStarterGift(c *gin.Context) {
++	if err := startergift.Forget(c.Request.Context(), s.store, c.Param("id")); err != nil {
++		fail(c, http.StatusNotFound, "starter_gift_not_found", err.Error())
++		return
++	}
++	ok(c, gin.H{"rearmed": true, "message": "The player will be eligible after leaving and entering again."})
++}
++
++func (s Server) starterGiftResponse(snapshot startergift.Snapshot) gin.H {
++	templates, templateErr := s.defender.ListPalTemplates()
++	response := gin.H{
++		"config":       snapshot.Config,
++		"grants":       snapshot.Grants,
++		"templates":    templates,
++		"item_catalog": pallocalize.SearchItems("", 5000),
++	}
++	if templateErr != nil {
++		response["template_error"] = templateErr.Error()
++	}
++	return response
++}
 diff --git a/backend/internal/appconfig/config.go b/backend/internal/appconfig/config.go
 index 531f00eb4489f074d4aa018d69186f016e78d796..78798219642f9f1a68c6158ffa486e31026d6022 100644
 --- a/backend/internal/appconfig/config.go
@@ -4154,10 +4301,10 @@ index 6dbd048ea578e6bae7b68352adda7511a7896360..b7a75ac6274c8de40d9b866062c4a155
  func (m Manager) palworldREST(settings palconfig.Settings, runtimeMode string) palrest.Client {
 diff --git a/backend/internal/monitor/player_presence.go b/backend/internal/monitor/player_presence.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..6dd8f26c3866f0dedec44d87e67097a0cc46251b
+index 0000000000000000000000000000000000000000..6b2a10d8eee1e4fb53cf2effa7114ee577b975fd
 --- /dev/null
 +++ b/backend/internal/monitor/player_presence.go
-@@ -0,0 +1,22 @@
+@@ -0,0 +1,28 @@
 +package monitor
 +
 +import (
@@ -4165,8 +4312,10 @@ index 0000000000000000000000000000000000000000..6dd8f26c3866f0dedec44d87e67097a0
 +	"net/http"
 +	"time"
 +
++	"palpanel/internal/paldefender"
 +	"palpanel/internal/palrest"
 +	"palpanel/internal/playerpresence"
++	"palpanel/internal/startergift"
 +)
 +
 +func (m Manager) observePlayerPresence(ctx context.Context, client palrest.Client) error {
@@ -4177,8 +4326,12 @@ index 0000000000000000000000000000000000000000..6dd8f26c3866f0dedec44d87e67097a0
 +	if err != nil {
 +		return err
 +	}
-+	_, err = playerpresence.Observe(requestCtx, m.store, m.currentTime(), playerpresence.ParseRESTPlayers(response.Body))
-+	return err
++	players := playerpresence.ParseRESTPlayers(response.Body)
++	if _, err = playerpresence.Observe(requestCtx, m.store, m.currentTime(), players); err != nil {
++		return err
++	}
++	dispatcher := startergift.NewPalDefenderDispatcher(paldefender.NewManager(m.cfg, m.store))
++	return startergift.Observe(ctx, m.store, m.currentTime(), players, dispatcher)
 +}
 diff --git a/backend/internal/monitor/player_presence_test.go b/backend/internal/monitor/player_presence_test.go
 new file mode 100644
@@ -6021,8 +6174,983 @@ index e2f30d950edda0f5b4b37ab8da47aa3a0525a402..748638d3afd94db10a7edae8efdf0201
  	}
  	privateHTTP := "http://192.168.1.20/dav"
  	disabled := false
+diff --git a/backend/internal/startergift/service.go b/backend/internal/startergift/service.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..8e30972712c6a12c2f3203e9478418977fee8d69
+--- /dev/null
++++ b/backend/internal/startergift/service.go
+@@ -0,0 +1,746 @@
++package startergift
++
++import (
++	"context"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"regexp"
++	"sort"
++	"strings"
++	"sync"
++	"time"
++
++	"palpanel/internal/db"
++	"palpanel/internal/paldefender"
++	"palpanel/internal/playerpresence"
++)
++
++const (
++	ConfigKey = "starter_gift:config"
++	StateKey  = "starter_gift:state"
++	Version   = 1
++
++	MaxItems        = 500
++	MaxPalTemplates = 500
++)
++
++var (
++	stateMu       sync.Mutex
++	workerMu      sync.Mutex
++	workerRunning bool
++	itemIDPattern = regexp.MustCompile(`^[A-Za-z0-9_:-]{1,128}$`)
++)
++
++type ItemGrant struct {
++	ItemID string `json:"item_id"`
++	Count  int64  `json:"count"`
++}
++
++type Config struct {
++	Enabled           bool        `json:"enabled"`
++	Items             []ItemGrant `json:"items"`
++	PalTemplates      []string    `json:"pal_templates"`
++	ItemBatchSize     int         `json:"item_batch_size"`
++	TemplateBatchSize int         `json:"template_batch_size"`
++	BatchDelayMS      int         `json:"batch_delay_ms"`
++}
++
++type grantRecord struct {
++	PlayerID      string      `json:"player_id"`
++	PlayerUID     string      `json:"player_uid,omitempty"`
++	SteamID       string      `json:"steam_id,omitempty"`
++	Nickname      string      `json:"nickname,omitempty"`
++	Status        string      `json:"status"`
++	NextItem      int         `json:"next_item"`
++	NextTemplate  int         `json:"next_template"`
++	Attempts      int         `json:"attempts"`
++	FirstSeenAt   string      `json:"first_seen_at"`
++	UpdatedAt     string      `json:"updated_at"`
++	CompletedAt   string      `json:"completed_at,omitempty"`
++	LastError     string      `json:"last_error,omitempty"`
++	PlanItems     []ItemGrant `json:"plan_items,omitempty"`
++	PlanTemplates []string    `json:"plan_templates,omitempty"`
++}
++
++type Grant struct {
++	PlayerID      string `json:"player_id"`
++	PlayerUID     string `json:"player_uid,omitempty"`
++	SteamID       string `json:"steam_id,omitempty"`
++	Nickname      string `json:"nickname,omitempty"`
++	Status        string `json:"status"`
++	NextItem      int    `json:"next_item"`
++	NextTemplate  int    `json:"next_template"`
++	ItemTotal     int    `json:"item_total"`
++	TemplateTotal int    `json:"template_total"`
++	Attempts      int    `json:"attempts"`
++	FirstSeenAt   string `json:"first_seen_at"`
++	UpdatedAt     string `json:"updated_at"`
++	CompletedAt   string `json:"completed_at,omitempty"`
++	LastError     string `json:"last_error,omitempty"`
++}
++
++type State struct {
++	Version     int                    `json:"version"`
++	Initialized bool                   `json:"initialized"`
++	Seen        map[string]bool        `json:"seen"`
++	Online      map[string]bool        `json:"online"`
++	Rearm       map[string]bool        `json:"rearm"`
++	Grants      map[string]grantRecord `json:"grants"`
++}
++
++type Snapshot struct {
++	Config Config  `json:"config"`
++	Grants []Grant `json:"grants"`
++}
++
++type Dispatcher interface {
++	GiveItems(context.Context, string, []ItemGrant) error
++	GivePalTemplates(context.Context, string, []string) error
++}
++
++type palDefenderDispatcher struct{ manager paldefender.Manager }
++
++func NewPalDefenderDispatcher(manager paldefender.Manager) Dispatcher {
++	return palDefenderDispatcher{manager: manager}
++}
++
++func (d palDefenderDispatcher) GiveItems(ctx context.Context, player string, items []ItemGrant) error {
++	request := paldefender.GiveItemsRequest{Items: make([]paldefender.ItemGrant, 0, len(items))}
++	for _, item := range items {
++		request.Items = append(request.Items, paldefender.ItemGrant{ItemID: item.ItemID, Count: item.Count})
++	}
++	_, err := d.manager.RESTGiveItems(ctx, player, request)
++	return err
++}
++
++func (d palDefenderDispatcher) GivePalTemplates(ctx context.Context, player string, names []string) error {
++	_, err := d.manager.RESTGivePalTemplates(ctx, player, paldefender.GivePalTemplatesRequest{PalTemplates: names})
++	return err
++}
++
++func DefaultConfig() Config {
++	return Config{ItemBatchSize: 20, TemplateBatchSize: 5, BatchDelayMS: 500}
++}
++
++func EmptyState() State {
++	return State{
++		Version: Version,
++		Seen:    map[string]bool{},
++		Online:  map[string]bool{},
++		Rearm:   map[string]bool{},
++		Grants:  map[string]grantRecord{},
++	}
++}
++
++func LoadSnapshot(ctx context.Context, store *db.Store) (Snapshot, error) {
++	config, err := loadConfig(ctx, store)
++	if err != nil {
++		return Snapshot{}, err
++	}
++	state, err := loadState(ctx, store)
++	if err != nil {
++		return Snapshot{}, err
++	}
++	grants := make([]Grant, 0, len(state.Grants))
++	for _, record := range state.Grants {
++		grants = append(grants, grantView(record))
++	}
++	sort.Slice(grants, func(i, j int) bool {
++		if grants[i].FirstSeenAt != grants[j].FirstSeenAt {
++			return grants[i].FirstSeenAt > grants[j].FirstSeenAt
++		}
++		return grants[i].PlayerID < grants[j].PlayerID
++	})
++	return Snapshot{Config: config, Grants: grants}, nil
++}
++
++// BaselineKnownPlayers marks players already present in the server save index
++// and player-presence history as existing players. It is safe to call whenever
++// the administrator enables or updates the feature.
++func BaselineKnownPlayers(ctx context.Context, store *db.Store, players []playerpresence.OnlinePlayer) error {
++	stateMu.Lock()
++	defer stateMu.Unlock()
++	state, err := loadState(ctx, store)
++	if err != nil {
++		return err
++	}
++	presence, err := playerpresence.Load(ctx, store)
++	if err != nil {
++		return err
++	}
++	for _, record := range presence.Players {
++		markSeen(&state, recordAliases(record))
++	}
++	for _, player := range players {
++		markSeen(&state, playerAliases(player))
++	}
++	state.Initialized = true
++	return saveState(ctx, store, state)
++}
++
++func ValidateConfig(config Config) (Config, error) {
++	return normalizeConfig(config)
++}
++
++func SaveConfig(ctx context.Context, store *db.Store, config Config) (Snapshot, error) {
++	config, err := normalizeConfig(config)
++	if err != nil {
++		return Snapshot{}, err
++	}
++	raw, err := json.Marshal(config)
++	if err != nil {
++		return Snapshot{}, err
++	}
++	if err := store.SetKV(ctx, ConfigKey, string(raw)); err != nil {
++		return Snapshot{}, err
++	}
++	return LoadSnapshot(ctx, store)
++}
++
++func Retry(ctx context.Context, store *db.Store, playerID string) error {
++	keyInput := identity(playerID)
++	if keyInput == "" {
++		return errors.New("player id is required")
++	}
++	stateMu.Lock()
++	defer stateMu.Unlock()
++	state, err := loadState(ctx, store)
++	if err != nil {
++		return err
++	}
++	key := findGrantKey(state, []string{keyInput})
++	grant, found := state.Grants[key]
++	if !found {
++		return errors.New("starter gift grant was not found")
++	}
++	if grant.Status == "success" {
++		return errors.New("completed starter gift cannot be retried; reset it instead")
++	}
++	grant.Status = "pending"
++	grant.LastError = ""
++	grant.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
++	state.Grants[key] = grant
++	return saveState(ctx, store, state)
++}
++
++// Forget removes the existing result and rearms the player for the next real
++// offline-to-online transition. A player who is still online is not granted
++// again on the next monitor tick.
++func Forget(ctx context.Context, store *db.Store, playerID string) error {
++	keyInput := identity(playerID)
++	if keyInput == "" {
++		return errors.New("player id is required")
++	}
++	stateMu.Lock()
++	defer stateMu.Unlock()
++	state, err := loadState(ctx, store)
++	if err != nil {
++		return err
++	}
++	key := findGrantKey(state, []string{keyInput})
++	grant, found := state.Grants[key]
++	if !found {
++		return errors.New("starter gift grant was not found")
++	}
++	aliases := grantAliases(grant)
++	for _, alias := range aliases {
++		state.Seen[alias] = true
++		state.Rearm[alias] = true
++	}
++	delete(state.Grants, key)
++	return saveState(ctx, store, state)
++}
++
++// Observe is called after playerpresence.Observe. On its first run it imports
++// the complete presence-history player set as a baseline, including players
++// who are currently offline, so enabling the feature does not backfill old
++// players. Later unseen identities receive a frozen copy of the current plan.
++func Observe(ctx context.Context, store *db.Store, now time.Time, online []playerpresence.OnlinePlayer, dispatcher Dispatcher) error {
++	stateMu.Lock()
++	config, err := loadConfig(ctx, store)
++	if err != nil {
++		stateMu.Unlock()
++		return err
++	}
++	state, err := loadState(ctx, store)
++	if err != nil {
++		stateMu.Unlock()
++		return err
++	}
++	nowText := now.UTC().Format(time.RFC3339Nano)
++
++	if !state.Initialized {
++		presence, loadErr := playerpresence.Load(ctx, store)
++		if loadErr != nil {
++			stateMu.Unlock()
++			return loadErr
++		}
++		for _, record := range presence.Players {
++			markSeen(&state, recordAliases(record))
++		}
++		for _, player := range online {
++			markSeen(&state, playerAliases(player))
++		}
++		state.Online = onlineAliasSet(online)
++		state.Initialized = true
++		if err := saveState(ctx, store, state); err != nil {
++			stateMu.Unlock()
++			return err
++		}
++		stateMu.Unlock()
++		return nil
++	}
++
++	previousOnline := state.Online
++	currentOnline := onlineAliasSet(online)
++	for _, player := range online {
++		aliases := playerAliases(player)
++		if len(aliases) == 0 {
++			continue
++		}
++		wasSeen := anyMarked(state.Seen, aliases)
++		wasOnline := anyMarked(previousOnline, aliases)
++		rearmed := anyMarked(state.Rearm, aliases)
++		markSeen(&state, aliases)
++
++		shouldGrant := false
++		if rearmed && !wasOnline {
++			if config.Enabled {
++				shouldGrant = true
++				clearMarked(state.Rearm, aliases)
++			}
++		} else if !wasSeen {
++			shouldGrant = config.Enabled
++		}
++		if !shouldGrant {
++			continue
++		}
++
++		key := canonicalPlayerKey(player)
++		if key == "" {
++			continue
++		}
++		if existing := findGrantKey(state, aliases); existing != "" {
++			continue
++		}
++		state.Grants[key] = newGrant(player, config, nowText)
++	}
++	state.Online = currentOnline
++	if err := saveState(ctx, store, state); err != nil {
++		stateMu.Unlock()
++		return err
++	}
++	stateMu.Unlock()
++
++	if config.Enabled && dispatcher != nil {
++		startWorker(ctx, store, dispatcher, online)
++	}
++	return nil
++}
++
++func startWorker(ctx context.Context, store *db.Store, dispatcher Dispatcher, online []playerpresence.OnlinePlayer) {
++	workerMu.Lock()
++	if workerRunning {
++		workerMu.Unlock()
++		return
++	}
++	workerRunning = true
++	workerMu.Unlock()
++
++	players := append([]playerpresence.OnlinePlayer(nil), online...)
++	go func() {
++		defer func() {
++			workerMu.Lock()
++			workerRunning = false
++			workerMu.Unlock()
++		}()
++		processOnline(ctx, store, dispatcher, players)
++	}()
++}
++
++func processOnline(ctx context.Context, store *db.Store, dispatcher Dispatcher, online []playerpresence.OnlinePlayer) {
++	keys := make([]string, 0, len(online))
++	stateMu.Lock()
++	state, err := loadState(ctx, store)
++	if err == nil {
++		for _, player := range online {
++			if key := findGrantKey(state, playerAliases(player)); key != "" {
++				keys = append(keys, key)
++			}
++		}
++	}
++	stateMu.Unlock()
++	if err != nil {
++		return
++	}
++	sort.Strings(keys)
++	keys = uniqueStrings(keys)
++	for _, key := range keys {
++		if ctx.Err() != nil {
++			return
++		}
++		_ = processOne(ctx, store, dispatcher, key)
++	}
++}
++
++func processOne(ctx context.Context, store *db.Store, dispatcher Dispatcher, key string) error {
++	attemptStarted := false
++	for {
++		stateMu.Lock()
++		config, err := loadConfig(ctx, store)
++		if err != nil {
++			stateMu.Unlock()
++			return err
++		}
++		state, err := loadState(ctx, store)
++		if err != nil {
++			stateMu.Unlock()
++			return err
++		}
++		grant, found := state.Grants[key]
++		if !found || grant.Status == "success" {
++			stateMu.Unlock()
++			return nil
++		}
++		if !config.Enabled {
++			if grant.Status == "running" {
++				grant.Status = "pending"
++				grant.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
++				state.Grants[key] = grant
++				_ = saveState(ctx, store, state)
++			}
++			stateMu.Unlock()
++			return nil
++		}
++		if grant.Status != "pending" && grant.Status != "running" {
++			stateMu.Unlock()
++			return nil
++		}
++		if !attemptStarted {
++			grant.Attempts++
++			attemptStarted = true
++		}
++		grant.Status = "running"
++		grant.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
++		state.Grants[key] = grant
++		if err := saveState(ctx, store, state); err != nil {
++			stateMu.Unlock()
++			return err
++		}
++		stateMu.Unlock()
++
++		playerID := firstNonEmpty(grant.SteamID, grant.PlayerUID, grant.PlayerID)
++		var sendErr error
++		if playerID == "" {
++			sendErr = errors.New("player identifier is unavailable")
++		} else if grant.NextItem < len(grant.PlanItems) {
++			end := min(grant.NextItem+config.ItemBatchSize, len(grant.PlanItems))
++			sendErr = dispatcher.GiveItems(ctx, playerID, grant.PlanItems[grant.NextItem:end])
++			if sendErr == nil {
++				grant.NextItem = end
++			}
++		} else if grant.NextTemplate < len(grant.PlanTemplates) {
++			end := min(grant.NextTemplate+config.TemplateBatchSize, len(grant.PlanTemplates))
++			sendErr = dispatcher.GivePalTemplates(ctx, playerID, grant.PlanTemplates[grant.NextTemplate:end])
++			if sendErr == nil {
++				grant.NextTemplate = end
++			}
++		}
++
++		stateMu.Lock()
++		state, loadErr := loadState(ctx, store)
++		if loadErr != nil {
++			stateMu.Unlock()
++			return loadErr
++		}
++		current, stillFound := state.Grants[key]
++		if !stillFound {
++			stateMu.Unlock()
++			return nil
++		}
++		current.NextItem = grant.NextItem
++		current.NextTemplate = grant.NextTemplate
++		current.Attempts = grant.Attempts
++		current.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
++		if sendErr != nil {
++			current.Status = "failed"
++			current.LastError = boundedError(sendErr)
++		} else if current.NextItem >= len(current.PlanItems) && current.NextTemplate >= len(current.PlanTemplates) {
++			current.Status = "success"
++			current.LastError = ""
++			current.CompletedAt = time.Now().UTC().Format(time.RFC3339Nano)
++		} else {
++			current.Status = "running"
++			current.LastError = ""
++		}
++		state.Grants[key] = current
++		saveErr := saveState(ctx, store, state)
++		stateMu.Unlock()
++		if saveErr != nil {
++			return saveErr
++		}
++		if sendErr != nil || current.Status == "success" {
++			return sendErr
++		}
++		select {
++		case <-ctx.Done():
++			return ctx.Err()
++		case <-time.After(time.Duration(config.BatchDelayMS) * time.Millisecond):
++		}
++	}
++}
++
++func normalizeConfig(config Config) (Config, error) {
++	if config.ItemBatchSize == 0 {
++		config.ItemBatchSize = 20
++	}
++	if config.TemplateBatchSize == 0 {
++		config.TemplateBatchSize = 5
++	}
++	if config.BatchDelayMS == 0 {
++		config.BatchDelayMS = 500
++	}
++	if config.ItemBatchSize < 1 || config.ItemBatchSize > 100 {
++		return Config{}, errors.New("item_batch_size must be between 1 and 100")
++	}
++	if config.TemplateBatchSize < 1 || config.TemplateBatchSize > 20 {
++		return Config{}, errors.New("template_batch_size must be between 1 and 20")
++	}
++	if config.BatchDelayMS < 100 || config.BatchDelayMS > 10000 {
++		return Config{}, errors.New("batch_delay_ms must be between 100 and 10000")
++	}
++	if len(config.Items) > MaxItems {
++		return Config{}, fmt.Errorf("items must contain at most %d entries", MaxItems)
++	}
++	if len(config.PalTemplates) > MaxPalTemplates {
++		return Config{}, fmt.Errorf("pal_templates must contain at most %d entries", MaxPalTemplates)
++	}
++
++	seenItems := map[string]bool{}
++	items := make([]ItemGrant, 0, len(config.Items))
++	for _, item := range config.Items {
++		item.ItemID = strings.TrimSpace(item.ItemID)
++		if !itemIDPattern.MatchString(item.ItemID) {
++			return Config{}, fmt.Errorf("invalid item_id %q", item.ItemID)
++		}
++		if item.Count < 1 || item.Count > 2_147_483_647 {
++			return Config{}, fmt.Errorf("item %s count must be between 1 and 2147483647", item.ItemID)
++		}
++		if seenItems[item.ItemID] {
++			return Config{}, fmt.Errorf("duplicate item_id %s", item.ItemID)
++		}
++		seenItems[item.ItemID] = true
++		items = append(items, item)
++	}
++
++	seenTemplates := map[string]bool{}
++	templates := make([]string, 0, len(config.PalTemplates))
++	for _, name := range config.PalTemplates {
++		name = strings.TrimSpace(name)
++		if name == "" {
++			return Config{}, errors.New("Pal template names must not be empty")
++		}
++		if len(name) > 255 || strings.ContainsRune(name, '\x00') {
++			return Config{}, fmt.Errorf("invalid Pal template name %q", name)
++		}
++		if seenTemplates[name] {
++			continue
++		}
++		seenTemplates[name] = true
++		templates = append(templates, name)
++	}
++	if config.Enabled && len(items) == 0 && len(templates) == 0 {
++		return Config{}, errors.New("enabled starter gift requires at least one item or Pal template")
++	}
++	config.Items = items
++	config.PalTemplates = templates
++	return config, nil
++}
++
++func loadConfig(ctx context.Context, store *db.Store) (Config, error) {
++	config := DefaultConfig()
++	raw, found, err := store.GetKV(ctx, ConfigKey)
++	if err != nil || !found || strings.TrimSpace(raw) == "" {
++		return config, err
++	}
++	if err := json.Unmarshal([]byte(raw), &config); err != nil {
++		return Config{}, err
++	}
++	return normalizeConfig(config)
++}
++
++func loadState(ctx context.Context, store *db.Store) (State, error) {
++	state := EmptyState()
++	raw, found, err := store.GetKV(ctx, StateKey)
++	if err != nil || !found || strings.TrimSpace(raw) == "" {
++		return state, err
++	}
++	if err := json.Unmarshal([]byte(raw), &state); err != nil {
++		return EmptyState(), err
++	}
++	if state.Seen == nil {
++		state.Seen = map[string]bool{}
++	}
++	if state.Online == nil {
++		state.Online = map[string]bool{}
++	}
++	if state.Rearm == nil {
++		state.Rearm = map[string]bool{}
++	}
++	if state.Grants == nil {
++		state.Grants = map[string]grantRecord{}
++	}
++	state.Version = Version
++	return state, nil
++}
++
++func saveState(ctx context.Context, store *db.Store, state State) error {
++	state.Version = Version
++	raw, err := json.Marshal(state)
++	if err != nil {
++		return err
++	}
++	return store.SetKV(ctx, StateKey, string(raw))
++}
++
++func newGrant(player playerpresence.OnlinePlayer, config Config, nowText string) grantRecord {
++	return grantRecord{
++		PlayerID:      firstNonEmpty(player.SteamID, player.PlayerUID),
++		PlayerUID:     strings.TrimSpace(player.PlayerUID),
++		SteamID:       strings.TrimSpace(player.SteamID),
++		Nickname:      strings.TrimSpace(player.Nickname),
++		Status:        "pending",
++		FirstSeenAt:   nowText,
++		UpdatedAt:     nowText,
++		PlanItems:     append([]ItemGrant(nil), config.Items...),
++		PlanTemplates: append([]string(nil), config.PalTemplates...),
++	}
++}
++
++func grantView(record grantRecord) Grant {
++	return Grant{
++		PlayerID: record.PlayerID, PlayerUID: record.PlayerUID, SteamID: record.SteamID,
++		Nickname: record.Nickname, Status: record.Status, NextItem: record.NextItem,
++		NextTemplate: record.NextTemplate, ItemTotal: len(record.PlanItems),
++		TemplateTotal: len(record.PlanTemplates), Attempts: record.Attempts,
++		FirstSeenAt: record.FirstSeenAt, UpdatedAt: record.UpdatedAt,
++		CompletedAt: record.CompletedAt, LastError: record.LastError,
++	}
++}
++
++func onlineAliasSet(players []playerpresence.OnlinePlayer) map[string]bool {
++	result := map[string]bool{}
++	for _, player := range players {
++		for _, alias := range playerAliases(player) {
++			result[alias] = true
++		}
++	}
++	return result
++}
++
++func playerAliases(player playerpresence.OnlinePlayer) []string {
++	return uniqueStrings([]string{identity(player.SteamID), identity(player.PlayerUID)})
++}
++
++func recordAliases(record playerpresence.Record) []string {
++	return uniqueStrings([]string{identity(record.SteamID), identity(record.PlayerUID)})
++}
++
++func grantAliases(record grantRecord) []string {
++	return uniqueStrings([]string{identity(record.PlayerID), identity(record.SteamID), identity(record.PlayerUID)})
++}
++
++func canonicalPlayerKey(player playerpresence.OnlinePlayer) string {
++	return firstNonEmpty(identity(player.SteamID), identity(player.PlayerUID))
++}
++
++func findGrantKey(state State, aliases []string) string {
++	for _, alias := range aliases {
++		if _, found := state.Grants[alias]; found {
++			return alias
++		}
++	}
++	for key, grant := range state.Grants {
++		for _, alias := range aliases {
++			if alias != "" && containsString(grantAliases(grant), alias) {
++				return key
++			}
++		}
++	}
++	return ""
++}
++
++func markSeen(state *State, aliases []string) {
++	for _, alias := range aliases {
++		if alias != "" {
++			state.Seen[alias] = true
++		}
++	}
++}
++
++func anyMarked(values map[string]bool, aliases []string) bool {
++	for _, alias := range aliases {
++		if alias != "" && values[alias] {
++			return true
++		}
++	}
++	return false
++}
++
++func clearMarked(values map[string]bool, aliases []string) {
++	for _, alias := range aliases {
++		delete(values, alias)
++	}
++}
++
++func identity(value string) string {
++	value = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(value), "-", ""))
++	switch value {
++	case "", "none", "null", "undefined":
++		return ""
++	}
++	if strings.Trim(value, "0") == "" {
++		return ""
++	}
++	return value
++}
++
++func uniqueStrings(values []string) []string {
++	seen := map[string]bool{}
++	result := make([]string, 0, len(values))
++	for _, value := range values {
++		if value == "" || seen[value] {
++			continue
++		}
++		seen[value] = true
++		result = append(result, value)
++	}
++	return result
++}
++
++func containsString(values []string, target string) bool {
++	for _, value := range values {
++		if value == target {
++			return true
++		}
++	}
++	return false
++}
++
++func firstNonEmpty(values ...string) string {
++	for _, value := range values {
++		if strings.TrimSpace(value) != "" {
++			return strings.TrimSpace(value)
++		}
++	}
++	return ""
++}
++
++func boundedError(err error) string {
++	text := strings.TrimSpace(err.Error())
++	if len(text) > 500 {
++		text = text[:500]
++	}
++	return text
++}
+diff --git a/backend/internal/startergift/service_test.go b/backend/internal/startergift/service_test.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..c6e8dd4cad9b23d74229eab075cadf2b85a01a48
+--- /dev/null
++++ b/backend/internal/startergift/service_test.go
+@@ -0,0 +1,217 @@
++package startergift
++
++import (
++	"context"
++	"errors"
++	"path/filepath"
++	"sync"
++	"testing"
++	"time"
++
++	"palpanel/internal/db"
++	"palpanel/internal/playerpresence"
++)
++
++type fakeDispatcher struct {
++	mu              sync.Mutex
++	itemBatches     [][]ItemGrant
++	templateBatches [][]string
++	failTemplates   int
++}
++
++func (f *fakeDispatcher) GiveItems(_ context.Context, _ string, items []ItemGrant) error {
++	f.mu.Lock()
++	defer f.mu.Unlock()
++	f.itemBatches = append(f.itemBatches, append([]ItemGrant(nil), items...))
++	return nil
++}
++
++func (f *fakeDispatcher) GivePalTemplates(_ context.Context, _ string, names []string) error {
++	f.mu.Lock()
++	defer f.mu.Unlock()
++	f.templateBatches = append(f.templateBatches, append([]string(nil), names...))
++	if f.failTemplates > 0 {
++		f.failTemplates--
++		return errors.New("temporary PalDefender failure")
++	}
++	return nil
++}
++
++func openTestStore(t *testing.T) *db.Store {
++	t.Helper()
++	store, err := db.Open(filepath.Join(t.TempDir(), "panel.db"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { _ = store.Close() })
++	return store
++}
++
++func saveTestConfig(t *testing.T, store *db.Store) Config {
++	t.Helper()
++	config := Config{
++		Enabled: true,
++		Items: []ItemGrant{
++			{ItemID: "Money", Count: 100},
++			{ItemID: "PalSphere", Count: 10},
++		},
++		PalTemplates:      []string{"starter-a", "starter-b", "starter-c"},
++		ItemBatchSize:     1,
++		TemplateBatchSize: 2,
++		BatchDelayMS:      100,
++	}
++	if _, err := SaveConfig(context.Background(), store, config); err != nil {
++		t.Fatal(err)
++	}
++	return config
++}
++
++func observePresence(t *testing.T, store *db.Store, now time.Time, players []playerpresence.OnlinePlayer) {
++	t.Helper()
++	if _, err := playerpresence.Observe(context.Background(), store, now, players); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func TestObserveImportsHistoricalBaselineAndBatchesNewPlayer(t *testing.T) {
++	store := openTestStore(t)
++	config := saveTestConfig(t, store)
++	ctx := context.Background()
++	now := time.Date(2026, 7, 25, 10, 0, 0, 0, time.UTC)
++	alice := playerpresence.OnlinePlayer{PlayerUID: "uid-alice", SteamID: "1", Nickname: "Alice"}
++	bob := playerpresence.OnlinePlayer{PlayerUID: "uid-bob", SteamID: "2", Nickname: "Bob"}
++
++	// Alice was known before the feature initialized and is now offline. The
++	// complete player-presence history must baseline her without a grant.
++	observePresence(t, store, now, []playerpresence.OnlinePlayer{alice})
++	observePresence(t, store, now.Add(15*time.Second), nil)
++	if err := Observe(ctx, store, now.Add(15*time.Second), nil, nil); err != nil {
++		t.Fatal(err)
++	}
++	observePresence(t, store, now.Add(30*time.Second), []playerpresence.OnlinePlayer{alice})
++	if err := Observe(ctx, store, now.Add(30*time.Second), []playerpresence.OnlinePlayer{alice}, nil); err != nil {
++		t.Fatal(err)
++	}
++	if snapshot, err := LoadSnapshot(ctx, store); err != nil || len(snapshot.Grants) != 0 {
++		t.Fatalf("historical baseline grants=%#v err=%v", snapshot.Grants, err)
++	}
++
++	observePresence(t, store, now.Add(45*time.Second), []playerpresence.OnlinePlayer{alice, bob})
++	if err := Observe(ctx, store, now.Add(45*time.Second), []playerpresence.OnlinePlayer{alice, bob}, nil); err != nil {
++		t.Fatal(err)
++	}
++	fake := &fakeDispatcher{}
++	if err := processOne(ctx, store, fake, identity(bob.SteamID)); err != nil {
++		t.Fatal(err)
++	}
++	if len(fake.itemBatches) != 2 || len(fake.templateBatches) != 2 {
++		t.Fatalf("batches items=%#v templates=%#v", fake.itemBatches, fake.templateBatches)
++	}
++	snapshot, err := LoadSnapshot(ctx, store)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(snapshot.Grants) != 1 || snapshot.Grants[0].Status != "success" {
++		t.Fatalf("grants=%#v", snapshot.Grants)
++	}
++	grant := snapshot.Grants[0]
++	if grant.ItemTotal != len(config.Items) || grant.TemplateTotal != len(config.PalTemplates) {
++		t.Fatalf("frozen plan totals=%#v", grant)
++	}
++}
++
++func TestFailedBatchResumesAfterCompletedProgress(t *testing.T) {
++	store := openTestStore(t)
++	saveTestConfig(t, store)
++	ctx := context.Background()
++	now := time.Date(2026, 7, 25, 11, 0, 0, 0, time.UTC)
++	baseline := playerpresence.OnlinePlayer{SteamID: "1", Nickname: "Baseline"}
++	bob := playerpresence.OnlinePlayer{SteamID: "2", Nickname: "Bob"}
++	observePresence(t, store, now, []playerpresence.OnlinePlayer{baseline})
++	if err := Observe(ctx, store, now, []playerpresence.OnlinePlayer{baseline}, nil); err != nil {
++		t.Fatal(err)
++	}
++	observePresence(t, store, now.Add(15*time.Second), []playerpresence.OnlinePlayer{baseline, bob})
++	if err := Observe(ctx, store, now.Add(15*time.Second), []playerpresence.OnlinePlayer{baseline, bob}, nil); err != nil {
++		t.Fatal(err)
++	}
++
++	fake := &fakeDispatcher{failTemplates: 1}
++	if err := processOne(ctx, store, fake, identity(bob.SteamID)); err == nil {
++		t.Fatal("expected template batch failure")
++	}
++	snapshot, err := LoadSnapshot(ctx, store)
++	if err != nil {
++		t.Fatal(err)
++	}
++	grant := snapshot.Grants[0]
++	if grant.Status != "failed" || grant.NextItem != 2 || grant.NextTemplate != 0 {
++		t.Fatalf("failed progress=%#v", grant)
++	}
++	if err := Retry(ctx, store, bob.SteamID); err != nil {
++		t.Fatal(err)
++	}
++	if err := processOne(ctx, store, fake, identity(bob.SteamID)); err != nil {
++		t.Fatal(err)
++	}
++	snapshot, err = LoadSnapshot(ctx, store)
++	if err != nil {
++		t.Fatal(err)
++	}
++	grant = snapshot.Grants[0]
++	if grant.Status != "success" || grant.NextTemplate != 3 || grant.Attempts != 2 {
++		t.Fatalf("resumed grant=%#v", grant)
++	}
++}
++
++func TestForgetWaitsForOfflineBeforeRearming(t *testing.T) {
++	store := openTestStore(t)
++	saveTestConfig(t, store)
++	ctx := context.Background()
++	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
++	baseline := playerpresence.OnlinePlayer{SteamID: "1", Nickname: "Baseline"}
++	bob := playerpresence.OnlinePlayer{SteamID: "2", Nickname: "Bob"}
++	observePresence(t, store, now, []playerpresence.OnlinePlayer{baseline})
++	if err := Observe(ctx, store, now, []playerpresence.OnlinePlayer{baseline}, nil); err != nil {
++		t.Fatal(err)
++	}
++	observePresence(t, store, now.Add(15*time.Second), []playerpresence.OnlinePlayer{baseline, bob})
++	if err := Observe(ctx, store, now.Add(15*time.Second), []playerpresence.OnlinePlayer{baseline, bob}, nil); err != nil {
++		t.Fatal(err)
++	}
++	if err := Forget(ctx, store, bob.SteamID); err != nil {
++		t.Fatal(err)
++	}
++
++	// Still online: no immediate duplicate grant.
++	if err := Observe(ctx, store, now.Add(30*time.Second), []playerpresence.OnlinePlayer{baseline, bob}, nil); err != nil {
++		t.Fatal(err)
++	}
++	if snapshot, err := LoadSnapshot(ctx, store); err != nil || len(snapshot.Grants) != 0 {
++		t.Fatalf("still-online rearm grants=%#v err=%v", snapshot.Grants, err)
++	}
++
++	// Leave, then enter: the reset becomes eligible.
++	if err := Observe(ctx, store, now.Add(45*time.Second), []playerpresence.OnlinePlayer{baseline}, nil); err != nil {
++		t.Fatal(err)
++	}
++	if err := Observe(ctx, store, now.Add(60*time.Second), []playerpresence.OnlinePlayer{baseline, bob}, nil); err != nil {
++		t.Fatal(err)
++	}
++	if snapshot, err := LoadSnapshot(ctx, store); err != nil || len(snapshot.Grants) != 1 || snapshot.Grants[0].Status != "pending" {
++		t.Fatalf("reentered grants=%#v err=%v", snapshot.Grants, err)
++	}
++}
++
++func TestNormalizeConfigRejectsUnsafeOrOversizedPlans(t *testing.T) {
++	if _, err := normalizeConfig(Config{Enabled: true, Items: []ItemGrant{{ItemID: "../Money", Count: 1}}}); err == nil {
++		t.Fatal("expected invalid item id")
++	}
++	items := make([]ItemGrant, MaxItems+1)
++	for index := range items {
++		items[index] = ItemGrant{ItemID: "Money", Count: int64(index + 1)}
++	}
++	if _, err := normalizeConfig(Config{Items: items}); err == nil {
++		t.Fatal("expected oversized item plan")
++	}
++}
 diff --git a/docs/openapi.yaml b/docs/openapi.yaml
-index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..2e97038c4957ce5d15468f7d40bb3c69fef16df6 100644
+index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..2d5c9a08e25966b5e9cb7e8df8fdbe05b3732d7a 100644
 --- a/docs/openapi.yaml
 +++ b/docs/openapi.yaml
 @@ -135,6 +135,11 @@ x-player-inventory: &playerInventory
@@ -6145,7 +7273,32 @@ index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..2e97038c4957ce5d15468f7d40bb3c69
    /pals:
      get: {operationId: listPals, tags: [world], x-palpanel-permission: read, responses: *readResponses}
    /pals/{id}:
-@@ -1249,8 +1317,36 @@ components:
+@@ -1188,6 +1256,24 @@ paths:
+   /players/{id}/unban:
+     parameters: [*idParameter]
+     post: {operationId: unbanPlayer, tags: [world], x-palpanel-permission: 'players:write', responses: *writeResponses}
++  /security/paldefender/starter-gift:
++    get: {operationId: getStarterGift, tags: [security], x-palpanel-permission: read, responses: *readResponses}
++    put:
++      operationId: putStarterGift
++      tags: [security]
++      x-palpanel-permission: 'security:write'
++      requestBody:
++        required: true
++        content:
++          application/json:
++            schema: {$ref: '#/components/schemas/StarterGiftConfig'}
++      responses: *writeResponses
++  /security/paldefender/starter-gift/grants/{id}/retry:
++    parameters: [*idParameter]
++    post: {operationId: retryStarterGift, tags: [security], x-palpanel-permission: 'security:write', responses: *writeResponses}
++  /security/paldefender/starter-gift/grants/{id}:
++    parameters: [*idParameter]
++    delete: {operationId: forgetStarterGift, tags: [security], x-palpanel-permission: 'security:write', responses: *writeResponses}
+ components:
+   securitySchemes:
+     sessionCookie:
+@@ -1249,8 +1335,36 @@ components:
          location_y: {type: number}
          location_z: {type: number}
          inventory_summary: {type: object, additionalProperties: true}
@@ -6182,7 +7335,7 @@ index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..2e97038c4957ce5d15468f7d40bb3c69
      PlayerDataView:
        type: object
        required: [scope, source_id, source_kind, source_name, online_overlay]
-@@ -1262,21 +1358,237 @@ components:
+@@ -1262,21 +1376,292 @@ components:
          online_overlay: {type: boolean}
      SaveInventorySlot:
        type: object
@@ -6205,7 +7358,7 @@ index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..2e97038c4957ce5d15468f7d40bb3c69
          owner_id: {type: string}
 +        container_type: {type: string}
 +        container_name: {type: string}
-+        slots: {type: array, items: {$ref: '#/components/schemas/SaveInventorySlot'}}
+         slots: {type: array, items: {$ref: '#/components/schemas/SaveInventorySlot'}}
 +    BaseFeedBox:
 +      type: object
 +      required: [container_id, container_type, container_name, slots]
@@ -6213,7 +7366,7 @@ index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..2e97038c4957ce5d15468f7d40bb3c69
 +        container_id: {type: string}
 +        container_type: {type: string}
 +        container_name: {type: string}
-         slots: {type: array, items: {$ref: '#/components/schemas/SaveInventorySlot'}}
++        slots: {type: array, items: {$ref: '#/components/schemas/SaveInventorySlot'}}
 +    BaseFeedBoxSummary:
 +      type: object
 +      required: [box_count, empty_box_count, occupied_slots, total_items, item_types]
@@ -6419,10 +7572,65 @@ index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..2e97038c4957ce5d15468f7d40bb3c69
 +            owner_types: {type: array, items: {type: string, enum: [all, base, player, unknown]}}
 +        status: {$ref: '#/components/schemas/SaveIndexStatus'}
 +        source_id: {type: string}
++    StarterGiftItem:
++      type: object
++      required: [item_id, count]
++      additionalProperties: false
++      properties:
++        item_id: {type: string, minLength: 1, maxLength: 128, pattern: '^[A-Za-z0-9_:-]+$'}
++        count: {type: integer, format: int64, minimum: 1, maximum: 2147483647}
++    StarterGiftConfig:
++      type: object
++      required: [enabled, items, pal_templates, item_batch_size, template_batch_size, batch_delay_ms]
++      additionalProperties: false
++      properties:
++        enabled: {type: boolean}
++        items: {type: array, maxItems: 500, items: {$ref: '#/components/schemas/StarterGiftItem'}}
++        pal_templates: {type: array, maxItems: 500, uniqueItems: true, items: {type: string, minLength: 1, maxLength: 255}}
++        item_batch_size: {type: integer, minimum: 1, maximum: 100, default: 20}
++        template_batch_size: {type: integer, minimum: 1, maximum: 20, default: 5}
++        batch_delay_ms: {type: integer, minimum: 100, maximum: 10000, default: 500}
++    StarterGiftGrant:
++      type: object
++      required: [player_id, status, next_item, next_template, item_total, template_total, attempts, first_seen_at, updated_at]
++      additionalProperties: false
++      properties:
++        player_id: {type: string}
++        player_uid: {type: string}
++        steam_id: {type: string}
++        nickname: {type: string}
++        status: {type: string, enum: [pending, running, success, failed]}
++        next_item: {type: integer, minimum: 0}
++        next_template: {type: integer, minimum: 0}
++        item_total: {type: integer, minimum: 0}
++        template_total: {type: integer, minimum: 0}
++        attempts: {type: integer, minimum: 0}
++        first_seen_at: {type: string, format: date-time}
++        updated_at: {type: string, format: date-time}
++        completed_at: {type: string, format: date-time}
++        last_error: {type: string, maxLength: 500}
++    StarterGiftTemplateInfo:
++      type: object
++      required: [name]
++      additionalProperties: true
++      properties:
++        name: {type: string}
++        modified_at: {type: string, format: date-time}
++        size: {type: integer, format: int64, minimum: 0}
++    StarterGiftSnapshot:
++      type: object
++      required: [config, grants, templates, item_catalog]
++      additionalProperties: false
++      properties:
++        config: {$ref: '#/components/schemas/StarterGiftConfig'}
++        grants: {type: array, items: {$ref: '#/components/schemas/StarterGiftGrant'}}
++        templates: {type: array, items: {$ref: '#/components/schemas/StarterGiftTemplateInfo'}}
++        item_catalog: {type: array, items: {$ref: '#/components/schemas/PalDefenderItemCatalogEntry'}}
++        template_error: {type: string}
      ListSummary:
        type: object
        required: [total, limit, offset, returned, page]
-@@ -1920,12 +2232,88 @@ components:
+@@ -1920,12 +2305,88 @@ components:
          candidate_id: {type: string, minLength: 1}
      SaveImportCommitRequest:
        type: object
@@ -6512,7 +7720,7 @@ index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..2e97038c4957ce5d15468f7d40bb3c69
      SaveImportCandidate:
        type: object
        required: [id, relative_path, player_count, level_sha256, level_size, valid, warnings, errors]
-@@ -2525,6 +2913,45 @@ components:
+@@ -2525,6 +2986,45 @@ components:
      JsonObject:
        type: object
        additionalProperties: true
@@ -6537,7 +7745,7 @@ index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..2e97038c4957ce5d15468f7d40bb3c69
 +          type: object
 +          required: [version, repository, features]
 +          properties:
-+            version: {type: string, const: 0.8.9}
++            version: {type: string, const: 0.8.10}
 +            repository: {type: string, const: ninhua/Palworld-Panel-Patches}
 +            features:
 +              type: array
@@ -7789,6 +8997,130 @@ index ae3218ad4827974b2d7ae5f02a56f3263e84ef44..327862fe08eecc6f63e71fcb93f25d2e
    activate: (id: string) => handleRequest(
      () => apiClient.post(`/save-sources/${encodeURIComponent(id)}/activate`, undefined, { timeout: SAVE_INDEX_OPERATION_TIMEOUT_MS }),
      {},
+diff --git a/frontend/src/api/starterGift.ts b/frontend/src/api/starterGift.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..fc2b05b0e69cfcfde3d466610a4cdd920e7d4a90
+--- /dev/null
++++ b/frontend/src/api/starterGift.ts
+@@ -0,0 +1,118 @@
++import { apiClient, handleRequest } from './client';
++
++export interface StarterGiftItem { item_id: string; count: number }
++export interface StarterGiftCatalogItem { id: string; name: string; icon?: string }
++export interface StarterGiftConfig {
++  enabled: boolean;
++  items: StarterGiftItem[];
++  pal_templates: string[];
++  item_batch_size: number;
++  template_batch_size: number;
++  batch_delay_ms: number;
++}
++export interface StarterGiftGrant {
++  player_id: string;
++  player_uid?: string;
++  steam_id?: string;
++  nickname?: string;
++  status: 'pending' | 'running' | 'success' | 'failed' | string;
++  next_item: number;
++  next_template: number;
++  item_total: number;
++  template_total: number;
++  attempts: number;
++  first_seen_at: string;
++  updated_at: string;
++  completed_at?: string;
++  last_error?: string;
++}
++export interface PalTemplateInfo { name: string; modified_at?: string; size?: number }
++export interface StarterGiftSnapshot {
++  config: StarterGiftConfig;
++  grants: StarterGiftGrant[];
++  templates: PalTemplateInfo[];
++  item_catalog: StarterGiftCatalogItem[];
++  template_error?: string;
++}
++
++const emptyConfig: StarterGiftConfig = {
++  enabled: false,
++  items: [],
++  pal_templates: [],
++  item_batch_size: 20,
++  template_batch_size: 5,
++  batch_delay_ms: 500,
++};
++
++const mapSnapshot = (raw: unknown): StarterGiftSnapshot => {
++  const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
++  const config = (data.config && typeof data.config === 'object' ? data.config : {}) as Record<string, unknown>;
++  return {
++    config: {
++      enabled: Boolean(config.enabled),
++      items: (Array.isArray(config.items) ? config.items : []).map((rawItem) => {
++        const item = (rawItem && typeof rawItem === 'object' ? rawItem : {}) as Record<string, unknown>;
++        return { item_id: String(item.item_id || ''), count: Number(item.count || 0) };
++      }),
++      pal_templates: (Array.isArray(config.pal_templates) ? config.pal_templates : []).map(String),
++      item_batch_size: Number(config.item_batch_size || emptyConfig.item_batch_size),
++      template_batch_size: Number(config.template_batch_size || emptyConfig.template_batch_size),
++      batch_delay_ms: Number(config.batch_delay_ms || emptyConfig.batch_delay_ms),
++    },
++    grants: (Array.isArray(data.grants) ? data.grants : []).map((rawGrant) => {
++      const grant = (rawGrant && typeof rawGrant === 'object' ? rawGrant : {}) as Record<string, unknown>;
++      return {
++        player_id: String(grant.player_id || ''),
++        player_uid: grant.player_uid ? String(grant.player_uid) : undefined,
++        steam_id: grant.steam_id ? String(grant.steam_id) : undefined,
++        nickname: grant.nickname ? String(grant.nickname) : undefined,
++        status: String(grant.status || 'pending'),
++        next_item: Number(grant.next_item || 0),
++        next_template: Number(grant.next_template || 0),
++        item_total: Number(grant.item_total || 0),
++        template_total: Number(grant.template_total || 0),
++        attempts: Number(grant.attempts || 0),
++        first_seen_at: String(grant.first_seen_at || ''),
++        updated_at: String(grant.updated_at || ''),
++        completed_at: grant.completed_at ? String(grant.completed_at) : undefined,
++        last_error: grant.last_error ? String(grant.last_error) : undefined,
++      };
++    }),
++    templates: (Array.isArray(data.templates) ? data.templates : []).map((rawTemplate) => {
++      const template = (rawTemplate && typeof rawTemplate === 'object' ? rawTemplate : {}) as Record<string, unknown>;
++      return {
++        name: String(template.name || ''),
++        modified_at: template.modified_at ? String(template.modified_at) : undefined,
++        size: template.size == null ? undefined : Number(template.size),
++      };
++    }).filter((template) => template.name),
++    item_catalog: (Array.isArray(data.item_catalog) ? data.item_catalog : []).map((rawItem) => {
++      const item = (rawItem && typeof rawItem === 'object' ? rawItem : {}) as Record<string, unknown>;
++      return { id: String(item.id || ''), name: String(item.name || item.id || ''), icon: item.icon ? String(item.icon) : undefined };
++    }).filter((item) => item.id),
++    template_error: data.template_error ? String(data.template_error) : undefined,
++  };
++};
++
++export const starterGiftApi = {
++  get: () => handleRequest<unknown, StarterGiftSnapshot>(
++    () => apiClient.get('/security/paldefender/starter-gift'),
++    mapSnapshot({}),
++    { fallbackOnError: false, map: mapSnapshot },
++  ),
++  save: (config: StarterGiftConfig) => handleRequest<unknown, StarterGiftSnapshot>(
++    () => apiClient.put('/security/paldefender/starter-gift', config),
++    mapSnapshot({}),
++    { fallbackOnError: false, map: mapSnapshot },
++  ),
++  retry: (id: string) => handleRequest(
++    () => apiClient.post(`/security/paldefender/starter-gift/grants/${encodeURIComponent(id)}/retry`),
++    {},
++    { fallbackOnError: false },
++  ),
++  forget: (id: string) => handleRequest(
++    () => apiClient.delete(`/security/paldefender/starter-gift/grants/${encodeURIComponent(id)}`),
++    {},
++    { fallbackOnError: false },
++  ),
++};
 diff --git a/frontend/src/api/tasks.ts b/frontend/src/api/tasks.ts
 index 6231b865a2600d9e19d2ce3bcafe7006dce91140..7ba56de42df4c1166b26fdc89020f4ef74b43db7 100644
 --- a/frontend/src/api/tasks.ts
@@ -7806,18 +9138,19 @@ index 6231b865a2600d9e19d2ce3bcafe7006dce91140..7ba56de42df4c1166b26fdc89020f4ef
 +    ),
  };
 diff --git a/frontend/src/i18n/index.tsx b/frontend/src/i18n/index.tsx
-index c770ee6b05ef5c99bfb3f60ea43a75aeb51e15df..cebcf4358cc35779b45fafa2ba0624eb4bb9a4a5 100644
+index c770ee6b05ef5c99bfb3f60ea43a75aeb51e15df..079f9aaf19ded507ba681be44722971ddf900c55 100644
 --- a/frontend/src/i18n/index.tsx
 +++ b/frontend/src/i18n/index.tsx
-@@ -67,6 +67,7 @@ const zhCN = {
+@@ -67,6 +67,8 @@ const zhCN = {
    'route.communityServers': '社区服务器',
    'route.playerCenter': '玩家中心',
    'route.saveSources': '存档中心',
++  'route.starterGift': '新玩家礼包',
 +  'route.inventory': '库存管理',
    'route.worldArchive': '世界档案',
    'route.palInventory': '帕鲁仓库',
    'route.breeding': '配种实验室',
-@@ -228,7 +229,7 @@ const zhCN = {
+@@ -228,7 +230,7 @@ const zhCN = {
    'settings.proxySave': '保存代理设置',
    'settings.proxyLoading': '正在读取代理设置…',
    'settings.proxyInstallTitle': '公共下载与服务器更新',
@@ -7826,16 +9159,16 @@ index c770ee6b05ef5c99bfb3f60ea43a75aeb51e15df..cebcf4358cc35779b45fafa2ba0624eb
    'settings.proxyCommunityTitle': '社区服务器查询',
    'settings.proxyCommunityDescription': '仅用于后端访问 BattleMetrics 或兼容的社区服数据源，不影响面板本机接口。',
    'settings.proxyEnabled': '启用',
-@@ -252,7 +253,7 @@ const enUS: Record<TranslationKey, string> = {
+@@ -252,7 +254,7 @@ const enUS: Record<TranslationKey, string> = {
    'common.loading': 'Loading…', 'common.cancel': 'Cancel', 'common.close': 'Close', 'common.save': 'Save', 'common.send': 'Send', 'common.search': 'Search', 'common.refresh': 'Refresh', 'common.unknown': 'Unknown', 'common.enabled': 'Enabled', 'common.disabled': 'Disabled',
    'auth.connectingTitle': 'Connecting to {brand}', 'auth.connectingDescription': 'Checking service and sign-in status…', 'auth.loadingPage': 'Loading page…', 'auth.passwordMismatch': 'The passwords do not match', 'auth.firstRun': 'First run', 'auth.welcomeBack': 'Welcome back', 'auth.registerTitle': 'Create administrator account', 'auth.loginTitle': 'Administrator sign in', 'auth.registerDescription': 'Create the first local administrator for this panel.', 'auth.loginDescription': 'Sign in to continue managing the server.', 'auth.username': 'Username', 'auth.password': 'Password', 'auth.confirmPassword': 'Confirm password', 'auth.passwordHelp': 'At least 12 characters; use a unique password.', 'auth.register': 'Complete registration', 'auth.login': 'Sign in', 'auth.localSession': 'Secure local session', 'auth.unavailableTitle': 'Unable to connect to the panel service', 'auth.unavailableDescription': 'Make sure the backend service is running, then try again.', 'auth.retry': 'Reconnect',
    'nav.setupGroup': 'Getting started', 'nav.workspaceGroup': 'Workspace', 'nav.worldGroup': 'World management', 'nav.systemGroup': 'Operations & security', 'nav.setup': 'Server setup', 'nav.serverCenter': 'Server center', 'nav.playersWorld': 'Players & world', 'nav.saveTools': 'Save tools', 'nav.mods': 'Mod management', 'nav.backupTasks': 'Backups & tasks', 'nav.securityAudit': 'Security & audit', 'nav.settings': 'System settings', 'nav.main': 'Main navigation', 'nav.expand': 'Expand sidebar', 'nav.collapse': 'Collapse sidebar', 'nav.overview': '{brand} overview', 'nav.serverHeartbeat': 'Server heartbeat', 'nav.running': 'Running', 'nav.stopped': 'Stopped', 'nav.online': 'online', 'nav.uptime': 'uptime', 'nav.adminSession': 'Administrator session', 'nav.logout': 'Sign out',
 -  'route.setup': 'Server setup', 'route.dashboard': 'Server overview', 'route.monitor': 'Live monitoring', 'route.communityServers': 'Community servers', 'route.playerCenter': 'Player center', 'route.saveSources': 'Save center', 'route.worldArchive': 'World archive', 'route.palInventory': 'Pal inventory', 'route.breeding': 'Breeding lab', 'route.liveMap': 'Live map', 'route.mods': 'Mod management', 'route.backups': 'Backups & restore', 'route.tasks': 'Task queue', 'route.security': 'Security', 'route.banlist': 'Ban list', 'route.audit': 'Audit log', 'route.settings': 'System settings', 'route.panel': 'Admin panel',
-+  'route.setup': 'Server setup', 'route.dashboard': 'Server overview', 'route.monitor': 'Live monitoring', 'route.communityServers': 'Community servers', 'route.playerCenter': 'Player center', 'route.saveSources': 'Save center', 'route.inventory': 'Inventory', 'route.worldArchive': 'World archive', 'route.palInventory': 'Pal inventory', 'route.breeding': 'Breeding lab', 'route.liveMap': 'Live map', 'route.mods': 'Mod management', 'route.backups': 'Backups & restore', 'route.tasks': 'Task queue', 'route.security': 'Security', 'route.banlist': 'Ban list', 'route.audit': 'Audit log', 'route.settings': 'System settings', 'route.panel': 'Admin panel',
++  'route.setup': 'Server setup', 'route.dashboard': 'Server overview', 'route.monitor': 'Live monitoring', 'route.communityServers': 'Community servers', 'route.playerCenter': 'Player center', 'route.saveSources': 'Save center', 'route.starterGift': 'Starter gifts', 'route.inventory': 'Inventory', 'route.worldArchive': 'World archive', 'route.palInventory': 'Pal inventory', 'route.breeding': 'Breeding lab', 'route.liveMap': 'Live map', 'route.mods': 'Mod management', 'route.backups': 'Backups & restore', 'route.tasks': 'Task queue', 'route.security': 'Security', 'route.banlist': 'Ban list', 'route.audit': 'Audit log', 'route.settings': 'System settings', 'route.panel': 'Admin panel',
    'header.setup': 'Getting started', 'header.workspace': 'Overview', 'header.world': 'World data', 'header.system': 'Operations', 'header.openNavigation': 'Open navigation', 'header.toggleNavigation': 'Toggle navigation', 'header.autoRefresh': 'Auto refresh', 'header.paused': 'Paused', 'header.syncTitle': 'Sync latest data', 'header.sync': 'Sync', 'header.saveWorld': 'Save world', 'header.restartServer': 'Restart server', 'header.restart': 'Restart', 'header.announcement': 'Broadcast announcement', 'header.broadcast': 'Broadcast',
    'ops.defaultRestartReason': 'Routine server maintenance restart', 'ops.announcementSent': 'Announcement request sent', 'ops.savingWorld': 'Saving world…', 'ops.worldSaveSent': 'World save request sent', 'ops.submittingRestart': 'Submitting safe restart task…', 'ops.restartSubmitted': 'Safe restart submitted with a {seconds}-second countdown', 'ops.closeNavigation': 'Close navigation', 'ops.announcementTitle': 'Broadcast server announcement', 'ops.announcementDescription': 'Send an announcement to every online player through the proxied Palworld REST API.', 'ops.announcementPlaceholder': 'Example: The server will save and restart for maintenance in 10 minutes.', 'ops.saveTitle': 'Save world data?', 'ops.saveDescription': 'This asks the Palworld server to write the current world state to disk. The backend returns a degraded status if the server is not running.', 'ops.confirmSave': 'Confirm save', 'ops.restartTitle': 'Restart the server?', 'ops.restartDescription': 'Online players will be disconnected. Save the world or broadcast a warning first.', 'ops.countdown': 'Countdown notice (seconds)', 'ops.reason': 'Shutdown reason', 'ops.safeRestart': 'Safe restart',
    'community.title': 'Community servers', 'community.eyebrow': 'Community discovery', 'community.description': 'Browse discoverable Palworld community servers from BattleMetrics. Public listings can be delayed and do not include private or undiscoverable rooms.', 'community.featureDisabled': 'Feature disabled', 'community.sourceOnline': 'Source online', 'community.sourceUnknown': 'Cache/source pending', 'community.proxyConfigured': 'China-access proxy configured', 'community.stale': 'The upstream source is unavailable. Showing cached data from {seconds} seconds ago.', 'community.cacheError': 'Results are available, but the persistent cache could not be written; stale fallback may be unavailable after a restart.', 'community.serverName': 'Server name', 'community.searchPlaceholder': 'Name or keyword', 'community.scope': 'Scope', 'community.china': 'China', 'community.global': 'Global', 'community.status': 'Status', 'community.online': 'Online', 'community.offline': 'Offline', 'community.all': 'All', 'community.password': 'Password', 'community.any': 'Any', 'community.noPassword': 'No password', 'community.hasPassword': 'Password protected', 'community.minPlayers': 'Minimum players', 'community.maxPlayers': 'Maximum players', 'community.version': 'Version', 'community.versionPlaceholder': 'e.g. 0.6.4', 'community.refreshSource': 'Refresh source', 'community.discoverable': 'Discoverable servers', 'community.results': '{count} results · updated {time}', 'community.reading': 'Reading public directory', 'community.page': 'Page {page} of {pages}', 'community.querying': 'Searching community servers…', 'community.versionUnknown': 'Unknown version', 'community.publicJoin': 'Public', 'community.emptyTitle': 'No matching servers', 'community.emptyDescription': 'Try broader player, version, or password filters.', 'community.source': 'Source: BattleMetrics · discoverable community servers only', 'community.previous': 'Previous page', 'community.next': 'Next page', 'community.country': 'Country/region', 'community.updatedAt': 'Data updated', 'community.copy': 'Copy {address}', 'community.copied': 'Copied {address}', 'community.address': 'Address: {address}', 'community.notUpdated': 'Not updated yet',
-@@ -269,7 +270,7 @@ const enUS: Record<TranslationKey, string> = {
+@@ -269,7 +271,7 @@ const enUS: Record<TranslationKey, string> = {
    'settings.proxySave': 'Save proxy settings',
    'settings.proxyLoading': 'Loading proxy settings…',
    'settings.proxyInstallTitle': 'Public downloads & server updates',
@@ -9725,6 +11058,254 @@ index 4c9ff45aaceacddc0f28f4571653d78c8d03cd58..14ad43332b96a977ef305d0980a863ab
              </div>
  
              <div className="mt-4 grid grid-cols-2 gap-3 text-xs font-semibold">
+diff --git a/frontend/src/pages/StarterGift.tsx b/frontend/src/pages/StarterGift.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..00531f1ef96cfdc4c9a96494eca8161ea466add2
+--- /dev/null
++++ b/frontend/src/pages/StarterGift.tsx
+@@ -0,0 +1,242 @@
++import React, { useEffect, useMemo, useState } from 'react';
++import {
++  CheckSquare, Gift, LoaderCircle, PackagePlus, Plus, RefreshCw, RotateCcw, Save, Search, Square, Trash2,
++} from 'lucide-react';
++import { getErrorMessage } from '../api/client';
++import {
++  starterGiftApi,
++  type StarterGiftCatalogItem,
++  type StarterGiftConfig,
++  type StarterGiftItem,
++  type StarterGiftSnapshot,
++} from '../api/starterGift';
++
++const emptyConfig: StarterGiftConfig = {
++  enabled: false,
++  items: [],
++  pal_templates: [],
++  item_batch_size: 20,
++  template_batch_size: 5,
++  batch_delay_ms: 500,
++};
++
++const statusLabel = (status: string) => ({
++  pending: '等待发放', running: '正在分批发放', success: '发放完成', failed: '发放失败',
++}[status] || status);
++
++export const StarterGift: React.FC = () => {
++  const [snapshot, setSnapshot] = useState<StarterGiftSnapshot | null>(null);
++  const [config, setConfig] = useState<StarterGiftConfig>(emptyConfig);
++  const [itemSearch, setItemSearch] = useState('');
++  const [templateSearch, setTemplateSearch] = useState('');
++  const [busy, setBusy] = useState(false);
++  const [notice, setNotice] = useState('');
++
++  const load = async () => {
++    setBusy(true);
++    setNotice('');
++    try {
++      const next = await starterGiftApi.get();
++      setSnapshot(next);
++      setConfig(next.config);
++    } catch (error) {
++      setNotice(getErrorMessage(error));
++    } finally {
++      setBusy(false);
++    }
++  };
++
++  useEffect(() => { void load(); }, []);
++
++  const templateNames = useMemo(
++    () => (snapshot?.templates || []).map((item) => item.name).filter(Boolean),
++    [snapshot],
++  );
++  const visibleTemplates = useMemo(() => {
++    const query = templateSearch.trim().toLowerCase();
++    if (!query) return templateNames;
++    return templateNames.filter((name) => name.toLowerCase().includes(query));
++  }, [templateNames, templateSearch]);
++  const visibleItems = useMemo(() => {
++    const query = itemSearch.trim().toLowerCase();
++    const catalog = snapshot?.item_catalog || [];
++    if (!query) return catalog.slice(0, 80);
++    return catalog.filter((item) => `${item.id} ${item.name}`.toLowerCase().includes(query)).slice(0, 80);
++  }, [snapshot, itemSearch]);
++  const allSelected = templateNames.length > 0 && templateNames.every((name) => config.pal_templates.includes(name));
++
++  const updateItem = (index: number, patch: Partial<StarterGiftItem>) => {
++    setConfig((current) => ({
++      ...current,
++      items: current.items.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item),
++    }));
++  };
++
++  const addCatalogItem = (catalogItem: StarterGiftCatalogItem) => {
++    setConfig((current) => {
++      if (current.items.some((item) => item.item_id === catalogItem.id)) return current;
++      return { ...current, items: [...current.items, { item_id: catalogItem.id, count: 1 }] };
++    });
++  };
++
++  const save = async () => {
++    setBusy(true);
++    setNotice('');
++    try {
++      const next = await starterGiftApi.save(config);
++      setSnapshot(next);
++      setConfig(next.config);
++      setNotice('配置已保存。系统会保留已有玩家基线，只给之后首次出现的新玩家发放。');
++    } catch (error) {
++      setNotice(getErrorMessage(error));
++    } finally {
++      setBusy(false);
++    }
++  };
++
++  const retry = async (playerID: string) => {
++    setBusy(true);
++    setNotice('');
++    try {
++      await starterGiftApi.retry(playerID);
++      await load();
++      setNotice('已排队，将在下一次在线玩家检测时从未完成批次继续。');
++    } catch (error) {
++      setNotice(getErrorMessage(error));
++      setBusy(false);
++    }
++  };
++
++  const forget = async (playerID: string) => {
++    if (!window.confirm('重置该玩家的礼包记录？如果玩家仍在线，将等待其离线并重新进入后再发放。')) return;
++    setBusy(true);
++    setNotice('');
++    try {
++      await starterGiftApi.forget(playerID);
++      await load();
++      setNotice('记录已重置；玩家需要离线并重新进入后才会再次获得礼包。');
++    } catch (error) {
++      setNotice(getErrorMessage(error));
++      setBusy(false);
++    }
++  };
++
++  return (
++    <div className="page-shell">
++      <div className="page-titlebar">
++        <div>
++          <p className="eyebrow">New player onboarding</p>
++          <h1>新玩家初始礼包</h1>
++          <p>通过 PalDefender 给首次进入的新玩家分批发放物品和多个帕鲁模板。</p>
++        </div>
++        <button type="button" className="pp-button" onClick={() => void load()} disabled={busy}>
++          <RefreshCw size={15} />刷新
++        </button>
++      </div>
++
++      {notice && <div className="pp-notice">{notice}</div>}
++
++      <section className="pp-card">
++        <div className="pp-card-head">
++          <div>
++            <h2>发放策略</h2>
++            <p>第一次启用仅导入历史玩家基线，不会给当前或过去的老玩家补发。</p>
++          </div>
++          <Gift size={18} />
++        </div>
++        <label className="field-label">
++          <span><input type="checkbox" checked={config.enabled} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setConfig({ ...config, enabled: event.target.checked })} /> 启用自动发放</span>
++        </label>
++        <div className="content-grid three-column">
++          <label className="field-label">物品每批条目数<input type="number" min={1} max={100} value={config.item_batch_size} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setConfig({ ...config, item_batch_size: Number(event.target.value) })} /></label>
++          <label className="field-label">模板每批数量<input type="number" min={1} max={20} value={config.template_batch_size} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setConfig({ ...config, template_batch_size: Number(event.target.value) })} /></label>
++          <label className="field-label">批次间隔（毫秒）<input type="number" min={100} max={10000} step={100} value={config.batch_delay_ms} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setConfig({ ...config, batch_delay_ms: Number(event.target.value) })} /></label>
++        </div>
++      </section>
++
++      <div className="content-grid two-column">
++        <section className="pp-card">
++          <div className="pp-card-head">
++            <div><h2>初始物品</h2><p>已选择 {config.items.length} 种物品，可从 PalDefender 物品目录添加。</p></div>
++            <button type="button" className="pp-button" onClick={() => setConfig({ ...config, items: [...config.items, { item_id: '', count: 1 }] })}>
++              <Plus size={14} />手动添加
++            </button>
++          </div>
++          <label className="field-label">
++            搜索物品
++            <span className="relative">
++              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
++              <input className="pp-input pp-input--icon" value={itemSearch} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setItemSearch(event.target.value)} placeholder="名称或 ItemID" />
++            </span>
++          </label>
++          {itemSearch.trim() && (
++            <div className="source-list">
++              {visibleItems.map((item) => (
++                <button type="button" className="source-row text-left" key={item.id} onClick={() => addCatalogItem(item)}>
++                  <PackagePlus size={17} />
++                  <div className="source-copy"><strong>{item.name}</strong><span>{item.id}</span></div>
++                </button>
++              ))}
++            </div>
++          )}
++          <div className="source-list">
++            {config.items.map((item, index) => (
++              <div className="source-row" key={`${index}-${item.item_id}`}>
++                <div className="source-copy">
++                  <input aria-label="ItemID" placeholder="例如 Money" value={item.item_id} onChange={(event: React.ChangeEvent<HTMLInputElement>) => updateItem(index, { item_id: event.target.value })} />
++                  <input aria-label="数量" type="number" min={1} max={2147483647} value={item.count} onChange={(event: React.ChangeEvent<HTMLInputElement>) => updateItem(index, { count: Number(event.target.value) })} />
++                </div>
++                <button type="button" className="icon-danger" aria-label="删除物品" onClick={() => setConfig({ ...config, items: config.items.filter((_, itemIndex) => itemIndex !== index) })}><Trash2 size={15} /></button>
++              </div>
++            ))}
++          </div>
++        </section>
++
++        <section className="pp-card">
++          <div className="pp-card-head">
++            <div><h2>PalDefender 帕鲁模板</h2><p>已选择 {config.pal_templates.length}/{templateNames.length} 个模板。</p></div>
++            <button type="button" className="pp-button" disabled={templateNames.length === 0} onClick={() => setConfig({ ...config, pal_templates: allSelected ? [] : [...templateNames] })}>
++              {allSelected ? <CheckSquare size={15} /> : <Square size={15} />}{allSelected ? '取消全选' : '全选'}
++            </button>
++          </div>
++          {snapshot?.template_error && <div className="pp-notice">模板读取失败：{snapshot.template_error}</div>}
++          <label className="field-label">搜索模板<input value={templateSearch} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setTemplateSearch(event.target.value)} placeholder="模板名称" /></label>
++          <div className="source-list">
++            {visibleTemplates.map((name) => {
++              const checked = config.pal_templates.includes(name);
++              return (
++                <label key={name} className={`source-row ${checked ? 'active' : ''}`}>
++                  <input type="checkbox" checked={checked} onChange={() => setConfig({ ...config, pal_templates: checked ? config.pal_templates.filter((item) => item !== name) : [...config.pal_templates, name] })} />
++                  <div className="source-copy"><strong>{name}</strong></div>
++                </label>
++              );
++            })}
++          </div>
++        </section>
++      </div>
++
++      <section className="pp-card">
++        <div className="pp-card-head"><div><h2>发放记录</h2><p>每位玩家会冻结领取时的礼包计划；之后修改配置不会改变正在发放的批次。</p></div></div>
++        <div className="source-list">
++          {(snapshot?.grants || []).map((grant) => (
++            <article className="source-row" key={grant.player_id}>
++              <div className="source-copy">
++                <strong>{grant.nickname || grant.player_id}</strong>
++                <span>{statusLabel(grant.status)} · 物品 {grant.next_item}/{grant.item_total} · 模板 {grant.next_template}/{grant.template_total} · 尝试 {grant.attempts}</span>
++                {grant.last_error && <span className="candidate-error">{grant.last_error}</span>}
++              </div>
++              <div className="source-actions">
++                {grant.status === 'failed' && <button type="button" className="pp-button" disabled={busy} onClick={() => void retry(grant.player_id)}><RotateCcw size={14} />重试</button>}
++                <button type="button" className="icon-danger" aria-label="重置玩家礼包记录" disabled={busy} onClick={() => void forget(grant.player_id)}><Trash2 size={15} /></button>
++              </div>
++            </article>
++          ))}
++        </div>
++      </section>
++
++      <button type="button" className="pp-button accent wide" disabled={busy} onClick={() => void save()}>
++        {busy ? <LoaderCircle className="animate-spin" size={15} /> : <Save size={15} />}保存配置
++      </button>
++    </div>
++  );
++};
 diff --git a/frontend/src/pages/TaskQueue.tsx b/frontend/src/pages/TaskQueue.tsx
 index e77494bab84f08f05e4a1edfca8ae4669291db9c..e200798e70e96ec60210f1596f852f76b8fb3956 100644
 --- a/frontend/src/pages/TaskQueue.tsx
@@ -9788,7 +11369,7 @@ index e77494bab84f08f05e4a1edfca8ae4669291db9c..e200798e70e96ec60210f1596f852f76
  
        <section className="rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_2px_12px_-3px_rgba(15,23,42,0.02)] sm:p-6">
 diff --git a/frontend/src/routes.tsx b/frontend/src/routes.tsx
-index ac4307a4fcbfb7bf4516a16dafc25c039d76a633..e03a9f3a97db3dab44112447a250ba504af39b26 100644
+index ac4307a4fcbfb7bf4516a16dafc25c039d76a633..9dac36363539197281aa7c10298b46ef6d36de6f 100644
 --- a/frontend/src/routes.tsx
 +++ b/frontend/src/routes.tsx
 @@ -1,7 +1,7 @@
@@ -9796,21 +11377,24 @@ index ac4307a4fcbfb7bf4516a16dafc25c039d76a633..e03a9f3a97db3dab44112447a250ba50
  import {
    Activity, Archive, ClipboardList, Database, Dna, FolderArchive, Globe2, LayoutDashboard,
 -  ListTodo, Map as MapIcon, Puzzle, Settings as SettingsIcon, Shield, Sparkles,
-+  ListTodo, Map as MapIcon, PackageSearch, Puzzle, Settings as SettingsIcon, Shield, Sparkles,
++  Gift, ListTodo, Map as MapIcon, PackageSearch, Puzzle, Settings as SettingsIcon, Shield, Sparkles,
    UserCog, UserX, Users,
  } from 'lucide-react';
  import type { TranslationKey } from './i18n';
-@@ -24,6 +24,7 @@ const Pals = lazyPage(() => import('./pages/Pals'), 'Pals');
+@@ -24,6 +24,8 @@ const Pals = lazyPage(() => import('./pages/Pals'), 'Pals');
  const PalDefenderGM = lazyPage(() => import('./pages/PalDefenderGM'), 'PalDefenderGM');
  const Players = lazyPage(() => import('./pages/Players'), 'Players');
  const SaveSources = lazyPage(() => import('./pages/SaveSources'), 'SaveSources');
 +const Inventory = lazyPage(() => import('./pages/Inventory'), 'Inventory');
++const StarterGift = lazyPage(() => import('./pages/StarterGift'), 'StarterGift');
  const Security = lazyPage(() => import('./pages/Security'), 'Security');
  const Settings = lazyPage(() => import('./pages/Settings'), 'Settings');
  const Setup = lazyPage(() => import('./pages/Setup'), 'Setup');
-@@ -51,6 +52,7 @@ export const appRoutes: AppRoute[] = [
+@@ -50,7 +52,9 @@ export const appRoutes: AppRoute[] = [
+   { id: 'monitor', path: '/monitor', title: '实时监控', navLabel: '实时监控', titleKey: 'route.monitor', navGroup: 'workspace', icon: <Activity size={18} />, element: <Monitor /> },
    { id: 'community-servers', path: '/community-servers', title: '社区服务器', navLabel: '社区服务器', titleKey: 'route.communityServers', navGroup: 'workspace', icon: <Globe2 size={18} />, element: <CommunityServers /> },
    { id: 'player-center', path: '/player-center', title: '玩家中心', navLabel: '玩家中心', titleKey: 'route.playerCenter', navGroup: 'world', activePaths: ['/gm'], icon: <UserCog size={18} />, element: <PalDefenderGM /> },
++  { id: 'starter-gift', path: '/starter-gift', title: '新玩家礼包', navLabel: '新玩家礼包', titleKey: 'route.starterGift', navGroup: 'world', icon: <Gift size={18} />, element: <StarterGift /> },
    { id: 'save-sources', path: '/save-sources', title: '存档中心', navLabel: '存档中心', titleKey: 'route.saveSources', navGroup: 'world', icon: <FolderArchive size={18} />, element: <SaveSources /> },
 +  { id: 'global-inventory', path: '/inventory', title: '库存管理', navLabel: '库存管理', titleKey: 'route.inventory', navGroup: 'world', icon: <PackageSearch size={18} />, element: <Inventory /> },
    { id: 'world-archive', path: '/world', title: '世界档案', navLabel: '世界档案', titleKey: 'route.worldArchive', navGroup: 'world', activePaths: ['/players', '/guilds', '/bases'], icon: <Database size={18} />, element: <Players /> },
