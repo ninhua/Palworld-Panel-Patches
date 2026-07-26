@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.26`
+仓库版本：`v0.12.27`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -11,8 +11,8 @@
 上游项目：uitok/palworld-panel
 当前维护目标：v1.3.0
 bootstrap 源轨道：patches/bootstrap-v1.3.0
-稳定补丁版本：0.8.11
-候选状态：candidate / 未发布前 verified=false
+当前已发布稳定补丁：0.8.11
+下一稳定补丁候选：0.8.12 / 未发布前 verified=false
 ```
 
 `bootstrap-v1.3.0` 是不可变的自包含发布源轨道，拥有自己的 `source/`、`build/`、manifest 和许可文件；所有补丁应用、测试和构建均以官方 `v1.3.0` tag 为基线。`candidate-v1.3.0` 仅用于保存迁移失败或无变更工作区，可以不存在、被覆盖或由 Draft PR 更新，不再作为下一次发布的输入。只有完整 stable Workflow 通过后，Release manifest 才会写入 `mode=exact`、`target_version=v1.3.0` 和 `verified=true`。
@@ -56,17 +56,17 @@ new-player-starter-gift（stable 必需功能，新玩家初始物品与帕鲁�
 
 - 在现有 15 秒在线玩家采样后识别新身份，不增加独立高频轮询；
 - 启用时将玩家在线历史和当前服务器 save index 中的已有玩家写入基线，避免老玩家补发；如果现有存档无法安全索引则拒绝启用；
-- 配置 PalDefender 物品 ItemID、数量和多个帕鲁模板，模板支持全选；
-- 物品和帕鲁模板分别按可配置批大小发送，批次之间设置延迟，并使用单个串行 worker 限制瞬时压力；
+- 每个存档世界独立保存礼包配置、已见玩家、冻结计划和批次进度；新世界继承最新配置模板，但不会改写已有世界配置；
+- 物品可按分类或关键词筛选并点击多选、全选当前筛选；帕鲁模板同样支持搜索、多选和全选；物品与模板按可配置批大小通过每世界串行 worker 发送；
 - 每位玩家冻结一份领取计划并持久化批次进度；失败后暂停，管理员点击重试时从未完成位置继续；
-- 管理页面展示状态、进度、尝试次数和错误，可重试或重置；重置后必须先离线再进入，防止在线状态下立即重复发放；
+- 玩家中心提供“初始礼包”直达入口；页面内物品、模板、已选项和发放记录使用固定高度滚动区域；失败任务可重试或重置，重置后必须先离线再进入；
 - 依赖 PalDefender REST 与已有模板目录，不修改 Palworld 存档。
 
 `player-presence-history` 提供：
 
 - 后台复用现有 15 秒监控采样，不依赖玩家页面打开；
 - 从官方 Palworld REST `/players` 读取在线玩家，并按 PlayerUID/SteamID 合并身份；
-- 持久记录本次在线、累计在线、最近上线、最近下线和最近 20 次完整会话；
+- 按当前 `DedicatedServerName` 对应的 WorldID 独立记录本次在线、累计在线、最近上线、最近下线和最近 20 次完整会话；
 - 玩家列表显示本次/上次在线和累计时长，玩家详情显示时间点与最近会话；
 - REST 暂时不可用时保持上一状态，不把所有玩家误记为下线；
 - 下一次成功采样最多补记 60 秒，避免面板停机或网络中断形成虚假在线时长；
@@ -359,8 +359,9 @@ bash common/scripts/validate-repository.sh
 
 ```text
 目标上游：v1.3.0
-稳定补丁版本：0.8.11
-预期 Release：uitok-stable-v1.3.0-p0.8.11
+当前已发布稳定补丁：0.8.11
+下一稳定补丁候选：0.8.12
+预期 Release：uitok-stable-v1.3.0-p0.8.12
 ```
 
 `host-save-migrator` 使用随 Release 分发的 `palworld-uid-remap`。helper 现在以 `oodle` feature 构建，可解析 Palworld v1.0+ 的 `PlM`/Oodle `Level.sav`。执行迁移时保留受管导入源，若服务器正在运行则先停止，然后将迁移结果复制到 `Pal/Saved/SaveGames/0/<DedicatedServerName>`，原子更新 `Pal/Saved/Config/WindowsServer/GameUserSettings.ini`，并仅在迁移前处于运行状态时重新启动。helper 作为 overlay 附加文件分发，但不列为安装前必须已存在的 manifest 目标，以兼容旧安装器；旧部署或热更新只替换主二进制时，面板会从同版本 Release 包自举 helper 并按构建时 SHA-256 校验。离线环境可设置 `PALPANEL_UID_REMAPPER_BIN`。

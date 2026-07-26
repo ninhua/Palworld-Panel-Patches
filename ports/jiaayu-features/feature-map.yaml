@@ -140,7 +140,7 @@ features:
   - id: new-player-starter-gift
     reference_label: 新玩家初始礼包
     status: implemented-independently
-    patch_version: 0.8.10
+    patch_version: 0.8.12
     implementation: behavior-reimplementation
     source_paths: []
     target_paths:
@@ -148,7 +148,9 @@ features:
       - backend/internal/api/starter_gift.go
       - backend/internal/api/routes.go
       - backend/internal/monitor/player_presence.go
+      - backend/internal/playerpresence/scope.go
       - frontend/src/api/starterGift.ts
       - frontend/src/pages/StarterGift.tsx
+      - frontend/src/pages/PlayerCenter.tsx
       - frontend/src/routes.tsx
-    notes: Detects previously unseen players through the target project's existing presence sampler, baselines known players from presence history and the server save index, and sends configurable PalDefender item and Pal-template plans through a persistent serialized batch worker. It copies no Jiaayu source code and does not modify Palworld saves.
+    notes: Detects previously unseen players through the target project's existing presence sampler, resolves the active world from DedicatedServerName, and isolates presence sessions, starter-gift configuration, progress, and serialized workers by WorldID. New worlds inherit the latest configuration template without overwriting existing worlds. The page uses bounded categorized multi-select catalogs. It copies no Jiaayu source code and does not modify Palworld saves.

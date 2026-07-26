@@ -22,3 +22,4 @@ c250616d19bdb39cc39c67b5c9e5609720033e279d25374d8190bf658f14bad2  0020-fix-audit
 aee8e8e084e1b8dd4920aa571981e1ce501f15fee618de41dc66679b839fe58f  0022-add-host-save-migrator.patch
 2978a3d2a9c772c36039f2a7b70a2b61567623e52917b976e7e1fde4b1272e6c  0023-add-global-inventory-browser.patch
 ba2308aa003d6c97e4c4e453b7a05c3420a371b8bbdbd8b1a08a1f22ed64b085  0024-add-new-player-starter-gifts.patch
+c452b8aad01e8f5112802d144149bf2f03da05119d48fd88bcab91736d2372b8  0025-fix-starter-gift-ui-and-save-scope.patch

@@ -20,7 +20,7 @@
 
 ## 稳定版自动发布
 
-`automation/` 每天检查上游正式 Release，构建验证成功后直接创建稳定补丁 Release。不会创建 PR 或 Issue；失败时不发布。稳定版本匹配只使用 PalPanel 版本号，commit 仅保留用于源码追踪。
+`automation/` 每天检查上游正式 Release，构建验证成功后直接创建稳定补丁 Release。补丁迁移或 clean-room 验证被阻断时不发布，并创建或更新同版本 Issue；candidate 工作区成功持久化时同时创建或更新 Draft PR。稳定版本匹配只使用 PalPanel 版本号，commit 仅保留用于源码追踪。
 
 ## 当前稳定扩展
 

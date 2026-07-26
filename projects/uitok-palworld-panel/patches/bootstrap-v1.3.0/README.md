@@ -83,3 +83,14 @@ fallback. Sensitive keys and Bearer tokens are redacted before the existing
 - 重置记录会等待玩家离线再重新进入，避免当前在线状态触发重复礼包。
 - 状态保存在 PalPanel SQLite KV，不修改 Palworld 存档；实际物品和帕鲁写入通过 PalDefender REST 完成。
 
+## 0025 starter-gift UI and save scope
+
+- 优先从 `GameUserSettings.ini` 的 `DedicatedServerName` 解析活动 `SaveGames/0/<WorldID>`，仅在配置不可用时按 `Level.sav` 修改时间回退。
+- 在线累计时长、当前会话、最近上线/下线事件和最近会话列表按 WorldID 隔离。
+- 初始礼包配置、已见玩家、在线状态、重置标记、冻结计划和批次进度按同一 WorldID 隔离。
+- 新世界继承最新礼包配置模板；保存后形成独立配置，不修改其他已初始化世界。
+- 多世界环境不迁移旧全局历史，避免旧档污染新档；唯一世界升级时允许一次兼容迁移。
+- 已启用配置在新世界首次观察时把首位在线玩家视为新玩家并创建发放任务。
+- 发放 worker 按世界分别串行，世界切换不会阻塞另一世界的任务。
+- 玩家中心增加初始礼包入口；物品目录支持分类、搜索、点击多选和当前筛选全选/取消。
+- 物品、模板、已选物品和发放记录均使用固定高度滚动容器，避免大量条目无限拉伸页面。
