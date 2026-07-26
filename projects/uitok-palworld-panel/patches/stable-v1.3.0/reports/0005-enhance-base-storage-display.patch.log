@@ -15,14 +15,14 @@ $ git diff --check
 [exit=0]
 $ go test -run ^$ ./...
 ok  	palpanel/cmd/openapi-types	(cached) [no tests to run]
-ok  	palpanel/cmd/palpanel	0.034s [no tests to run]
+ok  	palpanel/cmd/palpanel	0.037s [no tests to run]
 ok  	palpanel/cmd/palpanel-launcher	(cached) [no tests to run]
 ok  	palpanel/internal/aitranslation	(cached) [no tests to run]
-ok  	palpanel/internal/api	0.032s [no tests to run]
+ok  	palpanel/internal/api	0.036s [no tests to run]
 ok  	palpanel/internal/appconfig	(cached) [no tests to run]
 ok  	palpanel/internal/astrbotclient	(cached) [no tests to run]
 ok  	palpanel/internal/auth	(cached) [no tests to run]
-ok  	palpanel/internal/breeding	0.038s [no tests to run]
+ok  	palpanel/internal/breeding	0.030s [no tests to run]
 ?   	palpanel/internal/buildinfo	[no test files]
 ok  	palpanel/internal/communityservers	(cached) [no tests to run]
 ok  	palpanel/internal/db	(cached) [no tests to run]
@@ -35,7 +35,7 @@ ok  	palpanel/internal/monitor	(cached) [no tests to run]
 ok  	palpanel/internal/networkproxy	(cached) [no tests to run]
 ok  	palpanel/internal/palconfig	(cached) [no tests to run]
 ok  	palpanel/internal/paldefender	(cached) [no tests to run]
-ok  	palpanel/internal/pallocalize	0.032s [no tests to run]
+ok  	palpanel/internal/pallocalize	0.029s [no tests to run]
 ok  	palpanel/internal/palrest	(cached) [no tests to run]
 ok  	palpanel/internal/saveindex	(cached) [no tests to run]
 ok  	palpanel/internal/scheduler	(cached) [no tests to run]
@@ -49,5 +49,5 @@ $ npm run lint
 > oxlint
 
 Found 0 warnings and 0 errors.
-Finished in 37ms on 132 files with 103 rules using 4 threads.
+Finished in 31ms on 132 files with 103 rules using 4 threads.
 [exit=0]

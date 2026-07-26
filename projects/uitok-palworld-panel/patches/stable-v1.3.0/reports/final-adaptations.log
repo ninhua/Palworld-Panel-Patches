@@ -1,5 +1,5 @@
-$ /opt/hostedtoolcache/Python/3.12.13/x64/bin/python3 /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/retarget-stable-source.py /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active v1.3.0 0.8.10
-Retargeted patch metadata to v1.3.0 / 0.8.10
+$ /opt/hostedtoolcache/Python/3.12.13/x64/bin/python3 /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/retarget-stable-source.py /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active v1.3.0 0.8.11
+Retargeted patch metadata to v1.3.0 / 0.8.11
 [exit=0]
 $ /opt/hostedtoolcache/Python/3.12.13/x64/bin/python3 /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/adapt-frontend-api-tests.py /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active
 已适配 Axios mock：frontend/src/api/bases.test.ts（5 处）

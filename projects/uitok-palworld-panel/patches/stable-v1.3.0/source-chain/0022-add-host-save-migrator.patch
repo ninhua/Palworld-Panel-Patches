@@ -1,9 +1,9 @@
 diff --git a/backend/internal/api/host_save_migration.go b/backend/internal/api/host_save_migration.go
 new file mode 100644
-index 0000000..9b47b4c
+index 0000000..8301879
 --- /dev/null
 +++ b/backend/internal/api/host_save_migration.go
-@@ -0,0 +1,446 @@
+@@ -0,0 +1,795 @@
 +package api
 +
 +import (
@@ -67,7 +67,27 @@ index 0000000..9b47b4c
 +	Verification any               `json:"verification"`
 +}
 +
-+var runHostMigrationHelper = runHostMigrationCommand
++var (
++	runHostMigrationHelper   = runHostMigrationCommand
++	hostMigrationServerState = func(s Server, ctx context.Context) (string, error) {
++		status, err := s.server.Status(ctx)
++		if err != nil {
++			return "", err
++		}
++		state := strings.ToLower(strings.TrimSpace(status.Container.Status))
++		if state == "" && !status.Container.Exists {
++			state = "not_found"
++		}
++		return state, nil
++	}
++	hostMigrationStopServer = func(s Server, ctx context.Context) error {
++		return s.server.Stop(ctx)
++	}
++	hostMigrationStartServer = func(s Server, ctx context.Context) error {
++		return s.server.Start(ctx)
++	}
++	hostMigrationCopyTree = copyHostMigrationTree
++)
 +
 +func (s Server) inspectSaveSourceImportDispatch(c *gin.Context) {
 +	input, claimed, err := readHostMigrationRequest(c)
@@ -189,17 +209,346 @@ index 0000000..9b47b4c
 +		fail(c, http.StatusBadGateway, "host_migration_output_invalid", "migration output does not contain Level.sav")
 +		return
 +	}
-+	created := db.SaveSource{ID: newID, Name: name, Kind: "import", Path: output, Active: false}
-+	if err := s.store.UpsertSaveSource(c.Request.Context(), created); err != nil {
++
++	activation, err := s.deployHostMigrationWorld(ctx, output, newID)
++	if err != nil {
 +		_ = os.RemoveAll(output)
++		fail(c, http.StatusConflict, "host_migration_activation_failed", err.Error())
++		return
++	}
++	rollback := func() {
++		rollbackCtx, rollbackCancel := context.WithTimeout(context.Background(), 2*time.Minute)
++		defer rollbackCancel()
++		_ = activation.rollback(s, rollbackCtx)
++		_ = os.RemoveAll(output)
++	}
++
++	created := db.SaveSource{ID: newID, Name: name, Kind: "import", Path: output, Active: false}
++	if err := s.store.UpsertSaveSource(ctx, created); err != nil {
++		rollback()
 +		fail(c, http.StatusInternalServerError, "host_migration_register_failed", err.Error())
 +		return
 +	}
-+	stored, err := s.store.GetSaveSource(c.Request.Context(), newID)
++	if err := s.store.ActivateSaveSource(ctx, "server"); err != nil {
++		_ = s.store.DeleteSaveSource(context.Background(), newID)
++		rollback()
++		fail(c, http.StatusInternalServerError, "host_migration_server_source_activate_failed", err.Error())
++		return
++	}
++	activation.commit()
++	s.saveIndex.SetSourcePath("")
++	s.saveIndex.Invalidate()
++	s.invalidateServerSaveIndex()
++	s.invalidateServerCaches()
++	stored, err := s.store.GetSaveSource(ctx, newID)
 +	if err == nil {
 +		created = stored
 +	}
-+	ok(c, gin.H{"source": created, "plan": execution.Plan, "verification": execution.Verification})
++	ok(c, gin.H{
++		"source": created,
++		"plan":   execution.Plan,
++		"verification": gin.H{
++			"uid_remap":                      execution.Verification,
++			"dedicated_server_name":          activation.DedicatedServerName,
++			"previous_dedicated_server_name": activation.PreviousDedicatedServerName,
++			"server_save_path":               activation.ServerSavePath,
++			"server_was_running":             activation.ServerWasRunning,
++			"server_restarted":               activation.ServerRestarted,
++		},
++	})
++}
++
++type hostMigrationActivation struct {
++	DedicatedServerName         string
++	PreviousDedicatedServerName string
++	ServerSavePath              string
++	ServerWasRunning            bool
++	ServerRestarted             bool
++	settingsPath                string
++	originalSettings            []byte
++	serverStopped               bool
++	settingsChanged             bool
++	savePublished               bool
++	rollbackPending             bool
++}
++
++func (s Server) deployHostMigrationWorld(ctx context.Context, sourcePath, migrationID string) (hostMigrationActivation, error) {
++	settingsPath := filepath.Join(s.cfg.ServerDirectory(), "Pal", "Saved", "Config", "WindowsServer", "GameUserSettings.ini")
++	if !pathWithin(s.cfg.ServerDirectory(), settingsPath) {
++		return hostMigrationActivation{}, errors.New("GameUserSettings.ini is outside the managed server directory")
++	}
++	originalSettings, err := os.ReadFile(settingsPath)
++	if err != nil {
++		return hostMigrationActivation{}, fmt.Errorf("read GameUserSettings.ini: %w", err)
++	}
++	worldName := hostMigrationWorldName(migrationID)
++	updatedSettings, previousName, err := replaceDedicatedServerName(originalSettings, worldName)
++	if err != nil {
++		return hostMigrationActivation{}, err
++	}
++
++	saveRoot := filepath.Join(s.cfg.ServerDirectory(), "Pal", "Saved", "SaveGames", "0")
++	if !pathWithin(s.cfg.ServerDirectory(), saveRoot) {
++		return hostMigrationActivation{}, errors.New("server save root is outside the managed server directory")
++	}
++	if err := os.MkdirAll(saveRoot, 0o750); err != nil {
++		return hostMigrationActivation{}, fmt.Errorf("create server save root: %w", err)
++	}
++	serverSavePath := filepath.Join(saveRoot, worldName)
++	if _, err := os.Lstat(serverSavePath); err == nil {
++		return hostMigrationActivation{}, fmt.Errorf("target server save already exists: %s", worldName)
++	} else if !errors.Is(err, os.ErrNotExist) {
++		return hostMigrationActivation{}, fmt.Errorf("inspect target server save: %w", err)
++	}
++
++	activation := hostMigrationActivation{
++		DedicatedServerName:         worldName,
++		PreviousDedicatedServerName: previousName,
++		ServerSavePath:              serverSavePath,
++		settingsPath:                settingsPath,
++		originalSettings:            originalSettings,
++		rollbackPending:             true,
++	}
++	failWithRollback := func(cause error) (hostMigrationActivation, error) {
++		rollbackCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
++		defer cancel()
++		if rollbackErr := activation.rollback(s, rollbackCtx); rollbackErr != nil {
++			return hostMigrationActivation{}, fmt.Errorf("%v; rollback failed: %w", cause, rollbackErr)
++		}
++		return hostMigrationActivation{}, cause
++	}
++
++	state, err := hostMigrationServerState(s, ctx)
++	if err != nil {
++		return hostMigrationActivation{}, fmt.Errorf("read server state: %w", err)
++	}
++	switch state {
++	case "running":
++		activation.ServerWasRunning = true
++	case "", "stopped", "exited", "created", "not_found", "not-found", "dead":
++	default:
++		return hostMigrationActivation{}, fmt.Errorf("server state %q is not safe for save switching", state)
++	}
++
++	// All writes under Pal/Saved happen only after the game server is stopped.
++	if activation.ServerWasRunning {
++		if err := hostMigrationStopServer(s, ctx); err != nil {
++			return hostMigrationActivation{}, fmt.Errorf("stop server before save switch: %w", err)
++		}
++		activation.serverStopped = true
++	}
++
++	temporaryPath := serverSavePath + ".palpanel-deploy"
++	_ = os.RemoveAll(temporaryPath)
++	if err := hostMigrationCopyTree(sourcePath, temporaryPath); err != nil {
++		_ = os.RemoveAll(temporaryPath)
++		return failWithRollback(fmt.Errorf("copy migrated save into server: %w", err))
++	}
++	if err := os.Rename(temporaryPath, serverSavePath); err != nil {
++		_ = os.RemoveAll(temporaryPath)
++		return failWithRollback(fmt.Errorf("publish migrated server save: %w", err))
++	}
++	activation.savePublished = true
++
++	if err := writeHostMigrationFileAtomic(settingsPath, updatedSettings); err != nil {
++		return failWithRollback(fmt.Errorf("write DedicatedServerName: %w", err))
++	}
++	activation.settingsChanged = true
++
++	if activation.ServerWasRunning {
++		if err := hostMigrationStartServer(s, ctx); err != nil {
++			return failWithRollback(fmt.Errorf("start server with migrated save: %w", err))
++		}
++		activation.serverStopped = false
++		activation.ServerRestarted = true
++	}
++	return activation, nil
++}
++
++func (activation *hostMigrationActivation) commit() {
++	activation.rollbackPending = false
++	activation.originalSettings = nil
++}
++
++func (activation *hostMigrationActivation) rollback(s Server, ctx context.Context) error {
++	if activation == nil || !activation.rollbackPending {
++		return nil
++	}
++	activation.rollbackPending = false
++	var failures []string
++	if activation.ServerWasRunning && activation.ServerRestarted {
++		if err := hostMigrationStopServer(s, ctx); err != nil {
++			// Do not rewrite the selected world or delete files while the migrated
++			// server may still be running. Leaving the new world intact is safer.
++			return fmt.Errorf("stop migrated server before rollback: %w", err)
++		}
++		activation.serverStopped = true
++	}
++	if activation.settingsChanged && len(activation.originalSettings) > 0 {
++		if err := writeHostMigrationFileAtomic(activation.settingsPath, activation.originalSettings); err != nil {
++			if activation.ServerWasRunning && activation.serverStopped {
++				if startErr := hostMigrationStartServer(s, ctx); startErr != nil {
++					return fmt.Errorf("restore GameUserSettings.ini: %v; restart migrated server also failed: %w", err, startErr)
++				}
++				activation.serverStopped = false
++			}
++			return fmt.Errorf("restore GameUserSettings.ini: %w", err)
++		}
++	}
++	if activation.savePublished && activation.ServerSavePath != "" {
++		if err := os.RemoveAll(activation.ServerSavePath); err != nil {
++			failures = append(failures, "remove migrated server save: "+err.Error())
++		}
++	}
++	if activation.ServerWasRunning && activation.serverStopped {
++		if err := hostMigrationStartServer(s, ctx); err != nil {
++			failures = append(failures, "restart original server save: "+err.Error())
++		} else {
++			activation.serverStopped = false
++		}
++	}
++	if len(failures) > 0 {
++		return errors.New(strings.Join(failures, "; "))
++	}
++	return nil
++}
++
++func hostMigrationWorldName(migrationID string) string {
++	digest := sha256.Sum256([]byte("palpanel-host-migration:" + strings.TrimSpace(migrationID)))
++	return strings.ToUpper(fmt.Sprintf("%x", digest[:16]))
++}
++
++func replaceDedicatedServerName(payload []byte, next string) ([]byte, string, error) {
++	next = strings.TrimSpace(next)
++	if len(next) != 32 {
++		return nil, "", errors.New("generated DedicatedServerName must contain 32 characters")
++	}
++	newline := "\n"
++	if bytes.Contains(payload, []byte("\r\n")) {
++		newline = "\r\n"
++	}
++	text := strings.ReplaceAll(string(payload), "\r\n", "\n")
++	lines := strings.Split(text, "\n")
++	matches := 0
++	previous := ""
++	for index, line := range lines {
++		trimmed := strings.TrimSpace(line)
++		if trimmed == "" || strings.HasPrefix(trimmed, ";") || strings.HasPrefix(trimmed, "#") {
++			continue
++		}
++		key, value, found := strings.Cut(trimmed, "=")
++		if !found || !strings.EqualFold(strings.TrimSpace(key), "DedicatedServerName") {
++			continue
++		}
++		matches++
++		previous = strings.TrimSpace(value)
++		prefixLength := len(line) - len(strings.TrimLeft(line, " \t"))
++		lines[index] = line[:prefixLength] + "DedicatedServerName=" + next
++	}
++	if matches == 0 {
++		return nil, "", errors.New("GameUserSettings.ini does not contain DedicatedServerName")
++	}
++	if matches > 1 {
++		return nil, "", errors.New("GameUserSettings.ini contains multiple DedicatedServerName entries")
++	}
++	if previous == "" {
++		return nil, "", errors.New("GameUserSettings.ini DedicatedServerName is empty")
++	}
++	updated := strings.Join(lines, newline)
++	return []byte(updated), previous, nil
++}
++
++func copyHostMigrationTree(source, destination string) error {
++	sourceInfo, err := os.Lstat(source)
++	if err != nil {
++		return err
++	}
++	if !sourceInfo.IsDir() || sourceInfo.Mode()&os.ModeSymlink != 0 {
++		return errors.New("migration source must be a regular directory")
++	}
++	if err := os.MkdirAll(destination, 0o750); err != nil {
++		return err
++	}
++	return filepath.Walk(source, func(path string, info os.FileInfo, walkErr error) error {
++		if walkErr != nil {
++			return walkErr
++		}
++		relative, err := filepath.Rel(source, path)
++		if err != nil {
++			return err
++		}
++		if relative == "." {
++			return nil
++		}
++		if relative == ".." || strings.HasPrefix(relative, ".."+string(os.PathSeparator)) {
++			return errors.New("migration source contains an unsafe path")
++		}
++		if info.Mode()&os.ModeSymlink != 0 || (!info.IsDir() && !info.Mode().IsRegular()) {
++			return fmt.Errorf("migration source contains unsupported file type: %s", relative)
++		}
++		target := filepath.Join(destination, relative)
++		if info.IsDir() {
++			return os.MkdirAll(target, 0o750)
++		}
++		if err := os.MkdirAll(filepath.Dir(target), 0o750); err != nil {
++			return err
++		}
++		input, err := os.Open(path)
++		if err != nil {
++			return err
++		}
++		output, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o640)
++		if err != nil {
++			_ = input.Close()
++			return err
++		}
++		_, copyErr := io.Copy(output, input)
++		closeOutputErr := output.Close()
++		closeInputErr := input.Close()
++		if copyErr != nil {
++			return copyErr
++		}
++		if closeOutputErr != nil {
++			return closeOutputErr
++		}
++		return closeInputErr
++	})
++}
++
++func writeHostMigrationFileAtomic(path string, payload []byte) error {
++	info, err := os.Stat(path)
++	if err != nil {
++		return err
++	}
++	temporary, err := os.CreateTemp(filepath.Dir(path), ".game-user-settings-*.tmp")
++	if err != nil {
++		return err
++	}
++	temporaryPath := temporary.Name()
++	complete := false
++	defer func() {
++		_ = temporary.Close()
++		if !complete {
++			_ = os.Remove(temporaryPath)
++		}
++	}()
++	if err := temporary.Chmod(info.Mode().Perm()); err != nil {
++		return err
++	}
++	if _, err := temporary.Write(payload); err != nil {
++		return err
++	}
++	if err := temporary.Sync(); err != nil {
++		return err
++	}
++	if err := temporary.Close(); err != nil {
++		return err
++	}
++	if err := os.Rename(temporaryPath, path); err != nil {
++		return err
++	}
++	complete = true
++	return nil
 +}
 +
 +func (s Server) hostMigrationSource(ctx context.Context, sourceID string) (db.SaveSource, error) {
@@ -452,10 +801,10 @@ index 0000000..9b47b4c
 +}
 diff --git a/backend/internal/api/host_save_migration_test.go b/backend/internal/api/host_save_migration_test.go
 new file mode 100644
-index 0000000..0b47fe9
+index 0000000..2552237
 --- /dev/null
 +++ b/backend/internal/api/host_save_migration_test.go
-@@ -0,0 +1,151 @@
+@@ -0,0 +1,350 @@
 +package api
 +
 +import (
@@ -464,6 +813,7 @@ index 0000000..0b47fe9
 +	"compress/gzip"
 +	"context"
 +	"crypto/sha256"
++	"errors"
 +	"fmt"
 +	"io"
 +	"net/http"
@@ -474,6 +824,8 @@ index 0000000..0b47fe9
 +	"testing"
 +
 +	"github.com/gin-gonic/gin"
++
++	"palpanel/internal/appconfig"
 +)
 +
 +func TestReadHostMigrationRequestClaimsMigrationPayload(t *testing.T) {
@@ -517,6 +869,202 @@ index 0000000..0b47fe9
 +	_, claimed, err := readHostMigrationRequest(context)
 +	if !claimed || err == nil {
 +		t.Fatalf("claimed=%v err=%v", claimed, err)
++	}
++}
++
++func TestReplaceDedicatedServerNamePreservesCRLF(t *testing.T) {
++	payload := []byte("[/Script/Pal.PalGameWorldSettings]\r\nDedicatedServerName=OLDWORLD\r\nOption=1\r\n")
++	next := "0123456789ABCDEF0123456789ABCDEF"
++	updated, previous, err := replaceDedicatedServerName(payload, next)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if previous != "OLDWORLD" {
++		t.Fatalf("previous = %q", previous)
++	}
++	if !bytes.Contains(updated, []byte("DedicatedServerName="+next+"\r\n")) {
++		t.Fatalf("updated settings = %q", updated)
++	}
++	if bytes.Contains(updated, []byte("\n")) && !bytes.Contains(updated, []byte("\r\n")) {
++		t.Fatalf("CRLF was not preserved: %q", updated)
++	}
++}
++
++func TestReplaceDedicatedServerNameRejectsAmbiguousSettings(t *testing.T) {
++	payload := []byte("DedicatedServerName=ONE\nDedicatedServerName=TWO\n")
++	_, _, err := replaceDedicatedServerName(payload, "0123456789ABCDEF0123456789ABCDEF")
++	if err == nil || !strings.Contains(err.Error(), "multiple") {
++		t.Fatalf("err = %v", err)
++	}
++}
++
++func TestDeployHostMigrationWorldStopsSwitchesAndRestarts(t *testing.T) {
++	root := t.TempDir()
++	serverDir := filepath.Join(root, "server")
++	settingsPath := filepath.Join(serverDir, "Pal", "Saved", "Config", "WindowsServer", "GameUserSettings.ini")
++	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
++		t.Fatal(err)
++	}
++	original := []byte("[/Script/Pal.PalGameWorldSettings]\nDedicatedServerName=ORIGINALWORLD\n")
++	if err := os.WriteFile(settingsPath, original, 0o640); err != nil {
++		t.Fatal(err)
++	}
++	source := filepath.Join(root, "source")
++	if err := os.MkdirAll(filepath.Join(source, "Players"), 0o755); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(filepath.Join(source, "Level.sav"), []byte("level"), 0o640); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(filepath.Join(source, "Players", "host.sav"), []byte("player"), 0o640); err != nil {
++		t.Fatal(err)
++	}
++
++	previousState := hostMigrationServerState
++	previousStop := hostMigrationStopServer
++	previousStart := hostMigrationStartServer
++	previousCopy := hostMigrationCopyTree
++	var calls []string
++	hostMigrationServerState = func(Server, context.Context) (string, error) { return "running", nil }
++	hostMigrationStopServer = func(Server, context.Context) error { calls = append(calls, "stop"); return nil }
++	hostMigrationStartServer = func(Server, context.Context) error { calls = append(calls, "start"); return nil }
++	hostMigrationCopyTree = func(source, destination string) error {
++		calls = append(calls, "copy")
++		return previousCopy(source, destination)
++	}
++	t.Cleanup(func() {
++		hostMigrationServerState = previousState
++		hostMigrationStopServer = previousStop
++		hostMigrationStartServer = previousStart
++		hostMigrationCopyTree = previousCopy
++	})
++
++	cfg := appconfig.Config{ServerDir: serverDir}.WithServerDirectoryState()
++	activation, err := (Server{cfg: cfg}).deployHostMigrationWorld(context.Background(), source, "save-fixture")
++	if err != nil {
++		t.Fatal(err)
++	}
++	if strings.Join(calls, ",") != "stop,copy,start" {
++		t.Fatalf("migration order = %v", calls)
++	}
++	if !activation.ServerWasRunning || !activation.ServerRestarted {
++		t.Fatalf("activation = %#v", activation)
++	}
++	settings, err := os.ReadFile(settingsPath)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if !bytes.Contains(settings, []byte("DedicatedServerName="+activation.DedicatedServerName)) {
++		t.Fatalf("settings = %q", settings)
++	}
++	wantRoot := filepath.Join(serverDir, "Pal", "Saved", "SaveGames", "0")
++	if filepath.Dir(activation.ServerSavePath) != wantRoot {
++		t.Fatalf("server save path = %q, want child of %q", activation.ServerSavePath, wantRoot)
++	}
++	if _, err := os.Stat(filepath.Join(activation.ServerSavePath, "Players", "host.sav")); err != nil {
++		t.Fatal(err)
++	}
++	activation.commit()
++}
++
++func TestDeployHostMigrationWorldRestartsOriginalServerWhenCopyFails(t *testing.T) {
++	root := t.TempDir()
++	serverDir := filepath.Join(root, "server")
++	settingsPath := filepath.Join(serverDir, "Pal", "Saved", "Config", "WindowsServer", "GameUserSettings.ini")
++	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
++		t.Fatal(err)
++	}
++	original := []byte("DedicatedServerName=ORIGINALWORLD\n")
++	if err := os.WriteFile(settingsPath, original, 0o640); err != nil {
++		t.Fatal(err)
++	}
++	source := filepath.Join(root, "source")
++	if err := os.MkdirAll(source, 0o755); err != nil {
++		t.Fatal(err)
++	}
++
++	previousState := hostMigrationServerState
++	previousStop := hostMigrationStopServer
++	previousStart := hostMigrationStartServer
++	previousCopy := hostMigrationCopyTree
++	var calls []string
++	hostMigrationServerState = func(Server, context.Context) (string, error) { return "running", nil }
++	hostMigrationStopServer = func(Server, context.Context) error { calls = append(calls, "stop"); return nil }
++	hostMigrationStartServer = func(Server, context.Context) error { calls = append(calls, "start"); return nil }
++	hostMigrationCopyTree = func(string, string) error { calls = append(calls, "copy"); return errors.New("copy failed") }
++	t.Cleanup(func() {
++		hostMigrationServerState = previousState
++		hostMigrationStopServer = previousStop
++		hostMigrationStartServer = previousStart
++		hostMigrationCopyTree = previousCopy
++	})
++
++	cfg := appconfig.Config{ServerDir: serverDir}.WithServerDirectoryState()
++	_, err := (Server{cfg: cfg}).deployHostMigrationWorld(context.Background(), source, "save-copy-failure")
++	if err == nil || !strings.Contains(err.Error(), "copy failed") {
++		t.Fatalf("err = %v", err)
++	}
++	if strings.Join(calls, ",") != "stop,copy,start" {
++		t.Fatalf("rollback order = %v", calls)
++	}
++	settings, readErr := os.ReadFile(settingsPath)
++	if readErr != nil {
++		t.Fatal(readErr)
++	}
++	if !bytes.Equal(settings, original) {
++		t.Fatalf("settings changed after failed copy: %q", settings)
++	}
++}
++
++func TestHostMigrationActivationRollbackRestoresOriginalWorld(t *testing.T) {
++	root := t.TempDir()
++	serverDir := filepath.Join(root, "server")
++	settingsPath := filepath.Join(serverDir, "Pal", "Saved", "Config", "WindowsServer", "GameUserSettings.ini")
++	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
++		t.Fatal(err)
++	}
++	original := []byte("DedicatedServerName=ORIGINALWORLD\n")
++	if err := os.WriteFile(settingsPath, original, 0o640); err != nil {
++		t.Fatal(err)
++	}
++	source := filepath.Join(root, "source")
++	if err := os.MkdirAll(filepath.Join(source, "Players"), 0o755); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(filepath.Join(source, "Level.sav"), []byte("level"), 0o640); err != nil {
++		t.Fatal(err)
++	}
++
++	previousState := hostMigrationServerState
++	previousStop := hostMigrationStopServer
++	previousStart := hostMigrationStartServer
++	hostMigrationServerState = func(Server, context.Context) (string, error) { return "stopped", nil }
++	hostMigrationStopServer = func(Server, context.Context) error { return nil }
++	hostMigrationStartServer = func(Server, context.Context) error { return nil }
++	t.Cleanup(func() {
++		hostMigrationServerState = previousState
++		hostMigrationStopServer = previousStop
++		hostMigrationStartServer = previousStart
++	})
++
++	cfg := appconfig.Config{ServerDir: serverDir}.WithServerDirectoryState()
++	server := Server{cfg: cfg}
++	activation, err := server.deployHostMigrationWorld(context.Background(), source, "save-rollback")
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := activation.rollback(server, context.Background()); err != nil {
++		t.Fatal(err)
++	}
++	settings, err := os.ReadFile(settingsPath)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if !bytes.Equal(settings, original) {
++		t.Fatalf("restored settings = %q", settings)
++	}
++	if _, err := os.Stat(activation.ServerSavePath); !errors.Is(err, os.ErrNotExist) {
++		t.Fatalf("migrated save still exists: %v", err)
 +	}
 +}
 +
@@ -868,11 +1416,11 @@ index 4f9816c..667e519 100644
 +        return;
 +      }
 +      const confirmed = window.confirm(
-+        `只读预检通过。\n\n源 UID：${plan.source_uid}\n目标 UID：${plan.target_uid}\n\n将生成新的导入存档，不覆盖原存档，也不会自动部署到服务器。继续吗？`,
++        `只读预检通过。\n\n源 UID：${plan.source_uid}\n目标 UID：${plan.target_uid}\n\n将生成迁移存档，并自动停止服务器、切换 DedicatedServerName；若服务器原来运行，将自动重新启动。继续吗？`,
 +      );
 +      if (!confirmed) { setNotice('已取消主机角色迁移。'); return; }
 +      const result = await saveSourcesApi.executeHostMigration(source.id, steamID.trim(), `${source.name}（主机迁移）`);
-+      setNotice(`迁移完成：${result.source.name}。请先激活并核对玩家、公会、基地和背包，再决定是否部署。地图探索 LocalData.sav 不在服务端迁移范围内。`);
++      setNotice(`迁移完成：${result.source.name}。已自动切换 GameUserSettings.ini 的 DedicatedServerName；服务器原为运行状态时已重新启动。地图探索 LocalData.sav 不在服务端迁移范围内。`);
 +      await refresh();
 +    } catch (error) {
 +      setNotice(getErrorMessage(error));
@@ -892,6 +1440,29 @@ index 4f9816c..667e519 100644
                      {!source.active && <button type="button" className="pp-button accent" onClick={() => action.mutate({ type: 'activate', id: source.id })}><CheckCircle2 size={14} />激活</button>}
                      {source.active && <button type="button" className="pp-button" onClick={() => action.mutate({ type: 'rebuild', id: source.id })}><RefreshCw size={14} />重建</button>}
                      {source.kind !== 'server' && !source.active && <button type="button" className="icon-danger" aria-label="删除存档" onClick={() => window.confirm('删除这个导入存档？') && action.mutate({ type: 'remove', id: source.id })}><Trash2 size={15} /></button>}
+diff --git a/tools/palworld-uid-remap/Cargo.toml b/tools/palworld-uid-remap/Cargo.toml
+index 7ce1ebb..f8d1eff 100644
+--- a/tools/palworld-uid-remap/Cargo.toml
++++ b/tools/palworld-uid-remap/Cargo.toml
+@@ -13,5 +13,8 @@ path = "src/lib.rs"
+ [[bin]]
+ name = "palworld-uid-remap"
+ path = "src/main.rs"
+-
++[features]
++default = ["oodle"]
++oodle = ["uesave/oodle"]
++
+ [dependencies]
+diff --git a/third_party/uesave/uesave/Cargo.toml b/third_party/uesave/uesave/Cargo.toml
+index a9f3411..85f3122 100644
+--- a/third_party/uesave/uesave/Cargo.toml
++++ b/third_party/uesave/uesave/Cargo.toml
+@@ -25,3 +25,3 @@ bitflags = "2.6.0"
+ tracing = { version = "0.1.37", optional = true }
+-ooz-rs = { git = "https://github.com/palworld-save-pal/ooz-rs", optional = true }
++ooz-rs = { git = "https://github.com/palworld-save-pal/ooz-rs", rev = "c197be7a4b49b2f37f339888da1c10ab87780c19", optional = true }
+ serde_json = { version = "1.0", features = ["float_roundtrip"], optional = true }
 diff --git a/tools/palworld-uid-remap/src/host.rs b/tools/palworld-uid-remap/src/host.rs
 new file mode 100644
 index 0000000..bbfc8a3
