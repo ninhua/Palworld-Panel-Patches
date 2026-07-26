@@ -117,3 +117,8 @@ SHA256SUMS
 ## 无变更目标
 
 补丁应用成功但最终没有源码差异时，各补丁标记为 `superseded`，candidate 状态写为 `no-change`。Workflow 持久化审计工作区后以 `no-release-needed` 成功结束，不生成空 merged patch 或空 Release。
+
+
+### Starter-gift template index contract
+
+`test-starter-gift-template-indexes.sh` validates optional JSON indexes stored beside PalDefender templates. Candidate index filenames contain `索引`, `清单`, `常用`, `毕业`, `index`, `catalog`, or `list`. Entries may live under `模板`, `清单`, `列表`, `templates`, or `items` and are matched by `文件名` / `file_name` or `模板名` / `template_name`. Index data enriches display and filtering only; the template file's own `PalID` remains authoritative.

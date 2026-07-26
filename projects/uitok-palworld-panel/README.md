@@ -24,7 +24,7 @@
 
 ## 当前稳定扩展
 
-`new-player-starter-gift` 基于玩家在线历史和服务器 save index 识别新玩家，通过 PalDefender 分批发放可配置物品与帕鲁模板，并持久化每位玩家的进度；页面提供侧栏入口、物品/模板图标、精细分类、Tab 工作区、行内数量编辑和固定保存摘要；模板帕鲁名称与头像读取 JSON 内 `PalID`，不再从文件名推断；单项选择不会改变当前列表顺序或滚动位置。
+`new-player-starter-gift` 基于玩家在线历史和服务器 save index 识别新玩家，通过 PalDefender 分批发放可配置物品与帕鲁模板，并持久化每位玩家的进度；页面提供侧栏入口、物品/模板图标、精细分类、Tab 工作区、行内数量编辑和固定保存摘要；模板帕鲁身份与头像读取模板 JSON 内 `PalID`，同目录可选索引 JSON 按文件名补充分类、中英文名称和索引筛选，未命中索引时显示文件名；单项选择不会改变当前列表顺序或滚动位置。
 
 `unattended-inventory-delta` 复用玩家在线采样和全服库存索引，按 WorldID 记录至少 5 分钟的无人时段及物品正向净变化；采样中断时重建基线，页面明确该指标不等同于生产量。
 `global-inventory-browser` 的页面路径为 `/inventory`，左侧入口位于“存档管理工具 → 库存管理”；`unattended-inventory-delta` 状态卡显示在该页面顶部。

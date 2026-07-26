@@ -134,3 +134,6 @@ fallback. Sensitive keys and Bearer tokens are redacted before the existing
 
 `0031-read-starter-gift-template-pal-id.patch` keeps the template filename as the delivery key but reads the displayed Pal identity from the template JSON `PalID`. The API also exposes the localized Pal name, optional nickname and level, and a per-template parse error. Template reads are bounded to 1 MiB and reject traversal, symlinks, non-regular files, and non-JSON extensions.
 
+## 0032 starter-gift template indexes
+
+`0032-read-starter-gift-template-indexes.patch` reads optional index/list JSON files from the PalDefender Templates directory. Index entries match templates by `文件名` or `模板名`, enrich category plus Chinese/English display names, and expose each index file as a frontend filter. The template JSON `PalID` remains authoritative. Templates without an index match fall back to their filename, and detected index files are excluded from delivery choices.
