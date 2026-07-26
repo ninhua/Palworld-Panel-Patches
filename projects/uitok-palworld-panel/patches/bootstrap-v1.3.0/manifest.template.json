@@ -40,5 +40,5 @@
     "new-player-starter-gift",
     "unattended-inventory-delta"
   ],
-  "notes": "Self-contained v1.3.0 stable source track. Retains Oodle/PlM host-save migration deployment, WorldID-scoped presence and starter gifts, the redesigned starter-gift workspace, WorldID-scoped unattended inventory positive-delta tracking, and a visible Sidebar entry for the global inventory page."
+  "notes": "Self-contained v1.3.0 stable source track. Retains Oodle/PlM host-save migration deployment, WorldID-scoped presence and starter gifts, the redesigned starter-gift workspace with stable selection ordering, WorldID-scoped unattended inventory positive-delta tracking, and a visible Sidebar entry for the global inventory page."
 }

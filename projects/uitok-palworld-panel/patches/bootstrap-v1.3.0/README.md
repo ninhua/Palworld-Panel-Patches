@@ -116,3 +116,9 @@ fallback. Sensitive keys and Bearer tokens are redacted before the existing
 - 菜单顺序为存档中心、库存管理、帕鲁仓库、配种实验室、实时地图。
 - 仅修复导航入口，不修改库存 API、无人时段状态机或存档数据。
 
+## 0029 starter-gift selection scroll
+
+- 物品与帕鲁模板列表按名称保持稳定顺序，不再把刚选中的条目移动到列表顶部。
+- 点击单项后内部滚动容器保持当前位置，便于连续选择相邻条目。
+- “只看已选”仍按选中状态过滤，但普通列表的排序不依赖选中状态。
+- 不修改礼包配置结构、发放协议、WorldID 隔离或 Palworld 存档。
