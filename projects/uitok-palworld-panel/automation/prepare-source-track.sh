@@ -195,14 +195,14 @@ for path in "${previous_dir}/manifest.json" "${previous_dir}/SHA256SUMS"; do
 done
 verify_asset manifest.json
 
-mapfile -t previous_values < <(
+previous_values_output=""
+if ! previous_values_output="$(
 python3 - \
     "${previous_dir}/manifest.json" \
-    "${previous_tag}" \
-    "${required_features_json}" <<'PY'
+    "${previous_tag}" <<'PY'
 from pathlib import Path
 import json, re, sys
-manifest_path, tag, required_json = sys.argv[1:]
+manifest_path, tag = sys.argv[1:]
 manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
 match = re.fullmatch(r"uitok-stable-(v\d+\.\d+\.\d+)-p(\d+\.\d+\.\d+)", tag)
 if not match:
@@ -216,17 +216,21 @@ if compatibility.get("target_version") != target:
 if compatibility.get("mode") != "exact" or compatibility.get("verified") is not True:
     raise SystemExit("上一个稳定 Release 未标记 exact / verified")
 features = manifest.get("features")
-required = json.loads(required_json)
-if not isinstance(features, list) or not all(isinstance(item, str) for item in features):
+if not isinstance(features, list) or not all(isinstance(item, str) and item for item in features):
     raise SystemExit("上一个稳定 Release manifest.features 格式错误")
-missing = sorted(set(required) - set(features))
-if missing:
-    raise SystemExit("上一个稳定 Release 缺少基础必需功能：" + ", ".join(missing))
 print(target)
 print(patch)
 print(json.dumps(features, ensure_ascii=False))
 PY
-)
+)"; then
+    exit 1
+fi
+previous_values=()
+mapfile -t previous_values <<<"${previous_values_output}"
+if (( ${#previous_values[@]} != 3 )); then
+    echo "无法解析上一个稳定 Release 元数据：期望 3 行，实际 ${#previous_values[@]} 行" >&2
+    exit 1
+fi
 previous_target="${previous_values[0]}"
 previous_patch="${previous_values[1]}"
 previous_features_json="${previous_values[2]}"

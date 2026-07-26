@@ -82,10 +82,56 @@ grep -Fq 'previous-stable-release' "${work}/derived-output/derivation.json"
 cat >"${candidate}/track.json" <<'JSON'
 {"schema_version":2,"target_version":"v1.3.0","status":"candidate","source_mode":"self-contained"}
 JSON
+# New required features belong to the candidate target. An older stable Release
+# is a migration source and is not required to advertise features introduced
+# after that Release.
+python3 - "${automation}/config.json" "${candidate}/manifest.template.json" <<'PY'
+from pathlib import Path
+import json, sys
+config_path, manifest_path = map(Path, sys.argv[1:])
+config = json.loads(config_path.read_text())
+config["required_features"].append("unattended-inventory-delta")
+config_path.write_text(json.dumps(config, indent=2) + "\n")
+manifest = json.loads(manifest_path.read_text())
+manifest["features"].append("unattended-inventory-delta")
+manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+PY
 "${automation}/prepare-source-track.sh" \
   "${work}/newer-bootstrap-output" "${candidate}" "${release}" "uitok-stable-v1.2.3-p0.8.1"
 test -s "${work}/newer-bootstrap-output/source/0001.patch"
 test ! -e "${work}/newer-bootstrap-output/source/0002.patch"
 grep -Fq 'bootstrap-target-newer-than-previous-stable' "${work}/newer-bootstrap-output/derivation.json"
+grep -Fq 'unattended-inventory-delta' "${work}/newer-bootstrap-output/manifest.template.json"
+
+# A malformed previous manifest must fail with its real validation message, not
+# continue into an empty mapfile result and crash under set -u.
+bad_release="${work}/bad-release"
+cp -a "${release}" "${bad_release}"
+python3 - "${bad_release}/manifest.json" <<'PY'
+from pathlib import Path
+import json, sys
+path = Path(sys.argv[1])
+data = json.loads(path.read_text())
+data["patch_version"] = "9.9.9"
+path.write_text(json.dumps(data, indent=2) + "\n")
+PY
+(
+  cd "${bad_release}"
+  {
+    sha256sum manifest.json | sed 's/  / */'
+    sha256sum uitok-palworld-panel_stable-v1.2.3_patch-0.8.1_source.tar.gz
+  } >SHA256SUMS
+)
+if "${automation}/prepare-source-track.sh" \
+  "${work}/bad-output" "${candidate}" "${bad_release}" "uitok-stable-v1.2.3-p0.8.1" \
+  >"${work}/bad.stdout" 2>"${work}/bad.stderr"; then
+  echo "malformed previous manifest unexpectedly succeeded" >&2
+  exit 1
+fi
+grep -Fq 'manifest.patch_version 与 tag 不一致' "${work}/bad.stderr"
+if grep -Fq 'unbound variable' "${work}/bad.stderr"; then
+  echo "prepare-source-track exposed an unbound array access" >&2
+  exit 1
+fi
 
 echo "prepare-source-track v2 regression tests passed."

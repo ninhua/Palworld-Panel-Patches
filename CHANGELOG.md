@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.12.29-hotfix1
+
+### Fixed
+
+- 修复 `prepare-source-track.sh` 错误要求较旧 stable Release 预先声明当前候选新增的 required feature，导致 `unattended-inventory-delta` 在进入新版 bootstrap 选择逻辑前被拒绝。
+- 上一个 stable Release 现在只需提供合法的 exact/verified manifest；其已有功能仍由后续“派生轨道不得静默丢失”检查保护，当前候选的 required features 继续由 `finalize_track` 强制验证。
+- 修复 Python 元数据校验失败后 `mapfile` 得到空数组、随后在 `set -u` 下访问 `previous_values[0]` 产生 `unbound variable`，掩盖原始校验错误的问题。
+
+### Validation
+
+- 扩展 `test-prepare-source-track-v2.sh`：验证旧 Release 缺少新候选功能时仍会选择更新的 bootstrap；验证非法旧 manifest 返回真实错误且不再触发空数组崩溃。
+- 更新 stable automation 历史 Release 夹具：bootstrap 声明当前 required feature，旧 Release 继续保留发布时的功能集合。
+- stable patch 候选仍为 `0.8.14`。
+
 ## v0.12.29
 
 ### Added
