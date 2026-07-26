@@ -155,3 +155,18 @@ features:
       - frontend/src/pages/PlayerCenter.tsx
       - frontend/src/routes.tsx
     notes: Detects previously unseen players through the target project's existing presence sampler, resolves the active world from DedicatedServerName, and isolates presence sessions, starter-gift configuration, progress, and serialized workers by WorldID. New worlds inherit the latest configuration template without overwriting existing worlds. The page uses a sidebar entry, tabbed workspaces, local item icons, parsed Pal template portraits, refined categories, inline quantities, and a sticky save summary. It copies no Jiaayu source code and does not modify Palworld saves.
+  - id: unattended-inventory-delta
+    reference_label: 无人时段库存净增加
+    status: implemented-independently
+    patch_version: 0.8.14
+    implementation: behavior-reimplementation
+    source_paths: []
+    target_paths:
+      - backend/internal/unattendedinventory/state.go
+      - backend/internal/unattendedinventory/saveindex.go
+      - backend/internal/monitor/player_presence.go
+      - backend/internal/api/unattended_inventory.go
+      - backend/internal/api/global_inventory.go
+      - frontend/src/api/inventory.ts
+      - frontend/src/pages/Inventory.tsx
+    notes: Reuses the target project's 15-second player presence sampler and read-only global save index, requires a five-minute no-player interval, resets after observation gaps, stores state per WorldID, and reports only positive inventory net changes. It copies no Jiaayu source code and does not modify Palworld saves.

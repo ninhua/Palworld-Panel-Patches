@@ -218,6 +218,15 @@
         "0025-fix-starter-gift-ui-and-save-scope.patch"
       ],
       "validation_checkpoint": true
+    },
+    {
+      "file": "0027-add-unattended-inventory-delta.patch",
+      "feature": "unattended-inventory-delta",
+      "depends_on": [
+        "0018-add-player-presence-history.patch",
+        "0023-add-global-inventory-browser.patch"
+      ],
+      "validation_checkpoint": true
     }
   ]
 }

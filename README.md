@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.28`
+仓库版本：`v0.12.29`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -11,8 +11,8 @@
 上游项目：uitok/palworld-panel
 当前维护目标：v1.3.0
 bootstrap 源轨道：patches/bootstrap-v1.3.0
-当前已发布稳定补丁：0.8.12
-下一稳定补丁候选：0.8.13 / 未发布前 verified=false
+当前已发布稳定补丁：0.8.13
+下一稳定补丁候选：0.8.14 / 未发布前 verified=false
 ```
 
 `bootstrap-v1.3.0` 是不可变的自包含发布源轨道，拥有自己的 `source/`、`build/`、manifest 和许可文件；所有补丁应用、测试和构建均以官方 `v1.3.0` tag 为基线。`candidate-v1.3.0` 仅用于保存迁移失败或无变更工作区，可以不存在、被覆盖或由 Draft PR 更新，不再作为下一次发布的输入。只有完整 stable Workflow 通过后，Release manifest 才会写入 `mode=exact`、`target_version=v1.3.0` 和 `verified=true`。
@@ -50,6 +50,7 @@ player-presence-history（stable 必需功能，迁移或构建失败时禁止�
 host-save-migrator（stable 必需功能）
 global-inventory-browser（stable 必需功能，只读全服库存聚合）
 new-player-starter-gift（stable 必需功能，新玩家初始物品与帕鲁模板分批发放）
+unattended-inventory-delta（stable 必需功能，无人时段库存正向净变化）
 ```
 
 `new-player-starter-gift` 提供：
@@ -63,6 +64,16 @@ new-player-starter-gift（stable 必需功能，新玩家初始物品与帕鲁�
 - 每位玩家冻结一份领取计划并持久化批次进度；失败后暂停，管理员点击重试时从未完成位置继续；
 - 页面顶部显示当前 WorldID、启用状态、礼包内容和任务摘要；底部固定操作栏汇总未保存修改并提供撤销/保存；失败任务可重试或重置，重置后必须先离线再进入；
 - 依赖 PalDefender REST 与已有模板目录，不修改 Palworld 存档。
+
+`unattended-inventory-delta` 提供：
+
+- 复用现有 15 秒玩家在线采样，不增加新的高频轮询；
+- 当当前服务器世界无人在线时，从只读 save index 建立全服库存基线，并持续计算物品正向净变化；
+- 无人时段至少持续 5 分钟才保留，短暂断线或重连不会生成误导记录；
+- REST 在线状态、面板采样或存档索引中断超过 60 秒时重建基线，避免把停机时间计入时长或库存差值；
+- 状态、基线和最近一次完整结果按 WorldID 独立保存在 PalPanel SQLite KV 中；导入存档不参与实时统计；
+- 库存页面显示当前/最近一次无人时段、持续时间、有效门槛、索引状态和净增加最多的物品；
+- 结果只表示全服库存正向净变化，不等同于据点生产量，不修改 Palworld 存档。
 
 `player-presence-history` 提供：
 
