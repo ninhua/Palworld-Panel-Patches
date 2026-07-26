@@ -1,8 +1,8 @@
 {
   "schema_version": 2,
   "target_version": "v1.3.0",
-  "generated_at": "2026-07-26T14:30:22Z",
-  "state": "released",
+  "generated_at": "2026-07-26T16:49:43Z",
+  "state": "releasable",
   "required_features": [
     "base-custom-names",
     "global-inventory-browser",
@@ -803,13 +803,35 @@
       "log": "reports/0027-add-unattended-inventory-delta.patch.log",
       "validated_at_checkpoint": "0027-add-unattended-inventory-delta.patch",
       "included_in_merged": true
+    },
+    {
+      "order": 28,
+      "file": "0028-fix-global-inventory-sidebar-entry.patch",
+      "sha256": "e4547494989615ad50382fc54f40f06c860e9fe02e3fd87bfcd37d86b3d22a8f",
+      "feature": "global-inventory-browser",
+      "required": true,
+      "depends_on": [
+        "0023-add-global-inventory-browser.patch",
+        "0026-redesign-starter-gift-ui.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "frontend/src/components/layout/Sidebar.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0028-fix-global-inventory-sidebar-entry.patch.log",
+      "validated_at_checkpoint": "0028-fix-global-inventory-sidebar-entry.patch",
+      "included_in_merged": true
     }
   ],
   "adaptations": [
     {
       "name": "retarget-stable-source",
       "status": "applied",
-      "details": "Retargeted patch metadata to v1.3.0 / 0.8.14"
+      "details": "Retargeted patch metadata to v1.3.0 / 0.8.15"
     },
     {
       "name": "frontend-axios-test-fixture-adapter",
@@ -819,11 +841,11 @@
   ],
   "summary": {
     "incompatible": 0,
-    "adapted": 1,
-    "blocked": 0,
-    "compatible": 26,
     "pending": 0,
-    "superseded": 0
+    "adapted": 1,
+    "superseded": 0,
+    "compatible": 27,
+    "blocked": 0
   },
   "excluded_features": [],
   "effective_features": [
@@ -844,8 +866,8 @@
     "unattended-inventory-delta"
   ],
   "merged_patch": {
-    "file": "merged/stable-v1.3.0-patch-0.8.14.patch",
-    "sha256": "57c993da3d0483eedfba1a52d8c3134c83d2dde48e1c2fd75620cbb8e1baa5d9",
+    "file": "merged/stable-v1.3.0-patch-0.8.15.patch",
+    "sha256": "7a6650e28ca553d2a64c8231136d364a30a2fce954833e04a546a7ebc8d178d4",
     "base_commit": "3c8d698abf1d9c4e271e3e62dcc736960f27e8eb"
   },
   "verified": true,

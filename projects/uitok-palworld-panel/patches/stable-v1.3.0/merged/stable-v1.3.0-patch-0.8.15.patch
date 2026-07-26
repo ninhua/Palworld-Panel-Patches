@@ -3053,7 +3053,7 @@ index 0000000000000000000000000000000000000000..2552237b4273eb63b13cef50efc469f7
 +}
 diff --git a/backend/internal/api/patch_info.go b/backend/internal/api/patch_info.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..e627cfe0451acae5a8101dc3c72260110215d873
+index 0000000000000000000000000000000000000000..361eac966a243bc0201f67eec40eaa97b6a163ac
 --- /dev/null
 +++ b/backend/internal/api/patch_info.go
 @@ -0,0 +1,38 @@
@@ -3069,7 +3069,7 @@ index 0000000000000000000000000000000000000000..e627cfe0451acae5a8101dc3c7226011
 +	patchSourceRepository = "uitok/palworld-panel"
 +	patchSourceRef        = "v1.3.0"
 +	patchTargetVersion    = "v1.3.0"
-+	patchVersion          = "0.8.14"
++	patchVersion          = "0.8.15"
 +	patchRepository       = "ninhua/Palworld-Panel-Patches"
 +)
 +
@@ -8874,7 +8874,7 @@ index 0000000000000000000000000000000000000000..ff5e26f267e5edfbf00c452c85273ff5
 +	}
 +}
 diff --git a/docs/openapi.yaml b/docs/openapi.yaml
-index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..655aff9237d7a13c3b8b368b26d058beb63671e4 100644
+index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..f438e22af058d5c125087b2dea8bc61844ef9c35 100644
 --- a/docs/openapi.yaml
 +++ b/docs/openapi.yaml
 @@ -135,6 +135,11 @@ x-player-inventory: &playerInventory
@@ -9469,7 +9469,7 @@ index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..655aff9237d7a13c3b8b368b26d058be
 +          type: object
 +          required: [version, repository, features]
 +          properties:
-+            version: {type: string, const: 0.8.14}
++            version: {type: string, const: 0.8.15}
 +            repository: {type: string, const: ninhua/Palworld-Panel-Patches}
 +            features:
 +              type: array
@@ -10974,18 +10974,20 @@ index 6231b865a2600d9e19d2ce3bcafe7006dce91140..7ba56de42df4c1166b26fdc89020f4ef
 +    ),
  };
 diff --git a/frontend/src/components/layout/Sidebar.tsx b/frontend/src/components/layout/Sidebar.tsx
-index 45d82cd8bcd26eee514aed9af541bd6ea37201c4..82a81b6929a60016b7e1d5fcc7bc1922ecce1889 100644
+index 45d82cd8bcd26eee514aed9af541bd6ea37201c4..c399cd45b4c05f07888287a899e1ca0240271dc2 100644
 --- a/frontend/src/components/layout/Sidebar.tsx
 +++ b/frontend/src/components/layout/Sidebar.tsx
-@@ -38,7 +38,7 @@ const sidebarGroups: Array<{ id: string; titleKey: TranslationKey; entries: Side
+@@ -38,8 +38,8 @@ const sidebarGroups: Array<{ id: string; titleKey: TranslationKey; entries: Side
      id: 'world',
      titleKey: 'nav.worldGroup',
      entries: [
 -      { id: 'players-world', labelKey: 'nav.playersWorld', routeIDs: ['player-center', 'world-archive'] },
+-      { id: 'saves-breeding', labelKey: 'nav.saveTools', routeIDs: ['save-sources', 'pal-inventory', 'breeding', 'live-map'] },
 +      { id: 'players-world', labelKey: 'nav.playersWorld', routeIDs: ['player-center', 'starter-gift', 'world-archive'] },
-       { id: 'saves-breeding', labelKey: 'nav.saveTools', routeIDs: ['save-sources', 'pal-inventory', 'breeding', 'live-map'] },
++      { id: 'saves-breeding', labelKey: 'nav.saveTools', routeIDs: ['save-sources', 'global-inventory', 'pal-inventory', 'breeding', 'live-map'] },
        { id: 'mods', labelKey: 'nav.mods', routeIDs: ['mods'] },
      ],
+   },
 diff --git a/frontend/src/i18n/index.tsx b/frontend/src/i18n/index.tsx
 index c770ee6b05ef5c99bfb3f60ea43a75aeb51e15df..079f9aaf19ded507ba681be44722971ddf900c55 100644
 --- a/frontend/src/i18n/index.tsx

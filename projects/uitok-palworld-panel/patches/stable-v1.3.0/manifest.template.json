@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "uitok-palworld-panel",
-  "patch_version": "0.8.14",
+  "patch_version": "0.8.15",
   "patch_type": "source-build",
   "upstream": {
     "repository": "uitok/palworld-panel",
@@ -40,5 +40,5 @@
     "new-player-starter-gift",
     "unattended-inventory-delta"
   ],
-  "notes": "Self-contained v1.3.0 stable source track. Retains Oodle/PlM host-save migration deployment, WorldID-scoped presence and starter gifts, the redesigned starter-gift workspace, and WorldID-scoped unattended inventory positive-delta tracking with a five-minute qualification window."
+  "notes": "Self-contained v1.3.0 stable source track. Retains Oodle/PlM host-save migration deployment, WorldID-scoped presence and starter gifts, the redesigned starter-gift workspace, WorldID-scoped unattended inventory positive-delta tracking, and a visible Sidebar entry for the global inventory page."
 }
