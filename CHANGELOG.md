@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.12.30
+
+### Fixed
+
+- 新增 `0028-fix-global-inventory-sidebar-entry.patch`，把已存在的 `global-inventory` 路由加入 Sidebar 的“存档管理工具”聚合入口。
+- 修复 `/inventory` 页面和“无人时段库存净增加”已经存在，但左侧菜单只显示存档中心、帕鲁仓库、配种实验室和实时地图的问题。
+- 直接访问 `/inventory` 的行为不变；新补丁只修复导航可发现性，不修改库存统计状态、WorldID 隔离或存档数据。
+
+### Validation
+
+- 新增 Sidebar 累计上下文应用回归，验证 `0026` 后的菜单结构可以直接应用 `0028`。
+- stable patch 候选升级为 `0.8.15`。
+
 ## v0.12.29-hotfix1
 
 ### Fixed

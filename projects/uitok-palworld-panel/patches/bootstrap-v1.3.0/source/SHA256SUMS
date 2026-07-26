@@ -25,3 +25,4 @@ ba2308aa003d6c97e4c4e453b7a05c3420a371b8bbdbd8b1a08a1f22ed64b085  0024-add-new-p
 047c20454e5018fd7c6df1042d4e552c0aa7155f6d0964619018511c9f2a51f0  0025-fix-starter-gift-ui-and-save-scope.patch
 a8fcd812cf136ff8c4b8584a0ec949a6563e9a7dcd3a0a50d53695b2736a9578  0026-redesign-starter-gift-ui.patch
 3b9dfe5a4a6527156b7530dc65857afe9e39e31f4bdd97e61b1bb8491acd8075  0027-add-unattended-inventory-delta.patch
+e4547494989615ad50382fc54f40f06c860e9fe02e3fd87bfcd37d86b3d22a8f  0028-fix-global-inventory-sidebar-entry.patch

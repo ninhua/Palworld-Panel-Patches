@@ -227,6 +227,15 @@
         "0023-add-global-inventory-browser.patch"
       ],
       "validation_checkpoint": true
+    },
+    {
+      "file": "0028-fix-global-inventory-sidebar-entry.patch",
+      "feature": "global-inventory-browser",
+      "depends_on": [
+        "0023-add-global-inventory-browser.patch",
+        "0026-redesign-starter-gift-ui.patch"
+      ],
+      "validation_checkpoint": true
     }
   ]
 }

@@ -104,3 +104,15 @@ fallback. Sensitive keys and Bearer tokens are redacted before the existing
 - PalDefender 模板从文件名解析 CharacterID，并复用现有 `PalIcon` 显示帕鲁头像；保留原文件名用于精确识别。
 - 物品和模板均支持搜索、只看已选、当前结果全选/取消；列表使用固定高度内部滚动。
 - 不修改礼包后端协议、WorldID 隔离、发放计划或 Palworld 存档。
+## 0027 unattended-inventory-delta
+
+- 复用玩家在线采样和全服库存索引，按 WorldID 记录至少 5 分钟的无人时段。
+- 只展示相对库存基线的正向净变化，不等同于据点生产量。
+- 状态卡显示在 `/inventory` 页面顶部。
+
+## 0028 global inventory Sidebar entry
+
+- 将已存在的 `global-inventory` 路由加入 Sidebar 的“存档管理工具”聚合入口。
+- 菜单顺序为存档中心、库存管理、帕鲁仓库、配种实验室、实时地图。
+- 仅修复导航入口，不修改库存 API、无人时段状态机或存档数据。
+
