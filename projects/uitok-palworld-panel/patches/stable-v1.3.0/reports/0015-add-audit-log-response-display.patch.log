@@ -46,5 +46,5 @@ $ npm run lint
 > oxlint
 
 Found 0 warnings and 0 errors.
-Finished in 29ms on 133 files with 103 rules using 4 threads.
+Finished in 33ms on 133 files with 103 rules using 4 threads.
 [exit=0]

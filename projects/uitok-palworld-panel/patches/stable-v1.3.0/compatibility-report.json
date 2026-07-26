@@ -1,15 +1,16 @@
 {
   "schema_version": 2,
   "target_version": "v1.3.0",
-  "generated_at": "2026-07-26T13:14:04Z",
-  "state": "released",
+  "generated_at": "2026-07-26T14:30:22Z",
+  "state": "releasable",
   "required_features": [
     "base-custom-names",
     "global-inventory-browser",
     "host-save-migrator",
     "new-player-starter-gift",
     "patch-info-api",
-    "player-presence-history"
+    "player-presence-history",
+    "unattended-inventory-delta"
   ],
   "preserved_features": [
     "audit-log-response-display",
@@ -25,7 +26,8 @@
     "panel-patch-hot-update",
     "patch-info-api",
     "player-notes",
-    "player-presence-history"
+    "player-presence-history",
+    "unattended-inventory-delta"
   ],
   "optional_features": [],
   "patches": [
@@ -770,13 +772,44 @@
       "log": "reports/0026-redesign-starter-gift-ui.patch.log",
       "validated_at_checkpoint": "0026-redesign-starter-gift-ui.patch",
       "included_in_merged": true
+    },
+    {
+      "order": 27,
+      "file": "0027-add-unattended-inventory-delta.patch",
+      "sha256": "3b9dfe5a4a6527156b7530dc65857afe9e39e31f4bdd97e61b1bb8491acd8075",
+      "feature": "unattended-inventory-delta",
+      "required": true,
+      "depends_on": [
+        "0018-add-player-presence-history.patch",
+        "0023-add-global-inventory-browser.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/global_inventory.go",
+        "backend/internal/api/unattended_inventory.go",
+        "backend/internal/monitor/player_presence.go",
+        "backend/internal/unattendedinventory/saveindex.go",
+        "backend/internal/unattendedinventory/saveindex_test.go",
+        "backend/internal/unattendedinventory/state.go",
+        "backend/internal/unattendedinventory/state_test.go",
+        "frontend/src/api/inventory.test.ts",
+        "frontend/src/api/inventory.ts",
+        "frontend/src/pages/Inventory.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0027-add-unattended-inventory-delta.patch.log",
+      "validated_at_checkpoint": "0027-add-unattended-inventory-delta.patch",
+      "included_in_merged": true
     }
   ],
   "adaptations": [
     {
       "name": "retarget-stable-source",
       "status": "applied",
-      "details": "Retargeted patch metadata to v1.3.0 / 0.8.13"
+      "details": "Retargeted patch metadata to v1.3.0 / 0.8.14"
     },
     {
       "name": "frontend-axios-test-fixture-adapter",
@@ -785,12 +818,12 @@
     }
   ],
   "summary": {
-    "superseded": 0,
-    "pending": 0,
     "incompatible": 0,
-    "compatible": 25,
     "adapted": 1,
-    "blocked": 0
+    "blocked": 0,
+    "compatible": 26,
+    "pending": 0,
+    "superseded": 0
   },
   "excluded_features": [],
   "effective_features": [
@@ -807,11 +840,12 @@
     "panel-patch-hot-update",
     "patch-info-api",
     "player-notes",
-    "player-presence-history"
+    "player-presence-history",
+    "unattended-inventory-delta"
   ],
   "merged_patch": {
-    "file": "merged/stable-v1.3.0-patch-0.8.13.patch",
-    "sha256": "c7e20d55a69f3b6d165ae6df3313c8605a892a0804d5329e00073e4145b66779",
+    "file": "merged/stable-v1.3.0-patch-0.8.14.patch",
+    "sha256": "57c993da3d0483eedfba1a52d8c3134c83d2dde48e1c2fd75620cbb8e1baa5d9",
     "base_commit": "3c8d698abf1d9c4e271e3e62dcc736960f27e8eb"
   },
   "verified": true,

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "uitok-palworld-panel",
-  "patch_version": "0.8.13",
+  "patch_version": "0.8.14",
   "patch_type": "source-build",
   "upstream": {
     "repository": "uitok/palworld-panel",
@@ -37,7 +37,8 @@
     "player-presence-history",
     "host-save-migrator",
     "global-inventory-browser",
-    "new-player-starter-gift"
+    "new-player-starter-gift",
+    "unattended-inventory-delta"
   ],
-  "notes": "Self-contained v1.3.0 stable source track. Retains Oodle/PlM host-save migration deployment and WorldID-scoped presence plus starter-gift state. The starter-gift page now has an explicit sidebar entry, compact strategy controls, tabbed item/template/grant workspaces, localized item icons, Pal template portraits, refined operational categories, inline quantities, and a sticky save summary."
+  "notes": "Self-contained v1.3.0 stable source track. Retains Oodle/PlM host-save migration deployment, WorldID-scoped presence and starter gifts, the redesigned starter-gift workspace, and WorldID-scoped unattended inventory positive-delta tracking with a five-minute qualification window."
 }
