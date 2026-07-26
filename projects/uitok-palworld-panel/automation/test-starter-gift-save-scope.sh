@@ -34,8 +34,10 @@ import sys
 text = Path(sys.argv[1]).read_text(encoding="utf-8")
 expected = {
     "backend/internal/api/player_presence.go",
+    "backend/internal/api/player_presence_test.go",
     "backend/internal/api/starter_gift.go",
     "backend/internal/monitor/player_presence.go",
+    "backend/internal/monitor/player_presence_test.go",
     "backend/internal/playerpresence/scope.go",
     "backend/internal/playerpresence/scope_test.go",
     "backend/internal/playerpresence/state.go",
@@ -67,6 +69,8 @@ required = [
     "全选当前筛选",
     "itemCategory",
     "aria-multiselectable=\"true\"",
+    "testPlayerPresenceServerDir",
+    "testMonitorPlayerPresenceServerDir",
 ]
 added_text = "\n".join(
     line[1:] for line in text.splitlines()
@@ -131,6 +135,22 @@ EOF_TSX
     git init -q
     git apply --check --include='frontend/src/pages/PlayerCenter.tsx' "${patch}"
 )
+
+test_fixture="${work}/presence-tests"
+mkdir -p "${test_fixture}"
+(
+    cd "${test_fixture}"
+    git init -q
+    git apply \
+        --include='backend/internal/api/player_presence_test.go' \
+        --include='backend/internal/monitor/player_presence_test.go' \
+        "${track}/source/0018-add-player-presence-history.patch"
+    git apply --check \
+        --include='backend/internal/api/player_presence_test.go' \
+        --include='backend/internal/monitor/player_presence_test.go' \
+        "${patch}"
+)
+rm -rf "${test_fixture}"
 
 python3 - "${patch}" "${work}/playerpresence/scope.go" <<'PY'
 from pathlib import Path

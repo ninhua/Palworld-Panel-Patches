@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.12.27-hotfix3
+
+### Fixed
+
+- 修复 `0025-fix-starter-gift-ui-and-save-scope.patch` 引入存档作用域后，原有 API 与 monitor 单元测试未创建 Palworld 世界目录，导致作用域解析失败并阻断 stable clean-room 编译测试的问题。
+- API 测试现在为 `Server` 注入临时 `ServerDir`，创建唯一测试世界并验证旧全局在线历史仅在唯一世界场景迁移到 scoped KV。
+- monitor 测试现在使用同一临时世界执行观察，并从解析后的 scope 读取持久化状态。
+
+### Validation
+
+- `0025` 变更文件白名单扩展到 API/monitor 两个现有测试文件。
+- 回归脚本从 `0018` 提取原测试文件，并验证 `0025` 的测试修正可直接应用。
+- stable patch 候选仍为 `0.8.12`。
+
 ## v0.12.27-hotfix2
 
 ### Fixed

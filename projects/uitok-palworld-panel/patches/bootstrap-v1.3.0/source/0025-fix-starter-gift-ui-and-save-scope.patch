@@ -1608,3 +1608,136 @@ index 00531f1ef96cfdc4c9a96494eca8161ea466add2..a46f04fea88ff6ed81a85a7c5fd551af
      </div>
    );
  };
+diff --git a/backend/internal/api/player_presence_test.go b/backend/internal/api/player_presence_test.go
+index a94bc27..cad02d5 100644
+--- a/backend/internal/api/player_presence_test.go
++++ b/backend/internal/api/player_presence_test.go
+@@ -3,17 +3,20 @@ package api
+ import (
+ 	"context"
+ 	"encoding/json"
++	"os"
+ 	"path/filepath"
+ 	"testing"
+ 	"time"
+ 
+ 	"github.com/gin-gonic/gin"
+ 
++	"palpanel/internal/appconfig"
+ 	"palpanel/internal/db"
+ 	"palpanel/internal/playerpresence"
+ )
+ 
+ func TestAttachPlayerPresenceAddsDurationsAndHistory(t *testing.T) {
++	serverDir := testPlayerPresenceServerDir(t)
+ 	store, err := db.Open(filepath.Join(t.TempDir(), "panel.db"))
+ 	if err != nil {
+ 		t.Fatal(err)
+@@ -32,7 +35,7 @@ func TestAttachPlayerPresenceAddsDurationsAndHistory(t *testing.T) {
+ 	}
+ 
+ 	views := []gin.H{{"player_uid": "UID-1", "steam_id": "7656"}}
+-	Server{store: store}.attachPlayerPresence(context.Background(), views, true)
++	Server{cfg: appconfig.Config{ServerDir: serverDir}, store: store}.attachPlayerPresence(context.Background(), views, true)
+ 	if views[0]["total_seconds"] != int64(15) || views[0]["presence_available"] != true {
+ 		t.Fatalf("view = %#v", views[0])
+ 	}
+@@ -43,6 +46,7 @@ func TestAttachPlayerPresenceAddsDurationsAndHistory(t *testing.T) {
+ }
+ 
+ func TestAttachPlayerPresenceDoesNotExposeUnobservedOrImportedPlayers(t *testing.T) {
++	serverDir := testPlayerPresenceServerDir(t)
+ 	store, err := db.Open(filepath.Join(t.TempDir(), "panel.db"))
+ 	if err != nil {
+ 		t.Fatal(err)
+@@ -60,14 +64,28 @@ func TestAttachPlayerPresenceDoesNotExposeUnobservedOrImportedPlayers(t *testing
+ 	}
+ 
+ 	unobserved := []gin.H{{"player_uid": "UID-2"}}
+-	Server{store: store}.attachPlayerPresence(context.Background(), unobserved, true)
++	server := Server{cfg: appconfig.Config{ServerDir: serverDir}, store: store}
++	server.attachPlayerPresence(context.Background(), unobserved, true)
+ 	if unobserved[0]["presence_available"] != false {
+ 		t.Fatalf("unobserved view = %#v", unobserved[0])
+ 	}
+ 
+ 	imported := []gin.H{{"player_uid": "UID-1"}}
+-	Server{store: store}.attachPlayerPresence(context.Background(), imported, false)
++	server.attachPlayerPresence(context.Background(), imported, false)
+ 	if imported[0]["presence_available"] != false || imported[0]["presence_stale"] != false {
+ 		t.Fatalf("imported view = %#v", imported[0])
+ 	}
+ }
++
++func testPlayerPresenceServerDir(t *testing.T) string {
++	t.Helper()
++	serverDir := t.TempDir()
++	worldDir := filepath.Join(serverDir, "Pal", "Saved", "SaveGames", "0", "TEST-WORLD")
++	if err := os.MkdirAll(worldDir, 0o755); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(filepath.Join(worldDir, "Level.sav"), []byte("test"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	return serverDir
++}
+diff --git a/backend/internal/monitor/player_presence_test.go b/backend/internal/monitor/player_presence_test.go
+index 7d0bd58..5deb023 100644
+--- a/backend/internal/monitor/player_presence_test.go
++++ b/backend/internal/monitor/player_presence_test.go
+@@ -4,16 +4,19 @@ import (
+ 	"context"
+ 	"net/http"
+ 	"net/http/httptest"
++	"os"
+ 	"path/filepath"
+ 	"testing"
+ 	"time"
+ 
++	"palpanel/internal/appconfig"
+ 	"palpanel/internal/db"
+ 	"palpanel/internal/palrest"
+ 	"palpanel/internal/playerpresence"
+ )
+ 
+ func TestObservePlayerPresencePersistsRESTPlayers(t *testing.T) {
++	serverDir := testMonitorPlayerPresenceServerDir(t)
+ 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+ 		if request.URL.Path != "/players" {
+ 			http.NotFound(writer, request)
+@@ -31,12 +34,16 @@ func TestObservePlayerPresencePersistsRESTPlayers(t *testing.T) {
+ 	defer store.Close()
+ 
+ 	now := time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC)
+-	manager := Manager{store: store, now: func() time.Time { return now }}
++	manager := Manager{cfg: appconfig.Config{ServerDir: serverDir}, store: store, now: func() time.Time { return now }}
+ 	client := palrest.New(server.URL, "", "")
+ 	if err := manager.observePlayerPresence(context.Background(), client); err != nil {
+ 		t.Fatal(err)
+ 	}
+-	state, err := playerpresence.Load(context.Background(), store)
++	scope, err := playerpresence.ResolveServerScope(serverDir)
++	if err != nil {
++		t.Fatal(err)
++	}
++	state, err := playerpresence.LoadScoped(context.Background(), store, scope)
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+@@ -45,3 +52,16 @@ func TestObservePlayerPresencePersistsRESTPlayers(t *testing.T) {
+ 		t.Fatalf("record = %#v found=%v", record, found)
+ 	}
+ }
++
++func testMonitorPlayerPresenceServerDir(t *testing.T) string {
++	t.Helper()
++	serverDir := t.TempDir()
++	worldDir := filepath.Join(serverDir, "Pal", "Saved", "SaveGames", "0", "TEST-WORLD")
++	if err := os.MkdirAll(worldDir, 0o755); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(filepath.Join(worldDir, "Level.sav"), []byte("test"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	return serverDir
++}
