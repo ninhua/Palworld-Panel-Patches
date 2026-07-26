@@ -1,8 +1,8 @@
 {
   "schema_version": 2,
   "target_version": "v1.3.0",
-  "generated_at": "2026-07-26T12:19:47Z",
-  "state": "released",
+  "generated_at": "2026-07-26T13:14:04Z",
+  "state": "releasable",
   "required_features": [
     "base-custom-names",
     "global-inventory-browser",
@@ -748,13 +748,35 @@
       "log": "reports/0025-fix-starter-gift-ui-and-save-scope.patch.log",
       "validated_at_checkpoint": "0025-fix-starter-gift-ui-and-save-scope.patch",
       "included_in_merged": true
+    },
+    {
+      "order": 26,
+      "file": "0026-redesign-starter-gift-ui.patch",
+      "sha256": "a8fcd812cf136ff8c4b8584a0ec949a6563e9a7dcd3a0a50d53695b2736a9578",
+      "feature": "new-player-starter-gift",
+      "required": true,
+      "depends_on": [
+        "0025-fix-starter-gift-ui-and-save-scope.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "frontend/src/components/layout/Sidebar.tsx",
+        "frontend/src/pages/StarterGift.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0026-redesign-starter-gift-ui.patch.log",
+      "validated_at_checkpoint": "0026-redesign-starter-gift-ui.patch",
+      "included_in_merged": true
     }
   ],
   "adaptations": [
     {
       "name": "retarget-stable-source",
       "status": "applied",
-      "details": "Retargeted patch metadata to v1.3.0 / 0.8.12"
+      "details": "Retargeted patch metadata to v1.3.0 / 0.8.13"
     },
     {
       "name": "frontend-axios-test-fixture-adapter",
@@ -763,12 +785,12 @@
     }
   ],
   "summary": {
-    "blocked": 0,
-    "pending": 0,
-    "compatible": 24,
-    "adapted": 1,
     "superseded": 0,
-    "incompatible": 0
+    "pending": 0,
+    "incompatible": 0,
+    "compatible": 25,
+    "adapted": 1,
+    "blocked": 0
   },
   "excluded_features": [],
   "effective_features": [
@@ -788,8 +810,8 @@
     "player-presence-history"
   ],
   "merged_patch": {
-    "file": "merged/stable-v1.3.0-patch-0.8.12.patch",
-    "sha256": "b557957a5a6dae110a40e431b79e48ee11c3144475b17eba3acc9ebf07644f43",
+    "file": "merged/stable-v1.3.0-patch-0.8.13.patch",
+    "sha256": "c7e20d55a69f3b6d165ae6df3313c8605a892a0804d5329e00073e4145b66779",
     "base_commit": "3c8d698abf1d9c4e271e3e62dcc736960f27e8eb"
   },
   "verified": true,
