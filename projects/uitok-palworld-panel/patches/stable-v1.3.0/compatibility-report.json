@@ -1,8 +1,8 @@
 {
   "schema_version": 2,
   "target_version": "v1.3.0",
-  "generated_at": "2026-07-26T08:12:21Z",
-  "state": "released",
+  "generated_at": "2026-07-26T12:19:47Z",
+  "state": "releasable",
   "required_features": [
     "base-custom-names",
     "global-inventory-browser",
@@ -714,13 +714,47 @@
       "log": "reports/0024-add-new-player-starter-gifts.patch.log",
       "validated_at_checkpoint": "0024-add-new-player-starter-gifts.patch",
       "included_in_merged": true
+    },
+    {
+      "order": 25,
+      "file": "0025-fix-starter-gift-ui-and-save-scope.patch",
+      "sha256": "047c20454e5018fd7c6df1042d4e552c0aa7155f6d0964619018511c9f2a51f0",
+      "feature": "new-player-starter-gift",
+      "required": true,
+      "depends_on": [
+        "0018-add-player-presence-history.patch",
+        "0024-add-new-player-starter-gifts.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/player_presence.go",
+        "backend/internal/api/player_presence_test.go",
+        "backend/internal/api/starter_gift.go",
+        "backend/internal/monitor/player_presence.go",
+        "backend/internal/monitor/player_presence_test.go",
+        "backend/internal/playerpresence/scope.go",
+        "backend/internal/playerpresence/scope_test.go",
+        "backend/internal/playerpresence/state.go",
+        "backend/internal/startergift/service.go",
+        "backend/internal/startergift/service_test.go",
+        "frontend/src/api/starterGift.ts",
+        "frontend/src/pages/PlayerCenter.tsx",
+        "frontend/src/pages/StarterGift.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0025-fix-starter-gift-ui-and-save-scope.patch.log",
+      "validated_at_checkpoint": "0025-fix-starter-gift-ui-and-save-scope.patch",
+      "included_in_merged": true
     }
   ],
   "adaptations": [
     {
       "name": "retarget-stable-source",
       "status": "applied",
-      "details": "Retargeted patch metadata to v1.3.0 / 0.8.11"
+      "details": "Retargeted patch metadata to v1.3.0 / 0.8.12"
     },
     {
       "name": "frontend-axios-test-fixture-adapter",
@@ -729,12 +763,12 @@
     }
   ],
   "summary": {
-    "incompatible": 0,
     "blocked": 0,
-    "adapted": 1,
     "pending": 0,
-    "compatible": 23,
-    "superseded": 0
+    "compatible": 24,
+    "adapted": 1,
+    "superseded": 0,
+    "incompatible": 0
   },
   "excluded_features": [],
   "effective_features": [
@@ -754,8 +788,8 @@
     "player-presence-history"
   ],
   "merged_patch": {
-    "file": "merged/stable-v1.3.0-patch-0.8.11.patch",
-    "sha256": "9cfa200212830a2da7cb4b64fc39702e6fef9601b0ac1955dc88616a0af36b71",
+    "file": "merged/stable-v1.3.0-patch-0.8.12.patch",
+    "sha256": "b557957a5a6dae110a40e431b79e48ee11c3144475b17eba3acc9ebf07644f43",
     "base_commit": "3c8d698abf1d9c4e271e3e62dcc736960f27e8eb"
   },
   "verified": true,

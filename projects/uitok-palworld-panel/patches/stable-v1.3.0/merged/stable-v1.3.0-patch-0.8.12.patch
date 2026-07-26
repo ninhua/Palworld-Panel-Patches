@@ -3052,7 +3052,7 @@ index 0000000000000000000000000000000000000000..2552237b4273eb63b13cef50efc469f7
 +}
 diff --git a/backend/internal/api/patch_info.go b/backend/internal/api/patch_info.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..41faced6ae5cf8da3847a810937999a954e94664
+index 0000000000000000000000000000000000000000..dcb101f9426bc62ffe76c740fe20f700e6b34380
 --- /dev/null
 +++ b/backend/internal/api/patch_info.go
 @@ -0,0 +1,38 @@
@@ -3068,7 +3068,7 @@ index 0000000000000000000000000000000000000000..41faced6ae5cf8da3847a810937999a9
 +	patchSourceRepository = "uitok/palworld-panel"
 +	patchSourceRef        = "v1.3.0"
 +	patchTargetVersion    = "v1.3.0"
-+	patchVersion          = "0.8.11"
++	patchVersion          = "0.8.12"
 +	patchRepository       = "ninhua/Palworld-Panel-Patches"
 +)
 +
@@ -3650,10 +3650,10 @@ index 0000000000000000000000000000000000000000..7b0d87cacd52fd15a40c02f67c7922b8
 +}
 diff --git a/backend/internal/api/player_presence.go b/backend/internal/api/player_presence.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..0cc05646480277acb352ffe880e5fe6804e32045
+index 0000000000000000000000000000000000000000..1c6c6a486d5d07abfbd9b92722d785bcbf9234a1
 --- /dev/null
 +++ b/backend/internal/api/player_presence.go
-@@ -0,0 +1,53 @@
+@@ -0,0 +1,61 @@
 +package api
 +
 +import (
@@ -3667,18 +3667,17 @@ index 0000000000000000000000000000000000000000..0cc05646480277acb352ffe880e5fe68
 +
 +func (s Server) attachPlayerPresence(ctx context.Context, views []gin.H, enabled bool) {
 +	if !enabled {
-+		for _, view := range views {
-+			view["presence_available"] = false
-+			view["presence_stale"] = false
-+		}
++		markPresenceUnavailable(views, false)
 +		return
 +	}
-+	state, err := playerpresence.Load(ctx, s.store)
++	scope, err := playerpresence.ResolveServerScope(s.cfg.ServerDirectory())
 +	if err != nil {
-+		for _, view := range views {
-+			view["presence_available"] = false
-+			view["presence_stale"] = true
-+		}
++		markPresenceUnavailable(views, true)
++		return
++	}
++	state, err := playerpresence.LoadScoped(ctx, s.store, scope)
++	if err != nil {
++		markPresenceUnavailable(views, true)
 +		return
 +	}
 +	stale := playerpresence.IsStale(state, time.Now())
@@ -3687,6 +3686,8 @@ index 0000000000000000000000000000000000000000..0cc05646480277acb352ffe880e5fe68
 +		view["presence_available"] = false
 +		view["presence_stale"] = stale
 +		view["presence_observed_at"] = state.ObservedAt
++		view["presence_scope_id"] = scope.ID
++		view["presence_world_id"] = scope.WorldID
 +		record, found := playerpresence.Find(state, firstNonEmpty(stringFromPresenceView(view, "player_uid"), stringFromPresenceView(view, "steam_id"), stringFromPresenceView(view, "id")))
 +		if !found {
 +			continue
@@ -3703,32 +3704,42 @@ index 0000000000000000000000000000000000000000..0cc05646480277acb352ffe880e5fe68
 +	}
 +}
 +
++func markPresenceUnavailable(views []gin.H, stale bool) {
++	for _, view := range views {
++		view["presence_available"] = false
++		view["presence_stale"] = stale
++	}
++}
++
 +func stringFromPresenceView(view gin.H, key string) string {
 +	value, _ := view[key].(string)
 +	return value
 +}
 diff --git a/backend/internal/api/player_presence_test.go b/backend/internal/api/player_presence_test.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..a94bc27bf5d10136060e8299f3239620eddf023d
+index 0000000000000000000000000000000000000000..cad02d5792bd563afff6b2aa5781f64f0df8f3f0
 --- /dev/null
 +++ b/backend/internal/api/player_presence_test.go
-@@ -0,0 +1,73 @@
+@@ -0,0 +1,91 @@
 +package api
 +
 +import (
 +	"context"
 +	"encoding/json"
++	"os"
 +	"path/filepath"
 +	"testing"
 +	"time"
 +
 +	"github.com/gin-gonic/gin"
 +
++	"palpanel/internal/appconfig"
 +	"palpanel/internal/db"
 +	"palpanel/internal/playerpresence"
 +)
 +
 +func TestAttachPlayerPresenceAddsDurationsAndHistory(t *testing.T) {
++	serverDir := testPlayerPresenceServerDir(t)
 +	store, err := db.Open(filepath.Join(t.TempDir(), "panel.db"))
 +	if err != nil {
 +		t.Fatal(err)
@@ -3747,7 +3758,7 @@ index 0000000000000000000000000000000000000000..a94bc27bf5d10136060e8299f3239620
 +	}
 +
 +	views := []gin.H{{"player_uid": "UID-1", "steam_id": "7656"}}
-+	Server{store: store}.attachPlayerPresence(context.Background(), views, true)
++	Server{cfg: appconfig.Config{ServerDir: serverDir}, store: store}.attachPlayerPresence(context.Background(), views, true)
 +	if views[0]["total_seconds"] != int64(15) || views[0]["presence_available"] != true {
 +		t.Fatalf("view = %#v", views[0])
 +	}
@@ -3758,6 +3769,7 @@ index 0000000000000000000000000000000000000000..a94bc27bf5d10136060e8299f3239620
 +}
 +
 +func TestAttachPlayerPresenceDoesNotExposeUnobservedOrImportedPlayers(t *testing.T) {
++	serverDir := testPlayerPresenceServerDir(t)
 +	store, err := db.Open(filepath.Join(t.TempDir(), "panel.db"))
 +	if err != nil {
 +		t.Fatal(err)
@@ -3775,16 +3787,30 @@ index 0000000000000000000000000000000000000000..a94bc27bf5d10136060e8299f3239620
 +	}
 +
 +	unobserved := []gin.H{{"player_uid": "UID-2"}}
-+	Server{store: store}.attachPlayerPresence(context.Background(), unobserved, true)
++	server := Server{cfg: appconfig.Config{ServerDir: serverDir}, store: store}
++	server.attachPlayerPresence(context.Background(), unobserved, true)
 +	if unobserved[0]["presence_available"] != false {
 +		t.Fatalf("unobserved view = %#v", unobserved[0])
 +	}
 +
 +	imported := []gin.H{{"player_uid": "UID-1"}}
-+	Server{store: store}.attachPlayerPresence(context.Background(), imported, false)
++	server.attachPlayerPresence(context.Background(), imported, false)
 +	if imported[0]["presence_available"] != false || imported[0]["presence_stale"] != false {
 +		t.Fatalf("imported view = %#v", imported[0])
 +	}
++}
++
++func testPlayerPresenceServerDir(t *testing.T) string {
++	t.Helper()
++	serverDir := t.TempDir()
++	worldDir := filepath.Join(serverDir, "Pal", "Saved", "SaveGames", "0", "TEST-WORLD")
++	if err := os.MkdirAll(worldDir, 0o755); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(filepath.Join(worldDir, "Level.sav"), []byte("test"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	return serverDir
 +}
 diff --git a/backend/internal/api/response.go b/backend/internal/api/response.go
 index 1b85f095fe7b639162f8520eceb3ce9faa2c423e..e448fa8258efcd23b84c8b501b2af85ac8e48e0d 100644
@@ -4214,10 +4240,10 @@ index adba16e86a4315c54ec7be3f8b804be7c830f828..59b1b52f64b147aa472ac85c6e855324
  func (s Server) activateSaveSource(c *gin.Context) {
 diff --git a/backend/internal/api/starter_gift.go b/backend/internal/api/starter_gift.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..9a3aa7e249584319e0f74ff63a6eae34d6008ac7
+index 0000000000000000000000000000000000000000..07159b4f1c1b703a517bf6bd0c370f93cb10a779
 --- /dev/null
 +++ b/backend/internal/api/starter_gift.go
-@@ -0,0 +1,130 @@
+@@ -0,0 +1,155 @@
 +package api
 +
 +import (
@@ -4235,8 +4261,17 @@ index 0000000000000000000000000000000000000000..9a3aa7e249584319e0f74ff63a6eae34
 +	patchFeatures = append(patchFeatures, "new-player-starter-gift")
 +}
 +
++func (s Server) currentStarterGiftScope() (playerpresence.Scope, error) {
++	return playerpresence.ResolveServerScope(s.cfg.ServerDirectory())
++}
++
 +func (s Server) starterGiftConfig(c *gin.Context) {
-+	snapshot, err := startergift.LoadSnapshot(c.Request.Context(), s.store)
++	scope, err := s.currentStarterGiftScope()
++	if err != nil {
++		fail(c, http.StatusConflict, "starter_gift_world_unavailable", err.Error())
++		return
++	}
++	snapshot, err := startergift.LoadSnapshot(c.Request.Context(), s.store, scope)
 +	if err != nil {
 +		fail(c, http.StatusInternalServerError, "starter_gift_read_failed", err.Error())
 +		return
@@ -4245,6 +4280,11 @@ index 0000000000000000000000000000000000000000..9a3aa7e249584319e0f74ff63a6eae34
 +}
 +
 +func (s Server) putStarterGiftConfig(c *gin.Context) {
++	scope, err := s.currentStarterGiftScope()
++	if err != nil {
++		fail(c, http.StatusConflict, "starter_gift_world_unavailable", err.Error())
++		return
++	}
 +	var config startergift.Config
 +	if err := c.ShouldBindJSON(&config); err != nil {
 +		fail(c, http.StatusBadRequest, "invalid_json", err.Error())
@@ -4272,12 +4312,12 @@ index 0000000000000000000000000000000000000000..9a3aa7e249584319e0f74ff63a6eae34
 +		for _, player := range index.Players {
 +			known = append(known, playerpresence.OnlinePlayer{PlayerUID: player.PlayerUID, SteamID: player.SteamID, Nickname: player.Nickname})
 +		}
-+		if err := startergift.BaselineKnownPlayers(c.Request.Context(), s.store, known); err != nil {
++		if err := startergift.BaselineKnownPlayers(c.Request.Context(), s.store, scope, known); err != nil {
 +			fail(c, http.StatusInternalServerError, "starter_gift_baseline_failed", err.Error())
 +			return
 +		}
 +	}
-+	snapshot, err := startergift.SaveConfig(c.Request.Context(), s.store, config)
++	snapshot, err := startergift.SaveConfig(c.Request.Context(), s.store, scope, config)
 +	if err != nil {
 +		fail(c, http.StatusBadRequest, "invalid_starter_gift_config", err.Error())
 +		return
@@ -4320,7 +4360,12 @@ index 0000000000000000000000000000000000000000..9a3aa7e249584319e0f74ff63a6eae34
 +}
 +
 +func (s Server) retryStarterGift(c *gin.Context) {
-+	if err := startergift.Retry(c.Request.Context(), s.store, c.Param("id")); err != nil {
++	scope, err := s.currentStarterGiftScope()
++	if err != nil {
++		fail(c, http.StatusConflict, "starter_gift_world_unavailable", err.Error())
++		return
++	}
++	if err := startergift.Retry(c.Request.Context(), s.store, scope, c.Param("id")); err != nil {
 +		fail(c, http.StatusNotFound, "starter_gift_not_found", err.Error())
 +		return
 +	}
@@ -4328,7 +4373,12 @@ index 0000000000000000000000000000000000000000..9a3aa7e249584319e0f74ff63a6eae34
 +}
 +
 +func (s Server) forgetStarterGift(c *gin.Context) {
-+	if err := startergift.Forget(c.Request.Context(), s.store, c.Param("id")); err != nil {
++	scope, err := s.currentStarterGiftScope()
++	if err != nil {
++		fail(c, http.StatusConflict, "starter_gift_world_unavailable", err.Error())
++		return
++	}
++	if err := startergift.Forget(c.Request.Context(), s.store, scope, c.Param("id")); err != nil {
 +		fail(c, http.StatusNotFound, "starter_gift_not_found", err.Error())
 +		return
 +	}
@@ -4338,6 +4388,7 @@ index 0000000000000000000000000000000000000000..9a3aa7e249584319e0f74ff63a6eae34
 +func (s Server) starterGiftResponse(snapshot startergift.Snapshot) gin.H {
 +	templates, templateErr := s.defender.ListPalTemplates()
 +	response := gin.H{
++		"scope":        snapshot.Scope,
 +		"config":       snapshot.Config,
 +		"grants":       snapshot.Grants,
 +		"templates":    templates,
@@ -4849,10 +4900,10 @@ index 6dbd048ea578e6bae7b68352adda7511a7896360..b7a75ac6274c8de40d9b866062c4a155
  func (m Manager) palworldREST(settings palconfig.Settings, runtimeMode string) palrest.Client {
 diff --git a/backend/internal/monitor/player_presence.go b/backend/internal/monitor/player_presence.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..6b2a10d8eee1e4fb53cf2effa7114ee577b975fd
+index 0000000000000000000000000000000000000000..7a41580a218094b6facdf3c63a67da2116aa396a
 --- /dev/null
 +++ b/backend/internal/monitor/player_presence.go
-@@ -0,0 +1,28 @@
+@@ -0,0 +1,32 @@
 +package monitor
 +
 +import (
@@ -4870,39 +4921,46 @@ index 0000000000000000000000000000000000000000..6b2a10d8eee1e4fb53cf2effa7114ee5
 +	requestCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 +	defer cancel()
 +
++	scope, err := playerpresence.ResolveServerScope(m.cfg.ServerDirectory())
++	if err != nil {
++		return err
++	}
 +	response, err := client.Do(requestCtx, http.MethodGet, "players", nil)
 +	if err != nil {
 +		return err
 +	}
 +	players := playerpresence.ParseRESTPlayers(response.Body)
-+	if _, err = playerpresence.Observe(requestCtx, m.store, m.currentTime(), players); err != nil {
++	if _, err = playerpresence.ObserveScoped(requestCtx, m.store, scope, m.currentTime(), players); err != nil {
 +		return err
 +	}
 +	dispatcher := startergift.NewPalDefenderDispatcher(paldefender.NewManager(m.cfg, m.store))
-+	return startergift.Observe(ctx, m.store, m.currentTime(), players, dispatcher)
++	return startergift.Observe(ctx, m.store, scope, m.currentTime(), players, dispatcher)
 +}
 diff --git a/backend/internal/monitor/player_presence_test.go b/backend/internal/monitor/player_presence_test.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..7d0bd58e53707fd0a29c8daba246e21858827707
+index 0000000000000000000000000000000000000000..5deb02393f3ef3f5792b482e27271f3dee430ce7
 --- /dev/null
 +++ b/backend/internal/monitor/player_presence_test.go
-@@ -0,0 +1,47 @@
+@@ -0,0 +1,67 @@
 +package monitor
 +
 +import (
 +	"context"
 +	"net/http"
 +	"net/http/httptest"
++	"os"
 +	"path/filepath"
 +	"testing"
 +	"time"
 +
++	"palpanel/internal/appconfig"
 +	"palpanel/internal/db"
 +	"palpanel/internal/palrest"
 +	"palpanel/internal/playerpresence"
 +)
 +
 +func TestObservePlayerPresencePersistsRESTPlayers(t *testing.T) {
++	serverDir := testMonitorPlayerPresenceServerDir(t)
 +	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 +		if request.URL.Path != "/players" {
 +			http.NotFound(writer, request)
@@ -4920,12 +4978,16 @@ index 0000000000000000000000000000000000000000..7d0bd58e53707fd0a29c8daba246e218
 +	defer store.Close()
 +
 +	now := time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC)
-+	manager := Manager{store: store, now: func() time.Time { return now }}
++	manager := Manager{cfg: appconfig.Config{ServerDir: serverDir}, store: store, now: func() time.Time { return now }}
 +	client := palrest.New(server.URL, "", "")
 +	if err := manager.observePlayerPresence(context.Background(), client); err != nil {
 +		t.Fatal(err)
 +	}
-+	state, err := playerpresence.Load(context.Background(), store)
++	scope, err := playerpresence.ResolveServerScope(serverDir)
++	if err != nil {
++		t.Fatal(err)
++	}
++	state, err := playerpresence.LoadScoped(context.Background(), store, scope)
 +	if err != nil {
 +		t.Fatal(err)
 +	}
@@ -4933,6 +4995,19 @@ index 0000000000000000000000000000000000000000..7d0bd58e53707fd0a29c8daba246e218
 +	if !found || !record.Online || record.Nickname != "Alice" {
 +		t.Fatalf("record = %#v found=%v", record, found)
 +	}
++}
++
++func testMonitorPlayerPresenceServerDir(t *testing.T) string {
++	t.Helper()
++	serverDir := t.TempDir()
++	worldDir := filepath.Join(serverDir, "Pal", "Saved", "SaveGames", "0", "TEST-WORLD")
++	if err := os.MkdirAll(worldDir, 0o755); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(filepath.Join(worldDir, "Level.sav"), []byte("test"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	return serverDir
 +}
 diff --git a/backend/internal/pallocalize/localize.go b/backend/internal/pallocalize/localize.go
 index 7a9d14218f0df4f29b7f2be8e8a5461743365b24..91b525bc394e1f65a9682740246f6ce8faaa29cc 100644
@@ -5070,12 +5145,245 @@ index 0000000000000000000000000000000000000000..a61a9fdb43f5db3d75db2d6ed2e3c4fe
 +		})
 +	}
 +}
+diff --git a/backend/internal/playerpresence/scope.go b/backend/internal/playerpresence/scope.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..f7114e947a3680287e692028832a4edc8860e24c
+--- /dev/null
++++ b/backend/internal/playerpresence/scope.go
+@@ -0,0 +1,96 @@
++package playerpresence
++
++import (
++	"crypto/sha256"
++	"errors"
++	"fmt"
++	"os"
++	"path/filepath"
++	"sort"
++	"strings"
++)
++
++const scopedStoragePrefix = "player_presence:v2:"
++
++type Scope struct {
++	ID                   string `json:"id"`
++	WorldID              string `json:"world_id"`
++	WorldPath            string `json:"world_path,omitempty"`
++	AllowLegacyMigration bool   `json:"-"`
++}
++
++func (scope Scope) StorageKey() string {
++	digest := sha256.Sum256([]byte(strings.TrimSpace(scope.ID)))
++	return fmt.Sprintf("%s%x", scopedStoragePrefix, digest[:16])
++}
++
++func ResolveServerScope(serverDir string) (Scope, error) {
++	serverDir = filepath.Clean(serverDir)
++	root := filepath.Join(serverDir, "Pal", "Saved", "SaveGames", "0")
++	entries, err := os.ReadDir(root)
++	if err != nil {
++		return Scope{}, fmt.Errorf("locate Palworld world saves: %w", err)
++	}
++	type candidate struct {
++		id      string
++		path    string
++		modTime int64
++	}
++	candidates := make([]candidate, 0, len(entries))
++	byID := make(map[string]candidate, len(entries))
++	for _, entry := range entries {
++		if !entry.IsDir() {
++			continue
++		}
++		worldPath := filepath.Join(root, entry.Name())
++		info, statErr := os.Stat(filepath.Join(worldPath, "Level.sav"))
++		if statErr != nil || !info.Mode().IsRegular() {
++			continue
++		}
++		item := candidate{id: entry.Name(), path: worldPath, modTime: info.ModTime().UnixNano()}
++		candidates = append(candidates, item)
++		byID[strings.ToLower(item.id)] = item
++	}
++	if len(candidates) == 0 {
++		return Scope{}, errors.New("no Palworld world containing Level.sav was found")
++	}
++
++	selected := candidate{}
++	if configured := dedicatedServerName(serverDir); configured != "" {
++		selected = byID[strings.ToLower(configured)]
++	}
++	if selected.id == "" {
++		sort.Slice(candidates, func(i, j int) bool {
++			if candidates[i].modTime != candidates[j].modTime {
++				return candidates[i].modTime > candidates[j].modTime
++			}
++			return candidates[i].id < candidates[j].id
++		})
++		selected = candidates[0]
++	}
++	return Scope{
++		ID:                   "server-world:" + selected.id,
++		WorldID:              selected.id,
++		WorldPath:            selected.path,
++		AllowLegacyMigration: len(candidates) == 1,
++	}, nil
++}
++
++func dedicatedServerName(serverDir string) string {
++	path := filepath.Join(serverDir, "Pal", "Saved", "Config", "WindowsServer", "GameUserSettings.ini")
++	raw, err := os.ReadFile(path)
++	if err != nil {
++		return ""
++	}
++	for _, line := range strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n") {
++		line = strings.TrimSpace(line)
++		if line == "" || strings.HasPrefix(line, ";") || strings.HasPrefix(line, "#") || !strings.Contains(line, "=") {
++			continue
++		}
++		key, value, _ := strings.Cut(line, "=")
++		if strings.EqualFold(strings.TrimSpace(key), "DedicatedServerName") {
++			return strings.Trim(strings.TrimSpace(value), `"'`)
++		}
++	}
++	return ""
++}
+diff --git a/backend/internal/playerpresence/scope_test.go b/backend/internal/playerpresence/scope_test.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..a9b2074f649a91abdc0468e4f5047c7c478291e9
+--- /dev/null
++++ b/backend/internal/playerpresence/scope_test.go
+@@ -0,0 +1,125 @@
++package playerpresence
++
++import (
++	"context"
++	"os"
++	"path/filepath"
++	"testing"
++	"time"
++
++	"palpanel/internal/db"
++)
++
++func openPresenceStore(t *testing.T) *db.Store {
++	t.Helper()
++	store, err := db.Open(filepath.Join(t.TempDir(), "panel.db"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { _ = store.Close() })
++	return store
++}
++
++func writeWorld(t *testing.T, serverDir, id string, modified time.Time) {
++	t.Helper()
++	path := filepath.Join(serverDir, "Pal", "Saved", "SaveGames", "0", id)
++	if err := os.MkdirAll(path, 0o755); err != nil {
++		t.Fatal(err)
++	}
++	level := filepath.Join(path, "Level.sav")
++	if err := os.WriteFile(level, []byte(id), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.Chtimes(level, modified, modified); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func writeDedicatedServerName(t *testing.T, serverDir, id string) {
++	t.Helper()
++	path := filepath.Join(serverDir, "Pal", "Saved", "Config", "WindowsServer", "GameUserSettings.ini")
++	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
++		t.Fatal(err)
++	}
++	content := "[/Script/Pal.PalGameLocalSettings]\r\nDedicatedServerName=" + id + "\r\n"
++	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func TestResolveServerScopeUsesDedicatedServerName(t *testing.T) {
++	serverDir := t.TempDir()
++	now := time.Date(2026, 7, 26, 1, 0, 0, 0, time.UTC)
++	writeWorld(t, serverDir, "configured-world", now.Add(-time.Hour))
++	writeWorld(t, serverDir, "newer-but-inactive", now)
++	writeDedicatedServerName(t, serverDir, "configured-world")
++	scope, err := ResolveServerScope(serverDir)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if scope.WorldID != "configured-world" || scope.AllowLegacyMigration {
++		t.Fatalf("scope=%#v", scope)
++	}
++}
++
++func TestResolveServerScopeFallsBackToNewestWorld(t *testing.T) {
++	serverDir := t.TempDir()
++	now := time.Date(2026, 7, 26, 1, 0, 0, 0, time.UTC)
++	writeWorld(t, serverDir, "old-world", now.Add(-time.Hour))
++	writeWorld(t, serverDir, "new-world", now)
++	scope, err := ResolveServerScope(serverDir)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if scope.WorldID != "new-world" || scope.AllowLegacyMigration {
++		t.Fatalf("scope=%#v", scope)
++	}
++}
++
++func TestScopedPresenceDoesNotCarryAcrossWorlds(t *testing.T) {
++	store := openPresenceStore(t)
++	ctx := context.Background()
++	worldA := Scope{ID: "server-world:a", WorldID: "a"}
++	worldB := Scope{ID: "server-world:b", WorldID: "b"}
++	now := time.Date(2026, 7, 26, 2, 0, 0, 0, time.UTC)
++	alice := OnlinePlayer{PlayerUID: "alice", Nickname: "Alice"}
++
++	if _, err := ObserveScoped(ctx, store, worldA, now, []OnlinePlayer{alice}); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := ObserveScoped(ctx, store, worldA, now.Add(30*time.Second), []OnlinePlayer{alice}); err != nil {
++		t.Fatal(err)
++	}
++	stateA, err := LoadScoped(ctx, store, worldA)
++	if err != nil {
++		t.Fatal(err)
++	}
++	record, found := Find(stateA, "alice")
++	if !found || record.TotalSeconds != 30 {
++		t.Fatalf("world-a record=%#v found=%v", record, found)
++	}
++	stateB, err := LoadScoped(ctx, store, worldB)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(stateB.Players) != 0 || stateB.ObservedAt != "" {
++		t.Fatalf("world-b inherited state: %#v", stateB)
++	}
++}
++
++func TestSingleWorldCanMigrateLegacyState(t *testing.T) {
++	store := openPresenceStore(t)
++	ctx := context.Background()
++	now := time.Date(2026, 7, 26, 3, 0, 0, 0, time.UTC)
++	if _, err := Observe(ctx, store, now, []OnlinePlayer{{SteamID: "1", Nickname: "Legacy"}}); err != nil {
++		t.Fatal(err)
++	}
++	scope := Scope{ID: "server-world:only", WorldID: "only", AllowLegacyMigration: true}
++	state, err := LoadScoped(ctx, store, scope)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, found := Find(state, "1"); !found || state.ScopeID != scope.ID {
++		t.Fatalf("migrated state=%#v", state)
++	}
++}
 diff --git a/backend/internal/playerpresence/state.go b/backend/internal/playerpresence/state.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..bf27baabd54d3a3d6ae8c773a5a849b6a627275c
+index 0000000000000000000000000000000000000000..e79fef802a9ca5411b94aa834cc721782accd8b1
 --- /dev/null
 +++ b/backend/internal/playerpresence/state.go
-@@ -0,0 +1,346 @@
+@@ -0,0 +1,409 @@
 +package playerpresence
 +
 +import (
@@ -5128,6 +5436,7 @@ index 0000000000000000000000000000000000000000..bf27baabd54d3a3d6ae8c773a5a849b6
 +
 +type State struct {
 +	Version    int               `json:"version"`
++	ScopeID    string            `json:"scope_id,omitempty"`
 +	ObservedAt string            `json:"observed_at,omitempty"`
 +	Available  bool              `json:"available"`
 +	Players    map[string]Record `json:"players"`
@@ -5138,19 +5447,55 @@ index 0000000000000000000000000000000000000000..bf27baabd54d3a3d6ae8c773a5a849b6
 +}
 +
 +func Load(ctx context.Context, store *db.Store) (State, error) {
-+	state := EmptyState()
-+	if store == nil {
-+		return state, nil
-+	}
-+	raw, found, err := store.GetKV(ctx, StorageKey)
-+	if err != nil {
++	return loadFromKey(ctx, store, StorageKey, "")
++}
++
++func LoadScoped(ctx context.Context, store *db.Store, scope Scope) (State, error) {
++	state, found, err := loadScopedState(ctx, store, scope)
++	if err != nil || found {
 +		return state, err
 +	}
++	if scope.AllowLegacyMigration {
++		legacy, legacyFound, legacyErr := loadFromKeyFound(ctx, store, StorageKey, scope.ID)
++		if legacyErr != nil {
++			return EmptyState(), legacyErr
++		}
++		if legacyFound {
++			if err := saveScoped(ctx, store, scope, legacy); err != nil {
++				return EmptyState(), err
++			}
++			return legacy, nil
++		}
++	}
++	state = EmptyState()
++	state.ScopeID = scope.ID
++	return state, nil
++}
++
++func loadScopedState(ctx context.Context, store *db.Store, scope Scope) (State, bool, error) {
++	return loadFromKeyFound(ctx, store, scope.StorageKey(), scope.ID)
++}
++
++func loadFromKey(ctx context.Context, store *db.Store, key, scopeID string) (State, error) {
++	state, _, err := loadFromKeyFound(ctx, store, key, scopeID)
++	return state, err
++}
++
++func loadFromKeyFound(ctx context.Context, store *db.Store, key, scopeID string) (State, bool, error) {
++	state := EmptyState()
++	state.ScopeID = scopeID
++	if store == nil {
++		return state, false, nil
++	}
++	raw, found, err := store.GetKV(ctx, key)
++	if err != nil {
++		return state, false, err
++	}
 +	if !found || strings.TrimSpace(raw) == "" {
-+		return state, nil
++		return state, false, nil
 +	}
 +	if err := json.Unmarshal([]byte(raw), &state); err != nil {
-+		return EmptyState(), err
++		return EmptyState(), false, err
 +	}
 +	if state.Version == 0 {
 +		state.Version = Version
@@ -5158,7 +5503,8 @@ index 0000000000000000000000000000000000000000..bf27baabd54d3a3d6ae8c773a5a849b6
 +	if state.Players == nil {
 +		state.Players = map[string]Record{}
 +	}
-+	return state, nil
++	state.ScopeID = scopeID
++	return state, true, nil
 +}
 +
 +func Observe(ctx context.Context, store *db.Store, now time.Time, online []OnlinePlayer) (State, error) {
@@ -5178,6 +5524,31 @@ index 0000000000000000000000000000000000000000..bf27baabd54d3a3d6ae8c773a5a849b6
 +		return EmptyState(), err
 +	}
 +	return state, nil
++}
++
++func ObserveScoped(ctx context.Context, store *db.Store, scope Scope, now time.Time, online []OnlinePlayer) (State, error) {
++	observeMu.Lock()
++	defer observeMu.Unlock()
++
++	state, err := LoadScoped(ctx, store, scope)
++	if err != nil {
++		return EmptyState(), err
++	}
++	state = Advance(state, now, online)
++	state.ScopeID = scope.ID
++	if err := saveScoped(ctx, store, scope, state); err != nil {
++		return EmptyState(), err
++	}
++	return state, nil
++}
++
++func saveScoped(ctx context.Context, store *db.Store, scope Scope, state State) error {
++	state.ScopeID = scope.ID
++	encoded, err := json.Marshal(state)
++	if err != nil {
++		return err
++	}
++	return store.SetKV(ctx, scope.StorageKey(), string(encoded))
 +}
 +
 +func Advance(previous State, now time.Time, online []OnlinePlayer) State {
@@ -6724,14 +7095,15 @@ index e2f30d950edda0f5b4b37ab8da47aa3a0525a402..748638d3afd94db10a7edae8efdf0201
  	disabled := false
 diff --git a/backend/internal/startergift/service.go b/backend/internal/startergift/service.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..8e30972712c6a12c2f3203e9478418977fee8d69
+index 0000000000000000000000000000000000000000..b68634776c33bb53000797eaae300f8d69fa534c
 --- /dev/null
 +++ b/backend/internal/startergift/service.go
-@@ -0,0 +1,746 @@
+@@ -0,0 +1,824 @@
 +package startergift
 +
 +import (
 +	"context"
++	"crypto/sha256"
 +	"encoding/json"
 +	"errors"
 +	"fmt"
@@ -6747,9 +7119,11 @@ index 0000000000000000000000000000000000000000..8e30972712c6a12c2f3203e947841897
 +)
 +
 +const (
-+	ConfigKey = "starter_gift:config"
-+	StateKey  = "starter_gift:state"
-+	Version   = 1
++	ConfigKey          = "starter_gift:config"
++	StateKey           = "starter_gift:state"
++	ScopedConfigPrefix = "starter_gift:config:v2:"
++	ScopedStatePrefix  = "starter_gift:state:v2:"
++	Version            = 1
 +
 +	MaxItems        = 500
 +	MaxPalTemplates = 500
@@ -6758,7 +7132,7 @@ index 0000000000000000000000000000000000000000..8e30972712c6a12c2f3203e947841897
 +var (
 +	stateMu       sync.Mutex
 +	workerMu      sync.Mutex
-+	workerRunning bool
++	workerRunning = map[string]bool{}
 +	itemIDPattern = regexp.MustCompile(`^[A-Za-z0-9_:-]{1,128}$`)
 +)
 +
@@ -6812,6 +7186,7 @@ index 0000000000000000000000000000000000000000..8e30972712c6a12c2f3203e947841897
 +
 +type State struct {
 +	Version     int                    `json:"version"`
++	ScopeID     string                 `json:"scope_id,omitempty"`
 +	Initialized bool                   `json:"initialized"`
 +	Seen        map[string]bool        `json:"seen"`
 +	Online      map[string]bool        `json:"online"`
@@ -6820,8 +7195,9 @@ index 0000000000000000000000000000000000000000..8e30972712c6a12c2f3203e947841897
 +}
 +
 +type Snapshot struct {
-+	Config Config  `json:"config"`
-+	Grants []Grant `json:"grants"`
++	Scope  playerpresence.Scope `json:"scope"`
++	Config Config               `json:"config"`
++	Grants []Grant              `json:"grants"`
 +}
 +
 +type Dispatcher interface {
@@ -6863,12 +7239,12 @@ index 0000000000000000000000000000000000000000..8e30972712c6a12c2f3203e947841897
 +	}
 +}
 +
-+func LoadSnapshot(ctx context.Context, store *db.Store) (Snapshot, error) {
-+	config, err := loadConfig(ctx, store)
++func LoadSnapshot(ctx context.Context, store *db.Store, scope playerpresence.Scope) (Snapshot, error) {
++	config, err := loadConfig(ctx, store, scope)
 +	if err != nil {
 +		return Snapshot{}, err
 +	}
-+	state, err := loadState(ctx, store)
++	state, err := loadState(ctx, store, scope)
 +	if err != nil {
 +		return Snapshot{}, err
 +	}
@@ -6882,20 +7258,20 @@ index 0000000000000000000000000000000000000000..8e30972712c6a12c2f3203e947841897
 +		}
 +		return grants[i].PlayerID < grants[j].PlayerID
 +	})
-+	return Snapshot{Config: config, Grants: grants}, nil
++	return Snapshot{Scope: scope, Config: config, Grants: grants}, nil
 +}
 +
 +// BaselineKnownPlayers marks players already present in the server save index
 +// and player-presence history as existing players. It is safe to call whenever
 +// the administrator enables or updates the feature.
-+func BaselineKnownPlayers(ctx context.Context, store *db.Store, players []playerpresence.OnlinePlayer) error {
++func BaselineKnownPlayers(ctx context.Context, store *db.Store, scope playerpresence.Scope, players []playerpresence.OnlinePlayer) error {
 +	stateMu.Lock()
 +	defer stateMu.Unlock()
-+	state, err := loadState(ctx, store)
++	state, err := loadState(ctx, store, scope)
 +	if err != nil {
 +		return err
 +	}
-+	presence, err := playerpresence.Load(ctx, store)
++	presence, err := playerpresence.LoadScoped(ctx, store, scope)
 +	if err != nil {
 +		return err
 +	}
@@ -6906,14 +7282,14 @@ index 0000000000000000000000000000000000000000..8e30972712c6a12c2f3203e947841897
 +		markSeen(&state, playerAliases(player))
 +	}
 +	state.Initialized = true
-+	return saveState(ctx, store, state)
++	return saveState(ctx, store, scope, state)
 +}
 +
 +func ValidateConfig(config Config) (Config, error) {
 +	return normalizeConfig(config)
 +}
 +
-+func SaveConfig(ctx context.Context, store *db.Store, config Config) (Snapshot, error) {
++func SaveConfig(ctx context.Context, store *db.Store, scope playerpresence.Scope, config Config) (Snapshot, error) {
 +	config, err := normalizeConfig(config)
 +	if err != nil {
 +		return Snapshot{}, err
@@ -6922,20 +7298,26 @@ index 0000000000000000000000000000000000000000..8e30972712c6a12c2f3203e947841897
 +	if err != nil {
 +		return Snapshot{}, err
 +	}
++	if err := store.SetKV(ctx, configStorageKey(scope), string(raw)); err != nil {
++		return Snapshot{}, err
++	}
++	// Keep the latest saved configuration as the template inherited by worlds
++	// that do not have their own scoped configuration yet. Existing worlds stay
++	// independent because their scoped value always takes precedence.
 +	if err := store.SetKV(ctx, ConfigKey, string(raw)); err != nil {
 +		return Snapshot{}, err
 +	}
-+	return LoadSnapshot(ctx, store)
++	return LoadSnapshot(ctx, store, scope)
 +}
 +
-+func Retry(ctx context.Context, store *db.Store, playerID string) error {
++func Retry(ctx context.Context, store *db.Store, scope playerpresence.Scope, playerID string) error {
 +	keyInput := identity(playerID)
 +	if keyInput == "" {
 +		return errors.New("player id is required")
 +	}
 +	stateMu.Lock()
 +	defer stateMu.Unlock()
-+	state, err := loadState(ctx, store)
++	state, err := loadState(ctx, store, scope)
 +	if err != nil {
 +		return err
 +	}
@@ -6951,20 +7333,20 @@ index 0000000000000000000000000000000000000000..8e30972712c6a12c2f3203e947841897
 +	grant.LastError = ""
 +	grant.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
 +	state.Grants[key] = grant
-+	return saveState(ctx, store, state)
++	return saveState(ctx, store, scope, state)
 +}
 +
 +// Forget removes the existing result and rearms the player for the next real
 +// offline-to-online transition. A player who is still online is not granted
 +// again on the next monitor tick.
-+func Forget(ctx context.Context, store *db.Store, playerID string) error {
++func Forget(ctx context.Context, store *db.Store, scope playerpresence.Scope, playerID string) error {
 +	keyInput := identity(playerID)
 +	if keyInput == "" {
 +		return errors.New("player id is required")
 +	}
 +	stateMu.Lock()
 +	defer stateMu.Unlock()
-+	state, err := loadState(ctx, store)
++	state, err := loadState(ctx, store, scope)
 +	if err != nil {
 +		return err
 +	}
@@ -6979,21 +7361,21 @@ index 0000000000000000000000000000000000000000..8e30972712c6a12c2f3203e947841897
 +		state.Rearm[alias] = true
 +	}
 +	delete(state.Grants, key)
-+	return saveState(ctx, store, state)
++	return saveState(ctx, store, scope, state)
 +}
 +
 +// Observe is called after playerpresence.Observe. On its first run it imports
 +// the complete presence-history player set as a baseline, including players
 +// who are currently offline, so enabling the feature does not backfill old
 +// players. Later unseen identities receive a frozen copy of the current plan.
-+func Observe(ctx context.Context, store *db.Store, now time.Time, online []playerpresence.OnlinePlayer, dispatcher Dispatcher) error {
++func Observe(ctx context.Context, store *db.Store, scope playerpresence.Scope, now time.Time, online []playerpresence.OnlinePlayer, dispatcher Dispatcher) error {
 +	stateMu.Lock()
-+	config, err := loadConfig(ctx, store)
++	config, err := loadConfig(ctx, store, scope)
 +	if err != nil {
 +		stateMu.Unlock()
 +		return err
 +	}
-+	state, err := loadState(ctx, store)
++	state, err := loadState(ctx, store, scope)
 +	if err != nil {
 +		stateMu.Unlock()
 +		return err
@@ -7001,24 +7383,29 @@ index 0000000000000000000000000000000000000000..8e30972712c6a12c2f3203e947841897
 +	nowText := now.UTC().Format(time.RFC3339Nano)
 +
 +	if !state.Initialized {
-+		presence, loadErr := playerpresence.Load(ctx, store)
-+		if loadErr != nil {
-+			stateMu.Unlock()
-+			return loadErr
-+		}
-+		for _, record := range presence.Players {
-+			markSeen(&state, recordAliases(record))
-+		}
-+		for _, player := range online {
-+			markSeen(&state, playerAliases(player))
-+		}
 +		state.Online = onlineAliasSet(online)
 +		state.Initialized = true
-+		if err := saveState(ctx, store, state); err != nil {
++		for _, player := range online {
++			aliases := playerAliases(player)
++			if len(aliases) == 0 {
++				continue
++			}
++			if config.Enabled {
++				key := canonicalPlayerKey(player)
++				if key != "" {
++					state.Grants[key] = newGrant(player, config, nowText)
++				}
++			}
++			markSeen(&state, aliases)
++		}
++		if err := saveState(ctx, store, scope, state); err != nil {
 +			stateMu.Unlock()
 +			return err
 +		}
 +		stateMu.Unlock()
++		if config.Enabled && dispatcher != nil {
++			startWorker(ctx, store, scope, dispatcher, online)
++		}
 +		return nil
 +	}
 +
@@ -7057,42 +7444,43 @@ index 0000000000000000000000000000000000000000..8e30972712c6a12c2f3203e947841897
 +		state.Grants[key] = newGrant(player, config, nowText)
 +	}
 +	state.Online = currentOnline
-+	if err := saveState(ctx, store, state); err != nil {
++	if err := saveState(ctx, store, scope, state); err != nil {
 +		stateMu.Unlock()
 +		return err
 +	}
 +	stateMu.Unlock()
 +
 +	if config.Enabled && dispatcher != nil {
-+		startWorker(ctx, store, dispatcher, online)
++		startWorker(ctx, store, scope, dispatcher, online)
 +	}
 +	return nil
 +}
 +
-+func startWorker(ctx context.Context, store *db.Store, dispatcher Dispatcher, online []playerpresence.OnlinePlayer) {
++func startWorker(ctx context.Context, store *db.Store, scope playerpresence.Scope, dispatcher Dispatcher, online []playerpresence.OnlinePlayer) {
++	workerKey := scope.StorageKey()
 +	workerMu.Lock()
-+	if workerRunning {
++	if workerRunning[workerKey] {
 +		workerMu.Unlock()
 +		return
 +	}
-+	workerRunning = true
++	workerRunning[workerKey] = true
 +	workerMu.Unlock()
 +
 +	players := append([]playerpresence.OnlinePlayer(nil), online...)
 +	go func() {
 +		defer func() {
 +			workerMu.Lock()
-+			workerRunning = false
++			delete(workerRunning, workerKey)
 +			workerMu.Unlock()
 +		}()
-+		processOnline(ctx, store, dispatcher, players)
++		processOnline(ctx, store, scope, dispatcher, players)
 +	}()
 +}
 +
-+func processOnline(ctx context.Context, store *db.Store, dispatcher Dispatcher, online []playerpresence.OnlinePlayer) {
++func processOnline(ctx context.Context, store *db.Store, scope playerpresence.Scope, dispatcher Dispatcher, online []playerpresence.OnlinePlayer) {
 +	keys := make([]string, 0, len(online))
 +	stateMu.Lock()
-+	state, err := loadState(ctx, store)
++	state, err := loadState(ctx, store, scope)
 +	if err == nil {
 +		for _, player := range online {
 +			if key := findGrantKey(state, playerAliases(player)); key != "" {
@@ -7110,20 +7498,20 @@ index 0000000000000000000000000000000000000000..8e30972712c6a12c2f3203e947841897
 +		if ctx.Err() != nil {
 +			return
 +		}
-+		_ = processOne(ctx, store, dispatcher, key)
++		_ = processOne(ctx, store, scope, dispatcher, key)
 +	}
 +}
 +
-+func processOne(ctx context.Context, store *db.Store, dispatcher Dispatcher, key string) error {
++func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope, dispatcher Dispatcher, key string) error {
 +	attemptStarted := false
 +	for {
 +		stateMu.Lock()
-+		config, err := loadConfig(ctx, store)
++		config, err := loadConfig(ctx, store, scope)
 +		if err != nil {
 +			stateMu.Unlock()
 +			return err
 +		}
-+		state, err := loadState(ctx, store)
++		state, err := loadState(ctx, store, scope)
 +		if err != nil {
 +			stateMu.Unlock()
 +			return err
@@ -7138,7 +7526,7 @@ index 0000000000000000000000000000000000000000..8e30972712c6a12c2f3203e947841897
 +				grant.Status = "pending"
 +				grant.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
 +				state.Grants[key] = grant
-+				_ = saveState(ctx, store, state)
++				_ = saveState(ctx, store, scope, state)
 +			}
 +			stateMu.Unlock()
 +			return nil
@@ -7154,7 +7542,7 @@ index 0000000000000000000000000000000000000000..8e30972712c6a12c2f3203e947841897
 +		grant.Status = "running"
 +		grant.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
 +		state.Grants[key] = grant
-+		if err := saveState(ctx, store, state); err != nil {
++		if err := saveState(ctx, store, scope, state); err != nil {
 +			stateMu.Unlock()
 +			return err
 +		}
@@ -7179,7 +7567,7 @@ index 0000000000000000000000000000000000000000..8e30972712c6a12c2f3203e947841897
 +		}
 +
 +		stateMu.Lock()
-+		state, loadErr := loadState(ctx, store)
++		state, loadErr := loadState(ctx, store, scope)
 +		if loadErr != nil {
 +			stateMu.Unlock()
 +			return loadErr
@@ -7205,7 +7593,7 @@ index 0000000000000000000000000000000000000000..8e30972712c6a12c2f3203e947841897
 +			current.LastError = ""
 +		}
 +		state.Grants[key] = current
-+		saveErr := saveState(ctx, store, state)
++		saveErr := saveState(ctx, store, scope, state)
 +		stateMu.Unlock()
 +		if saveErr != nil {
 +			return saveErr
@@ -7288,26 +7676,85 @@ index 0000000000000000000000000000000000000000..8e30972712c6a12c2f3203e947841897
 +	return config, nil
 +}
 +
-+func loadConfig(ctx context.Context, store *db.Store) (Config, error) {
-+	config := DefaultConfig()
-+	raw, found, err := store.GetKV(ctx, ConfigKey)
-+	if err != nil || !found || strings.TrimSpace(raw) == "" {
-+		return config, err
-+	}
-+	if err := json.Unmarshal([]byte(raw), &config); err != nil {
-+		return Config{}, err
-+	}
-+	return normalizeConfig(config)
++func configStorageKey(scope playerpresence.Scope) string {
++	digest := sha256.Sum256([]byte(strings.TrimSpace(scope.ID)))
++	return fmt.Sprintf("%s%x", ScopedConfigPrefix, digest[:16])
 +}
 +
-+func loadState(ctx context.Context, store *db.Store) (State, error) {
-+	state := EmptyState()
-+	raw, found, err := store.GetKV(ctx, StateKey)
-+	if err != nil || !found || strings.TrimSpace(raw) == "" {
++func loadConfig(ctx context.Context, store *db.Store, scope playerpresence.Scope) (Config, error) {
++	config, found, err := loadConfigFromKey(ctx, store, configStorageKey(scope))
++	if err != nil || found {
++		return config, err
++	}
++	config, legacyFound, err := loadConfigFromKey(ctx, store, ConfigKey)
++	if err != nil {
++		return DefaultConfig(), err
++	}
++	if !legacyFound {
++		return DefaultConfig(), nil
++	}
++	raw, err := json.Marshal(config)
++	if err != nil {
++		return DefaultConfig(), err
++	}
++	if err := store.SetKV(ctx, configStorageKey(scope), string(raw)); err != nil {
++		return DefaultConfig(), err
++	}
++	return config, nil
++}
++
++func loadConfigFromKey(ctx context.Context, store *db.Store, key string) (Config, bool, error) {
++	config := DefaultConfig()
++	raw, found, err := store.GetKV(ctx, key)
++	if err != nil {
++		return config, false, err
++	}
++	if !found || strings.TrimSpace(raw) == "" {
++		return config, false, nil
++	}
++	if err := json.Unmarshal([]byte(raw), &config); err != nil {
++		return DefaultConfig(), false, err
++	}
++	normalized, err := normalizeConfig(config)
++	return normalized, true, err
++}
++
++func stateStorageKey(scope playerpresence.Scope) string {
++	digest := sha256.Sum256([]byte(strings.TrimSpace(scope.ID)))
++	return fmt.Sprintf("%s%x", ScopedStatePrefix, digest[:16])
++}
++
++func loadState(ctx context.Context, store *db.Store, scope playerpresence.Scope) (State, error) {
++	state, found, err := loadStateKey(ctx, store, stateStorageKey(scope), scope.ID)
++	if err != nil || found {
 +		return state, err
 +	}
++	if scope.AllowLegacyMigration {
++		legacy, legacyFound, legacyErr := loadStateKey(ctx, store, StateKey, scope.ID)
++		if legacyErr != nil {
++			return EmptyState(), legacyErr
++		}
++		if legacyFound {
++			if err := saveState(ctx, store, scope, legacy); err != nil {
++				return EmptyState(), err
++			}
++			return legacy, nil
++		}
++	}
++	state = EmptyState()
++	state.ScopeID = scope.ID
++	return state, nil
++}
++
++func loadStateKey(ctx context.Context, store *db.Store, key, scopeID string) (State, bool, error) {
++	state := EmptyState()
++	state.ScopeID = scopeID
++	raw, found, err := store.GetKV(ctx, key)
++	if err != nil || !found || strings.TrimSpace(raw) == "" {
++		return state, found, err
++	}
 +	if err := json.Unmarshal([]byte(raw), &state); err != nil {
-+		return EmptyState(), err
++		return EmptyState(), false, err
 +	}
 +	if state.Seen == nil {
 +		state.Seen = map[string]bool{}
@@ -7322,16 +7769,18 @@ index 0000000000000000000000000000000000000000..8e30972712c6a12c2f3203e947841897
 +		state.Grants = map[string]grantRecord{}
 +	}
 +	state.Version = Version
-+	return state, nil
++	state.ScopeID = scopeID
++	return state, true, nil
 +}
 +
-+func saveState(ctx context.Context, store *db.Store, state State) error {
++func saveState(ctx context.Context, store *db.Store, scope playerpresence.Scope, state State) error {
 +	state.Version = Version
++	state.ScopeID = scope.ID
 +	raw, err := json.Marshal(state)
 +	if err != nil {
 +		return err
 +	}
-+	return store.SetKV(ctx, StateKey, string(raw))
++	return store.SetKV(ctx, stateStorageKey(scope), string(raw))
 +}
 +
 +func newGrant(player playerpresence.OnlinePlayer, config Config, nowText string) grantRecord {
@@ -7476,10 +7925,10 @@ index 0000000000000000000000000000000000000000..8e30972712c6a12c2f3203e947841897
 +}
 diff --git a/backend/internal/startergift/service_test.go b/backend/internal/startergift/service_test.go
 new file mode 100644
-index 0000000000000000000000000000000000000000..c6e8dd4cad9b23d74229eab075cadf2b85a01a48
+index 0000000000000000000000000000000000000000..8af650ab5bcd5f4320e047fa9a42c7fb0f59afaf
 --- /dev/null
 +++ b/backend/internal/startergift/service_test.go
-@@ -0,0 +1,217 @@
+@@ -0,0 +1,265 @@
 +package startergift
 +
 +import (
@@ -7529,7 +7978,11 @@ index 0000000000000000000000000000000000000000..c6e8dd4cad9b23d74229eab075cadf2b
 +	return store
 +}
 +
-+func saveTestConfig(t *testing.T, store *db.Store) Config {
++func testScope(id string) playerpresence.Scope {
++	return playerpresence.Scope{ID: "server-world:" + id, WorldID: id}
++}
++
++func saveTestConfig(t *testing.T, store *db.Store, scope playerpresence.Scope) Config {
 +	t.Helper()
 +	config := Config{
 +		Enabled: true,
@@ -7542,54 +7995,43 @@ index 0000000000000000000000000000000000000000..c6e8dd4cad9b23d74229eab075cadf2b
 +		TemplateBatchSize: 2,
 +		BatchDelayMS:      100,
 +	}
-+	if _, err := SaveConfig(context.Background(), store, config); err != nil {
++	if _, err := SaveConfig(context.Background(), store, scope, config); err != nil {
 +		t.Fatal(err)
 +	}
 +	return config
 +}
 +
-+func observePresence(t *testing.T, store *db.Store, now time.Time, players []playerpresence.OnlinePlayer) {
++func observePresence(t *testing.T, store *db.Store, scope playerpresence.Scope, now time.Time, players []playerpresence.OnlinePlayer) {
 +	t.Helper()
-+	if _, err := playerpresence.Observe(context.Background(), store, now, players); err != nil {
++	if _, err := playerpresence.ObserveScoped(context.Background(), store, scope, now, players); err != nil {
 +		t.Fatal(err)
 +	}
 +}
 +
-+func TestObserveImportsHistoricalBaselineAndBatchesNewPlayer(t *testing.T) {
++func TestBaselineExistingPlayersAndBatchNewPlayer(t *testing.T) {
 +	store := openTestStore(t)
-+	config := saveTestConfig(t, store)
++	scope := testScope("world-a")
++	config := saveTestConfig(t, store, scope)
 +	ctx := context.Background()
 +	now := time.Date(2026, 7, 25, 10, 0, 0, 0, time.UTC)
 +	alice := playerpresence.OnlinePlayer{PlayerUID: "uid-alice", SteamID: "1", Nickname: "Alice"}
 +	bob := playerpresence.OnlinePlayer{PlayerUID: "uid-bob", SteamID: "2", Nickname: "Bob"}
 +
-+	// Alice was known before the feature initialized and is now offline. The
-+	// complete player-presence history must baseline her without a grant.
-+	observePresence(t, store, now, []playerpresence.OnlinePlayer{alice})
-+	observePresence(t, store, now.Add(15*time.Second), nil)
-+	if err := Observe(ctx, store, now.Add(15*time.Second), nil, nil); err != nil {
++	if err := BaselineKnownPlayers(ctx, store, scope, []playerpresence.OnlinePlayer{alice}); err != nil {
 +		t.Fatal(err)
 +	}
-+	observePresence(t, store, now.Add(30*time.Second), []playerpresence.OnlinePlayer{alice})
-+	if err := Observe(ctx, store, now.Add(30*time.Second), []playerpresence.OnlinePlayer{alice}, nil); err != nil {
-+		t.Fatal(err)
-+	}
-+	if snapshot, err := LoadSnapshot(ctx, store); err != nil || len(snapshot.Grants) != 0 {
-+		t.Fatalf("historical baseline grants=%#v err=%v", snapshot.Grants, err)
-+	}
-+
-+	observePresence(t, store, now.Add(45*time.Second), []playerpresence.OnlinePlayer{alice, bob})
-+	if err := Observe(ctx, store, now.Add(45*time.Second), []playerpresence.OnlinePlayer{alice, bob}, nil); err != nil {
++	observePresence(t, store, scope, now, []playerpresence.OnlinePlayer{alice, bob})
++	if err := Observe(ctx, store, scope, now, []playerpresence.OnlinePlayer{alice, bob}, nil); err != nil {
 +		t.Fatal(err)
 +	}
 +	fake := &fakeDispatcher{}
-+	if err := processOne(ctx, store, fake, identity(bob.SteamID)); err != nil {
++	if err := processOne(ctx, store, scope, fake, identity(bob.SteamID)); err != nil {
 +		t.Fatal(err)
 +	}
 +	if len(fake.itemBatches) != 2 || len(fake.templateBatches) != 2 {
 +		t.Fatalf("batches items=%#v templates=%#v", fake.itemBatches, fake.templateBatches)
 +	}
-+	snapshot, err := LoadSnapshot(ctx, store)
++	snapshot, err := LoadSnapshot(ctx, store, scope)
 +	if err != nil {
 +		t.Fatal(err)
 +	}
@@ -7602,27 +8044,90 @@ index 0000000000000000000000000000000000000000..c6e8dd4cad9b23d74229eab075cadf2b
 +	}
 +}
 +
-+func TestFailedBatchResumesAfterCompletedProgress(t *testing.T) {
++func TestEnabledConfigGrantsFirstPlayerInNewWorld(t *testing.T) {
 +	store := openTestStore(t)
-+	saveTestConfig(t, store)
-+	ctx := context.Background()
++	worldA := testScope("world-a")
++	worldB := testScope("world-b")
++	saveTestConfig(t, store, worldA)
 +	now := time.Date(2026, 7, 25, 11, 0, 0, 0, time.UTC)
-+	baseline := playerpresence.OnlinePlayer{SteamID: "1", Nickname: "Baseline"}
 +	bob := playerpresence.OnlinePlayer{SteamID: "2", Nickname: "Bob"}
-+	observePresence(t, store, now, []playerpresence.OnlinePlayer{baseline})
-+	if err := Observe(ctx, store, now, []playerpresence.OnlinePlayer{baseline}, nil); err != nil {
++
++	observePresence(t, store, worldB, now, []playerpresence.OnlinePlayer{bob})
++	if err := Observe(context.Background(), store, worldB, now, []playerpresence.OnlinePlayer{bob}, nil); err != nil {
 +		t.Fatal(err)
 +	}
-+	observePresence(t, store, now.Add(15*time.Second), []playerpresence.OnlinePlayer{baseline, bob})
-+	if err := Observe(ctx, store, now.Add(15*time.Second), []playerpresence.OnlinePlayer{baseline, bob}, nil); err != nil {
++	snapshot, err := LoadSnapshot(context.Background(), store, worldB)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(snapshot.Grants) != 1 || snapshot.Grants[0].PlayerID != "2" || snapshot.Grants[0].Status != "pending" {
++		t.Fatalf("new-world first player was not queued: %#v", snapshot.Grants)
++	}
++	oldSnapshot, err := LoadSnapshot(context.Background(), store, worldA)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(oldSnapshot.Grants) != 0 {
++		t.Fatalf("world-a inherited world-b grants: %#v", oldSnapshot.Grants)
++	}
++}
++
++func TestConfigIsScopedAndFutureWorldsInheritLatestTemplate(t *testing.T) {
++	store := openTestStore(t)
++	ctx := context.Background()
++	worldA := testScope("world-a")
++	worldB := testScope("world-b")
++	worldC := testScope("world-c")
++
++	configA := Config{Enabled: true, Items: []ItemGrant{{ItemID: "Money", Count: 100}}, ItemBatchSize: 20, TemplateBatchSize: 5, BatchDelayMS: 500}
++	if _, err := SaveConfig(ctx, store, worldA, configA); err != nil {
++		t.Fatal(err)
++	}
++	inherited, err := LoadSnapshot(ctx, store, worldB)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(inherited.Config.Items) != 1 || inherited.Config.Items[0].ItemID != "Money" {
++		t.Fatalf("world-b did not inherit template: %#v", inherited.Config)
++	}
++
++	configB := Config{Enabled: true, Items: []ItemGrant{{ItemID: "PalSphere", Count: 20}}, ItemBatchSize: 10, TemplateBatchSize: 2, BatchDelayMS: 300}
++	if _, err := SaveConfig(ctx, store, worldB, configB); err != nil {
++		t.Fatal(err)
++	}
++	snapshotA, err := LoadSnapshot(ctx, store, worldA)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(snapshotA.Config.Items) != 1 || snapshotA.Config.Items[0].ItemID != "Money" {
++		t.Fatalf("world-a config was overwritten: %#v", snapshotA.Config)
++	}
++	snapshotC, err := LoadSnapshot(ctx, store, worldC)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(snapshotC.Config.Items) != 1 || snapshotC.Config.Items[0].ItemID != "PalSphere" {
++		t.Fatalf("future world did not inherit latest template: %#v", snapshotC.Config)
++	}
++}
++
++func TestFailedBatchResumesWithinSameWorld(t *testing.T) {
++	store := openTestStore(t)
++	scope := testScope("world-a")
++	saveTestConfig(t, store, scope)
++	ctx := context.Background()
++	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
++	bob := playerpresence.OnlinePlayer{SteamID: "2", Nickname: "Bob"}
++	observePresence(t, store, scope, now, []playerpresence.OnlinePlayer{bob})
++	if err := Observe(ctx, store, scope, now, []playerpresence.OnlinePlayer{bob}, nil); err != nil {
 +		t.Fatal(err)
 +	}
 +
 +	fake := &fakeDispatcher{failTemplates: 1}
-+	if err := processOne(ctx, store, fake, identity(bob.SteamID)); err == nil {
++	if err := processOne(ctx, store, scope, fake, identity(bob.SteamID)); err == nil {
 +		t.Fatal("expected template batch failure")
 +	}
-+	snapshot, err := LoadSnapshot(ctx, store)
++	snapshot, err := LoadSnapshot(ctx, store, scope)
 +	if err != nil {
 +		t.Fatal(err)
 +	}
@@ -7630,13 +8135,13 @@ index 0000000000000000000000000000000000000000..c6e8dd4cad9b23d74229eab075cadf2b
 +	if grant.Status != "failed" || grant.NextItem != 2 || grant.NextTemplate != 0 {
 +		t.Fatalf("failed progress=%#v", grant)
 +	}
-+	if err := Retry(ctx, store, bob.SteamID); err != nil {
++	if err := Retry(ctx, store, scope, bob.SteamID); err != nil {
 +		t.Fatal(err)
 +	}
-+	if err := processOne(ctx, store, fake, identity(bob.SteamID)); err != nil {
++	if err := processOne(ctx, store, scope, fake, identity(bob.SteamID)); err != nil {
 +		t.Fatal(err)
 +	}
-+	snapshot, err = LoadSnapshot(ctx, store)
++	snapshot, err = LoadSnapshot(ctx, store, scope)
 +	if err != nil {
 +		t.Fatal(err)
 +	}
@@ -7648,39 +8153,31 @@ index 0000000000000000000000000000000000000000..c6e8dd4cad9b23d74229eab075cadf2b
 +
 +func TestForgetWaitsForOfflineBeforeRearming(t *testing.T) {
 +	store := openTestStore(t)
-+	saveTestConfig(t, store)
++	scope := testScope("world-a")
++	saveTestConfig(t, store, scope)
 +	ctx := context.Background()
-+	now := time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC)
-+	baseline := playerpresence.OnlinePlayer{SteamID: "1", Nickname: "Baseline"}
++	now := time.Date(2026, 7, 25, 13, 0, 0, 0, time.UTC)
 +	bob := playerpresence.OnlinePlayer{SteamID: "2", Nickname: "Bob"}
-+	observePresence(t, store, now, []playerpresence.OnlinePlayer{baseline})
-+	if err := Observe(ctx, store, now, []playerpresence.OnlinePlayer{baseline}, nil); err != nil {
++	observePresence(t, store, scope, now, []playerpresence.OnlinePlayer{bob})
++	if err := Observe(ctx, store, scope, now, []playerpresence.OnlinePlayer{bob}, nil); err != nil {
 +		t.Fatal(err)
 +	}
-+	observePresence(t, store, now.Add(15*time.Second), []playerpresence.OnlinePlayer{baseline, bob})
-+	if err := Observe(ctx, store, now.Add(15*time.Second), []playerpresence.OnlinePlayer{baseline, bob}, nil); err != nil {
++	if err := Forget(ctx, store, scope, bob.SteamID); err != nil {
 +		t.Fatal(err)
 +	}
-+	if err := Forget(ctx, store, bob.SteamID); err != nil {
++	if err := Observe(ctx, store, scope, now.Add(15*time.Second), []playerpresence.OnlinePlayer{bob}, nil); err != nil {
 +		t.Fatal(err)
 +	}
-+
-+	// Still online: no immediate duplicate grant.
-+	if err := Observe(ctx, store, now.Add(30*time.Second), []playerpresence.OnlinePlayer{baseline, bob}, nil); err != nil {
-+		t.Fatal(err)
-+	}
-+	if snapshot, err := LoadSnapshot(ctx, store); err != nil || len(snapshot.Grants) != 0 {
++	if snapshot, err := LoadSnapshot(ctx, store, scope); err != nil || len(snapshot.Grants) != 0 {
 +		t.Fatalf("still-online rearm grants=%#v err=%v", snapshot.Grants, err)
 +	}
-+
-+	// Leave, then enter: the reset becomes eligible.
-+	if err := Observe(ctx, store, now.Add(45*time.Second), []playerpresence.OnlinePlayer{baseline}, nil); err != nil {
++	if err := Observe(ctx, store, scope, now.Add(30*time.Second), nil, nil); err != nil {
 +		t.Fatal(err)
 +	}
-+	if err := Observe(ctx, store, now.Add(60*time.Second), []playerpresence.OnlinePlayer{baseline, bob}, nil); err != nil {
++	if err := Observe(ctx, store, scope, now.Add(45*time.Second), []playerpresence.OnlinePlayer{bob}, nil); err != nil {
 +		t.Fatal(err)
 +	}
-+	if snapshot, err := LoadSnapshot(ctx, store); err != nil || len(snapshot.Grants) != 1 || snapshot.Grants[0].Status != "pending" {
++	if snapshot, err := LoadSnapshot(ctx, store, scope); err != nil || len(snapshot.Grants) != 1 || snapshot.Grants[0].Status != "pending" {
 +		t.Fatalf("reentered grants=%#v err=%v", snapshot.Grants, err)
 +	}
 +}
@@ -7698,7 +8195,7 @@ index 0000000000000000000000000000000000000000..c6e8dd4cad9b23d74229eab075cadf2b
 +	}
 +}
 diff --git a/docs/openapi.yaml b/docs/openapi.yaml
-index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..7259ead9c6cc17caae4222e15e2eb31bc0a1865d 100644
+index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..61221847b9406cf5b866f5de17dde56163a9d6ef 100644
 --- a/docs/openapi.yaml
 +++ b/docs/openapi.yaml
 @@ -135,6 +135,11 @@ x-player-inventory: &playerInventory
@@ -8293,7 +8790,7 @@ index 7abbbd6b1c82120fdd4628f0a6b26dc135b361c0..7259ead9c6cc17caae4222e15e2eb31b
 +          type: object
 +          required: [version, repository, features]
 +          properties:
-+            version: {type: string, const: 0.8.11}
++            version: {type: string, const: 0.8.12}
 +            repository: {type: string, const: ninhua/Palworld-Panel-Patches}
 +            features:
 +              type: array
@@ -9547,10 +10044,10 @@ index ae3218ad4827974b2d7ae5f02a56f3263e84ef44..327862fe08eecc6f63e71fcb93f25d2e
      {},
 diff --git a/frontend/src/api/starterGift.ts b/frontend/src/api/starterGift.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..fc2b05b0e69cfcfde3d466610a4cdd920e7d4a90
+index 0000000000000000000000000000000000000000..c50c0a5fe97327c985634fc804a47c6ea04bd991
 --- /dev/null
 +++ b/frontend/src/api/starterGift.ts
-@@ -0,0 +1,118 @@
+@@ -0,0 +1,126 @@
 +import { apiClient, handleRequest } from './client';
 +
 +export interface StarterGiftItem { item_id: string; count: number }
@@ -9580,7 +10077,9 @@ index 0000000000000000000000000000000000000000..fc2b05b0e69cfcfde3d466610a4cdd92
 +  last_error?: string;
 +}
 +export interface PalTemplateInfo { name: string; modified_at?: string; size?: number }
++export interface StarterGiftScope { id: string; world_id: string; world_path?: string }
 +export interface StarterGiftSnapshot {
++  scope: StarterGiftScope;
 +  config: StarterGiftConfig;
 +  grants: StarterGiftGrant[];
 +  templates: PalTemplateInfo[];
@@ -9600,7 +10099,13 @@ index 0000000000000000000000000000000000000000..fc2b05b0e69cfcfde3d466610a4cdd92
 +const mapSnapshot = (raw: unknown): StarterGiftSnapshot => {
 +  const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
 +  const config = (data.config && typeof data.config === 'object' ? data.config : {}) as Record<string, unknown>;
++  const scope = (data.scope && typeof data.scope === 'object' ? data.scope : {}) as Record<string, unknown>;
 +  return {
++    scope: {
++      id: String(scope.id || ''),
++      world_id: String(scope.world_id || ''),
++      world_path: scope.world_path ? String(scope.world_path) : undefined,
++    },
 +    config: {
 +      enabled: Boolean(config.enabled),
 +      items: (Array.isArray(config.items) ? config.items : []).map((rawItem) => {
@@ -11214,6 +11719,28 @@ index 66de360956a02b0370cb81290ad91580998a219c..96a04b1f286fb57d6d2c507bdc13a706
  									className="rounded-lg border border-slate-200 px-3 py-2.5 text-xs font-semibold text-slate-700 focus:border-sky-500 focus:outline-none disabled:bg-slate-50"
  								/>
  							</label>
+diff --git a/frontend/src/pages/PlayerCenter.tsx b/frontend/src/pages/PlayerCenter.tsx
+index 2496857eb54616a9329e36d05efa603ffd9cdc68..d1d079e2a29b2e58b6a723d81578fe043bbb796a 100644
+--- a/frontend/src/pages/PlayerCenter.tsx
++++ b/frontend/src/pages/PlayerCenter.tsx
+@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
+ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+ import { Link } from 'react-router-dom';
+ import {
+-  AlertTriangle, BookOpen, Boxes, CheckCircle2, Database, Gamepad2, LoaderCircle, MessageSquareText,
++  AlertTriangle, BookOpen, Boxes, CheckCircle2, Database, Gamepad2, Gift, LoaderCircle, MessageSquareText,
+   MapPin, RefreshCw, Search, ShieldAlert, Sword, UserCog, UserRound, Wifi, WifiOff,
+ } from 'lucide-react';
+ import { getErrorMessage } from '../api/client';
+@@ -283,7 +283,7 @@ export const PlayerCenter: React.FC = () => {
+           <p className="mt-2 max-w-3xl text-xs font-semibold leading-5 text-slate-500">存档索引负责离线档案、帕鲁和背包快照；PalDefender 负责在线读取、发放与管理。先在左侧选玩家，再在右侧执行所有操作。</p>
+           <div className="mt-3 flex flex-wrap items-center gap-2"><StatusBadge status={status?.available ? 'Online' : 'Offline'} customText={status?.available ? 'PalDefender REST 已连接' : readinessText} />{savePlayersQuery.data?.status && <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${savePlayersQuery.data.status.state === 'ready' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>存档索引：{savePlayersQuery.data.status.state}</span>}<span className="text-[10px] font-bold text-slate-400">{players.filter((player) => player.is_online).length} / {players.length} 在线</span></div>
+         </div>
+-        <div className="flex flex-wrap gap-2">{savePlayersQuery.data?.status?.state === 'not_indexed' && canRebuildSaveIndex && <button type="button" onClick={() => rebuildSaveIndex.mutate()} disabled={rebuildSaveIndex.isPending} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-violet-700 disabled:opacity-40"><Database size={14} className={rebuildSaveIndex.isPending ? 'animate-pulse' : ''} />{rebuildSaveIndex.isPending ? '正在构建索引...' : '构建存档索引'}</button>}<button type="button" onClick={() => { void statusQuery.refetch(); void savePlayersQuery.refetch(); }} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"><RefreshCw size={14} className={statusQuery.isFetching || savePlayersQuery.isFetching ? 'animate-spin' : ''} />刷新玩家数据</button><Link to="/security" className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white"><ShieldAlert size={14} />安全设置</Link></div>
++        <div className="flex flex-wrap gap-2">{savePlayersQuery.data?.status?.state === 'not_indexed' && canRebuildSaveIndex && <button type="button" onClick={() => rebuildSaveIndex.mutate()} disabled={rebuildSaveIndex.isPending} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-violet-700 disabled:opacity-40"><Database size={14} className={rebuildSaveIndex.isPending ? 'animate-pulse' : ''} />{rebuildSaveIndex.isPending ? '正在构建索引...' : '构建存档索引'}</button>}<button type="button" onClick={() => { void statusQuery.refetch(); void savePlayersQuery.refetch(); }} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"><RefreshCw size={14} className={statusQuery.isFetching || savePlayersQuery.isFetching ? 'animate-spin' : ''} />刷新玩家数据</button><Link to="/starter-gift" className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2.5 text-xs font-bold text-violet-700 hover:bg-violet-100"><Gift size={14} />初始礼包</Link><Link to="/security" className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-bold text-white"><ShieldAlert size={14} />安全设置</Link></div>
+       </header>
+ 
+       {notice && <div role="status" className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-800"><CheckCircle2 size={15} />{notice}</div>}
 diff --git a/frontend/src/pages/Players.tsx b/frontend/src/pages/Players.tsx
 index 8a80f57a9ba7a4b81b7b13004069f4f18afe7db8..2abcd40e4c04f8d4657a81801c382fba57214aad 100644
 --- a/frontend/src/pages/Players.tsx
@@ -11608,20 +12135,19 @@ index 4c9ff45aaceacddc0f28f4571653d78c8d03cd58..14ad43332b96a977ef305d0980a863ab
              <div className="mt-4 grid grid-cols-2 gap-3 text-xs font-semibold">
 diff --git a/frontend/src/pages/StarterGift.tsx b/frontend/src/pages/StarterGift.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..00531f1ef96cfdc4c9a96494eca8161ea466add2
+index 0000000000000000000000000000000000000000..a46f04fea88ff6ed81a85a7c5fd551af909bd8e4
 --- /dev/null
 +++ b/frontend/src/pages/StarterGift.tsx
-@@ -0,0 +1,242 @@
+@@ -0,0 +1,237 @@
 +import React, { useEffect, useMemo, useState } from 'react';
 +import {
-+  CheckSquare, Gift, LoaderCircle, PackagePlus, Plus, RefreshCw, RotateCcw, Save, Search, Square, Trash2,
++  CheckSquare, Gift, LoaderCircle, PackageCheck, RefreshCw, RotateCcw, Save, Search, Square, Trash2,
 +} from 'lucide-react';
 +import { getErrorMessage } from '../api/client';
 +import {
 +  starterGiftApi,
 +  type StarterGiftCatalogItem,
 +  type StarterGiftConfig,
-+  type StarterGiftItem,
 +  type StarterGiftSnapshot,
 +} from '../api/starterGift';
 +
@@ -11634,6 +12160,32 @@ index 0000000000000000000000000000000000000000..00531f1ef96cfdc4c9a96494eca8161e
 +  batch_delay_ms: 500,
 +};
 +
++type ItemCategory = 'all' | 'sphere' | 'weapon' | 'armor' | 'food' | 'medicine' | 'material' | 'special' | 'other';
++
++const itemCategories: Array<{ id: ItemCategory; label: string }> = [
++  { id: 'all', label: '全部分类' },
++  { id: 'sphere', label: '帕鲁球' },
++  { id: 'weapon', label: '武器与弹药' },
++  { id: 'armor', label: '护甲与装备' },
++  { id: 'food', label: '食物与农业' },
++  { id: 'medicine', label: '药品' },
++  { id: 'material', label: '材料' },
++  { id: 'special', label: '特殊与图纸' },
++  { id: 'other', label: '其他' },
++];
++
++const classifyItem = (item: StarterGiftCatalogItem): ItemCategory => {
++  const value = `${item.id} ${item.name}`.toLowerCase();
++  if (/sphere|帕鲁球/.test(value)) return 'sphere';
++  if (/bullet|ammo|rifle|gun|bow|sword|spear|launcher|grenade|weapon|子弹|弹药|步枪|手枪|霰弹|弓|剑|枪/.test(value)) return 'weapon';
++  if (/armor|helmet|shield|cloth|wear|盔甲|头盔|护盾|防具|服装/.test(value)) return 'armor';
++  if (/food|meat|bread|berry|milk|egg|seed|wheat|tomato|lettuce|食物|肉|面包|莓|牛奶|蛋|种子|小麦/.test(value)) return 'food';
++  if (/medicine|drug|herb|potion|药|医疗|果汁/.test(value)) return 'medicine';
++  if (/ore|ingot|wood|stone|fiber|leather|coal|sulfur|quartz|cement|parts|material|矿|锭|木|石|纤维|皮革|煤|硫|水晶|水泥|零件|材料/.test(value)) return 'material';
++  if (/schematic|blueprint|key|ticket|manual|point|treasure|图纸|钥匙|券|手册|点数|宝箱/.test(value)) return 'special';
++  return 'other';
++};
++
 +const statusLabel = (status: string) => ({
 +  pending: '等待发放', running: '正在分批发放', success: '发放完成', failed: '发放失败',
 +}[status] || status);
@@ -11642,6 +12194,7 @@ index 0000000000000000000000000000000000000000..00531f1ef96cfdc4c9a96494eca8161e
 +  const [snapshot, setSnapshot] = useState<StarterGiftSnapshot | null>(null);
 +  const [config, setConfig] = useState<StarterGiftConfig>(emptyConfig);
 +  const [itemSearch, setItemSearch] = useState('');
++  const [itemCategory, setItemCategory] = useState<ItemCategory>('all');
 +  const [templateSearch, setTemplateSearch] = useState('');
 +  const [busy, setBusy] = useState(false);
 +  const [notice, setNotice] = useState('');
@@ -11662,35 +12215,46 @@ index 0000000000000000000000000000000000000000..00531f1ef96cfdc4c9a96494eca8161e
 +
 +  useEffect(() => { void load(); }, []);
 +
-+  const templateNames = useMemo(
-+    () => (snapshot?.templates || []).map((item) => item.name).filter(Boolean),
-+    [snapshot],
-+  );
-+  const visibleTemplates = useMemo(() => {
-+    const query = templateSearch.trim().toLowerCase();
-+    if (!query) return templateNames;
-+    return templateNames.filter((name) => name.toLowerCase().includes(query));
-+  }, [templateNames, templateSearch]);
++  const itemByID = useMemo(() => new Map((snapshot?.item_catalog || []).map((item) => [item.id, item])), [snapshot]);
++  const selectedItemIDs = useMemo(() => new Set(config.items.map((item) => item.item_id)), [config.items]);
 +  const visibleItems = useMemo(() => {
 +    const query = itemSearch.trim().toLowerCase();
-+    const catalog = snapshot?.item_catalog || [];
-+    if (!query) return catalog.slice(0, 80);
-+    return catalog.filter((item) => `${item.id} ${item.name}`.toLowerCase().includes(query)).slice(0, 80);
-+  }, [snapshot, itemSearch]);
-+  const allSelected = templateNames.length > 0 && templateNames.every((name) => config.pal_templates.includes(name));
++    return (snapshot?.item_catalog || []).filter((item) => {
++      if (itemCategory !== 'all' && classifyItem(item) !== itemCategory) return false;
++      return !query || `${item.id} ${item.name}`.toLowerCase().includes(query);
++    });
++  }, [snapshot, itemCategory, itemSearch]);
 +
-+  const updateItem = (index: number, patch: Partial<StarterGiftItem>) => {
-+    setConfig((current) => ({
-+      ...current,
-+      items: current.items.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item),
-+    }));
++  const templateNames = useMemo(() => (snapshot?.templates || []).map((item) => item.name).filter(Boolean), [snapshot]);
++  const visibleTemplates = useMemo(() => {
++    const query = templateSearch.trim().toLowerCase();
++    return templateNames.filter((name) => !query || name.toLowerCase().includes(query));
++  }, [templateNames, templateSearch]);
++  const selectedTemplates = useMemo(() => new Set(config.pal_templates), [config.pal_templates]);
++
++  const toggleItem = (catalogItem: StarterGiftCatalogItem) => {
++    setConfig((current) => current.items.some((item) => item.item_id === catalogItem.id)
++      ? { ...current, items: current.items.filter((item) => item.item_id !== catalogItem.id) }
++      : { ...current, items: [...current.items, { item_id: catalogItem.id, count: 1 }] });
 +  };
 +
-+  const addCatalogItem = (catalogItem: StarterGiftCatalogItem) => {
++  const setVisibleItemsSelected = (selected: boolean) => {
++    const visible = new Set(visibleItems.map((item) => item.id));
 +    setConfig((current) => {
-+      if (current.items.some((item) => item.item_id === catalogItem.id)) return current;
-+      return { ...current, items: [...current.items, { item_id: catalogItem.id, count: 1 }] };
++      if (!selected) return { ...current, items: current.items.filter((item) => !visible.has(item.item_id)) };
++      const existing = new Set(current.items.map((item) => item.item_id));
++      return {
++        ...current,
++        items: [...current.items, ...visibleItems.filter((item) => !existing.has(item.id)).map((item) => ({ item_id: item.id, count: 1 }))],
++      };
 +    });
++  };
++
++  const setVisibleTemplatesSelected = (selected: boolean) => {
++    const visible = new Set(visibleTemplates);
++    setConfig((current) => selected
++      ? { ...current, pal_templates: Array.from(new Set([...current.pal_templates, ...visibleTemplates])) }
++      : { ...current, pal_templates: current.pal_templates.filter((name) => !visible.has(name)) });
 +  };
 +
 +  const save = async () => {
@@ -11700,7 +12264,7 @@ index 0000000000000000000000000000000000000000..00531f1ef96cfdc4c9a96494eca8161e
 +      const next = await starterGiftApi.save(config);
 +      setSnapshot(next);
 +      setConfig(next.config);
-+      setNotice('配置已保存。系统会保留已有玩家基线，只给之后首次出现的新玩家发放。');
++      setNotice('配置已保存。玩家基线、在线历史和发放进度仅作用于当前存档世界。');
 +    } catch (error) {
 +      setNotice(getErrorMessage(error));
 +    } finally {
@@ -11714,7 +12278,7 @@ index 0000000000000000000000000000000000000000..00531f1ef96cfdc4c9a96494eca8161e
 +    try {
 +      await starterGiftApi.retry(playerID);
 +      await load();
-+      setNotice('已排队，将在下一次在线玩家检测时从未完成批次继续。');
++      setNotice('已排队，将在下一次在线检测时从未完成批次继续。');
 +    } catch (error) {
 +      setNotice(getErrorMessage(error));
 +      setBusy(false);
@@ -11722,13 +12286,13 @@ index 0000000000000000000000000000000000000000..00531f1ef96cfdc4c9a96494eca8161e
 +  };
 +
 +  const forget = async (playerID: string) => {
-+    if (!window.confirm('重置该玩家的礼包记录？如果玩家仍在线，将等待其离线并重新进入后再发放。')) return;
++    if (!window.confirm('重置当前存档中该玩家的礼包记录？玩家仍在线时，将等待其离线并重新进入。')) return;
 +    setBusy(true);
 +    setNotice('');
 +    try {
 +      await starterGiftApi.forget(playerID);
 +      await load();
-+      setNotice('记录已重置；玩家需要离线并重新进入后才会再次获得礼包。');
++      setNotice('当前存档中的记录已重置。');
 +    } catch (error) {
 +      setNotice(getErrorMessage(error));
 +      setBusy(false);
@@ -11738,119 +12302,77 @@ index 0000000000000000000000000000000000000000..00531f1ef96cfdc4c9a96494eca8161e
 +  return (
 +    <div className="page-shell">
 +      <div className="page-titlebar">
-+        <div>
++        <div className="min-w-0">
 +          <p className="eyebrow">New player onboarding</p>
 +          <h1>新玩家初始礼包</h1>
-+          <p>通过 PalDefender 给首次进入的新玩家分批发放物品和多个帕鲁模板。</p>
++          <p>通过 PalDefender 给当前存档世界中首次进入的新玩家分批发放物品和帕鲁模板。</p>
++          {snapshot?.scope.world_id && <p className="mt-2 break-all text-xs font-bold text-sky-700">当前存档世界：{snapshot.scope.world_id}</p>}
 +        </div>
-+        <button type="button" className="pp-button" onClick={() => void load()} disabled={busy}>
-+          <RefreshCw size={15} />刷新
-+        </button>
++        <button type="button" className="pp-button" onClick={() => void load()} disabled={busy}><RefreshCw size={15} />刷新</button>
 +      </div>
 +
 +      {notice && <div className="pp-notice">{notice}</div>}
 +
 +      <section className="pp-card">
-+        <div className="pp-card-head">
-+          <div>
-+            <h2>发放策略</h2>
-+            <p>第一次启用仅导入历史玩家基线，不会给当前或过去的老玩家补发。</p>
-+          </div>
-+          <Gift size={18} />
-+        </div>
-+        <label className="field-label">
-+          <span><input type="checkbox" checked={config.enabled} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setConfig({ ...config, enabled: event.target.checked })} /> 启用自动发放</span>
-+        </label>
++        <div className="pp-card-head"><div><h2>发放策略</h2><p>启用时以当前存档玩家作为老玩家基线；以后新建世界会自动使用独立基线和记录。</p></div><Gift size={18} /></div>
++        <label className="field-label"><span><input type="checkbox" checked={config.enabled} onChange={(event) => setConfig({ ...config, enabled: event.target.checked })} /> 启用自动发放</span></label>
 +        <div className="content-grid three-column">
-+          <label className="field-label">物品每批条目数<input type="number" min={1} max={100} value={config.item_batch_size} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setConfig({ ...config, item_batch_size: Number(event.target.value) })} /></label>
-+          <label className="field-label">模板每批数量<input type="number" min={1} max={20} value={config.template_batch_size} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setConfig({ ...config, template_batch_size: Number(event.target.value) })} /></label>
-+          <label className="field-label">批次间隔（毫秒）<input type="number" min={100} max={10000} step={100} value={config.batch_delay_ms} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setConfig({ ...config, batch_delay_ms: Number(event.target.value) })} /></label>
++          <label className="field-label">物品每批条目数<input type="number" min={1} max={100} value={config.item_batch_size} onChange={(event) => setConfig({ ...config, item_batch_size: Number(event.target.value) })} /></label>
++          <label className="field-label">模板每批数量<input type="number" min={1} max={20} value={config.template_batch_size} onChange={(event) => setConfig({ ...config, template_batch_size: Number(event.target.value) })} /></label>
++          <label className="field-label">批次间隔（毫秒）<input type="number" min={100} max={10000} step={100} value={config.batch_delay_ms} onChange={(event) => setConfig({ ...config, batch_delay_ms: Number(event.target.value) })} /></label>
 +        </div>
 +      </section>
 +
-+      <div className="content-grid two-column">
-+        <section className="pp-card">
-+          <div className="pp-card-head">
-+            <div><h2>初始物品</h2><p>已选择 {config.items.length} 种物品，可从 PalDefender 物品目录添加。</p></div>
-+            <button type="button" className="pp-button" onClick={() => setConfig({ ...config, items: [...config.items, { item_id: '', count: 1 }] })}>
-+              <Plus size={14} />手动添加
-+            </button>
++      <div className="grid min-w-0 gap-5 xl:grid-cols-2">
++        <section className="pp-card min-w-0">
++          <div className="pp-card-head"><div><h2>初始物品</h2><p>点击物品即可多选；已选择 {config.items.length} 种。</p></div><PackageCheck size={18} /></div>
++          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_10rem]">
++            <label className="relative block"><span className="sr-only">搜索物品</span><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} /><input className="pp-input pp-input--icon w-full" value={itemSearch} onChange={(event) => setItemSearch(event.target.value)} placeholder="名称或 ItemID" /></label>
++            <select className="pp-input" value={itemCategory} onChange={(event) => setItemCategory(event.target.value as ItemCategory)}>{itemCategories.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}</select>
 +          </div>
-+          <label className="field-label">
-+            搜索物品
-+            <span className="relative">
-+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
-+              <input className="pp-input pp-input--icon" value={itemSearch} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setItemSearch(event.target.value)} placeholder="名称或 ItemID" />
-+            </span>
-+          </label>
-+          {itemSearch.trim() && (
-+            <div className="source-list">
-+              {visibleItems.map((item) => (
-+                <button type="button" className="source-row text-left" key={item.id} onClick={() => addCatalogItem(item)}>
-+                  <PackagePlus size={17} />
-+                  <div className="source-copy"><strong>{item.name}</strong><span>{item.id}</span></div>
-+                </button>
-+              ))}
-+            </div>
-+          )}
-+          <div className="source-list">
-+            {config.items.map((item, index) => (
-+              <div className="source-row" key={`${index}-${item.item_id}`}>
-+                <div className="source-copy">
-+                  <input aria-label="ItemID" placeholder="例如 Money" value={item.item_id} onChange={(event: React.ChangeEvent<HTMLInputElement>) => updateItem(index, { item_id: event.target.value })} />
-+                  <input aria-label="数量" type="number" min={1} max={2147483647} value={item.count} onChange={(event: React.ChangeEvent<HTMLInputElement>) => updateItem(index, { count: Number(event.target.value) })} />
-+                </div>
-+                <button type="button" className="icon-danger" aria-label="删除物品" onClick={() => setConfig({ ...config, items: config.items.filter((_, itemIndex) => itemIndex !== index) })}><Trash2 size={15} /></button>
-+              </div>
-+            ))}
++          <div className="my-3 flex flex-wrap gap-2">
++            <button type="button" className="pp-button" disabled={visibleItems.length === 0} onClick={() => setVisibleItemsSelected(true)}><CheckSquare size={14} />全选当前筛选（{visibleItems.length}）</button>
++            <button type="button" className="pp-button" disabled={visibleItems.length === 0} onClick={() => setVisibleItemsSelected(false)}><Square size={14} />取消当前筛选</button>
++            <button type="button" className="pp-button" disabled={config.items.length === 0} onClick={() => setConfig({ ...config, items: [] })}><Trash2 size={14} />清空全部</button>
 +          </div>
++          <div className="max-h-[28rem] overflow-y-auto rounded-xl border border-slate-200" role="listbox" aria-label="物品目录" aria-multiselectable="true">
++            {visibleItems.map((item) => {
++              const selected = selectedItemIDs.has(item.id);
++              return <button type="button" role="option" aria-selected={selected} className={`source-row w-full text-left ${selected ? 'active' : ''}`} key={item.id} onClick={() => toggleItem(item)}>{selected ? <CheckSquare size={17} /> : <Square size={17} />}<div className="source-copy"><strong>{item.name}</strong><span>{item.id} · {itemCategories.find((category) => category.id === classifyItem(item))?.label}</span></div></button>;
++            })}
++            {visibleItems.length === 0 && <div className="p-8 text-center text-xs font-semibold text-slate-400">没有匹配物品</div>}
++          </div>
++          {config.items.length > 0 && <div className="mt-4"><h3 className="mb-2 text-xs font-black text-slate-700">已选物品与数量</h3><div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200">{config.items.map((item) => { const catalog = itemByID.get(item.item_id); return <div className="source-row" key={item.item_id}><div className="source-copy min-w-0"><strong>{catalog?.name || item.item_id}</strong><span>{item.item_id}</span></div><input aria-label={`${item.item_id} 数量`} className="w-28" type="number" min={1} max={2147483647} value={item.count} onChange={(event) => setConfig((current) => ({ ...current, items: current.items.map((entry) => entry.item_id === item.item_id ? { ...entry, count: Number(event.target.value) } : entry) }))} /><button type="button" className="icon-danger" aria-label="删除物品" onClick={() => setConfig((current) => ({ ...current, items: current.items.filter((entry) => entry.item_id !== item.item_id) }))}><Trash2 size={15} /></button></div>; })}</div></div>}
 +        </section>
 +
-+        <section className="pp-card">
-+          <div className="pp-card-head">
-+            <div><h2>PalDefender 帕鲁模板</h2><p>已选择 {config.pal_templates.length}/{templateNames.length} 个模板。</p></div>
-+            <button type="button" className="pp-button" disabled={templateNames.length === 0} onClick={() => setConfig({ ...config, pal_templates: allSelected ? [] : [...templateNames] })}>
-+              {allSelected ? <CheckSquare size={15} /> : <Square size={15} />}{allSelected ? '取消全选' : '全选'}
-+            </button>
-+          </div>
++        <section className="pp-card min-w-0">
++          <div className="pp-card-head"><div><h2>PalDefender 帕鲁模板</h2><p>已选择 {config.pal_templates.length}/{templateNames.length} 个模板。</p></div></div>
 +          {snapshot?.template_error && <div className="pp-notice">模板读取失败：{snapshot.template_error}</div>}
-+          <label className="field-label">搜索模板<input value={templateSearch} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setTemplateSearch(event.target.value)} placeholder="模板名称" /></label>
-+          <div className="source-list">
++          <label className="field-label">搜索模板<input value={templateSearch} onChange={(event) => setTemplateSearch(event.target.value)} placeholder="模板名称" /></label>
++          <div className="mb-3 flex flex-wrap gap-2">
++            <button type="button" className="pp-button" disabled={visibleTemplates.length === 0} onClick={() => setVisibleTemplatesSelected(true)}><CheckSquare size={14} />全选当前筛选（{visibleTemplates.length}）</button>
++            <button type="button" className="pp-button" disabled={visibleTemplates.length === 0} onClick={() => setVisibleTemplatesSelected(false)}><Square size={14} />取消当前筛选</button>
++            <button type="button" className="pp-button" disabled={config.pal_templates.length === 0} onClick={() => setConfig({ ...config, pal_templates: [] })}><Trash2 size={14} />清空全部</button>
++          </div>
++          <div className="max-h-[36rem] overflow-y-auto rounded-xl border border-slate-200" role="listbox" aria-label="帕鲁模板" aria-multiselectable="true">
 +            {visibleTemplates.map((name) => {
-+              const checked = config.pal_templates.includes(name);
-+              return (
-+                <label key={name} className={`source-row ${checked ? 'active' : ''}`}>
-+                  <input type="checkbox" checked={checked} onChange={() => setConfig({ ...config, pal_templates: checked ? config.pal_templates.filter((item) => item !== name) : [...config.pal_templates, name] })} />
-+                  <div className="source-copy"><strong>{name}</strong></div>
-+                </label>
-+              );
++              const checked = selectedTemplates.has(name);
++              return <button type="button" role="option" aria-selected={checked} key={name} className={`source-row w-full text-left ${checked ? 'active' : ''}`} onClick={() => setConfig((current) => ({ ...current, pal_templates: checked ? current.pal_templates.filter((item) => item !== name) : [...current.pal_templates, name] }))}>{checked ? <CheckSquare size={17} /> : <Square size={17} />}<div className="source-copy"><strong>{name}</strong></div></button>;
 +            })}
++            {visibleTemplates.length === 0 && <div className="p-8 text-center text-xs font-semibold text-slate-400">没有匹配模板</div>}
 +          </div>
 +        </section>
 +      </div>
 +
 +      <section className="pp-card">
-+        <div className="pp-card-head"><div><h2>发放记录</h2><p>每位玩家会冻结领取时的礼包计划；之后修改配置不会改变正在发放的批次。</p></div></div>
-+        <div className="source-list">
-+          {(snapshot?.grants || []).map((grant) => (
-+            <article className="source-row" key={grant.player_id}>
-+              <div className="source-copy">
-+                <strong>{grant.nickname || grant.player_id}</strong>
-+                <span>{statusLabel(grant.status)} · 物品 {grant.next_item}/{grant.item_total} · 模板 {grant.next_template}/{grant.template_total} · 尝试 {grant.attempts}</span>
-+                {grant.last_error && <span className="candidate-error">{grant.last_error}</span>}
-+              </div>
-+              <div className="source-actions">
-+                {grant.status === 'failed' && <button type="button" className="pp-button" disabled={busy} onClick={() => void retry(grant.player_id)}><RotateCcw size={14} />重试</button>}
-+                <button type="button" className="icon-danger" aria-label="重置玩家礼包记录" disabled={busy} onClick={() => void forget(grant.player_id)}><Trash2 size={15} /></button>
-+              </div>
-+            </article>
-+          ))}
++        <div className="pp-card-head"><div><h2>当前存档发放记录</h2><p>记录、批次进度和重置操作不会影响其他存档世界。</p></div></div>
++        <div className="max-h-[32rem] overflow-y-auto rounded-xl border border-slate-200">
++          {(snapshot?.grants || []).map((grant) => <article className="source-row" key={grant.player_id}><div className="source-copy"><strong>{grant.nickname || grant.player_id}</strong><span>{statusLabel(grant.status)} · 物品 {grant.next_item}/{grant.item_total} · 模板 {grant.next_template}/{grant.template_total} · 尝试 {grant.attempts}</span>{grant.last_error && <span className="candidate-error">{grant.last_error}</span>}</div><div className="source-actions">{grant.status === 'failed' && <button type="button" className="pp-button" disabled={busy} onClick={() => void retry(grant.player_id)}><RotateCcw size={14} />重试</button>}<button type="button" className="icon-danger" aria-label="重置玩家礼包记录" disabled={busy} onClick={() => void forget(grant.player_id)}><Trash2 size={15} /></button></div></article>)}
++          {(snapshot?.grants || []).length === 0 && <div className="p-8 text-center text-xs font-semibold text-slate-400">当前存档暂无发放记录</div>}
 +        </div>
 +      </section>
 +
-+      <button type="button" className="pp-button accent wide" disabled={busy} onClick={() => void save()}>
-+        {busy ? <LoaderCircle className="animate-spin" size={15} /> : <Save size={15} />}保存配置
-+      </button>
++      <button type="button" className="pp-button accent wide" disabled={busy} onClick={() => void save()}>{busy ? <LoaderCircle className="animate-spin" size={15} /> : <Save size={15} />}保存配置</button>
 +    </div>
 +  );
 +};
