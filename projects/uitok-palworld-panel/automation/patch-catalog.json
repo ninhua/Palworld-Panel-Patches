@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "notes": "Patch ordering remains lexical. Dependencies describe hard prerequisites. validation_checkpoint=false keeps cumulative source state until a later corrective patch closes the group; 0008/0009 are validated after 0010, and 0011 is validated after 0012. 0013 fixes player annotation lookup for online-only players. 0014 adds verified, exact-version panel patch hot update through the existing job queue; 0015 displays the existing audit response summary in desktop and mobile operation logs; 0016 restores the patch-update OpenAPI contract, and 0017 adds click-through audit response details without expanding stored response data; 0018 persists conservative player presence sessions and totals from the official REST players endpoint without treating an unavailable source as an all-player logout; 0019 resolves stable Releases from the published workspace before falling back to the GitHub REST API, avoiding anonymous shared-IP rate limits and accepting deployment token aliases; 0020 portals the audit response dialog to document.body so the app-main scroll/transform stacking context cannot clip or empty it; 0021 captures bounded, recursively redacted structured write-response details in the existing audit message field; 0022 exposes PalPanel's pinned Rust UID remapper as a managed co-op host migration workflow, deriving the dedicated UID from SteamID64, running a read-only preflight, and creating a new imported save source without overwriting or deploying the input world; 0023 aggregates localized non-empty inventory slots across player, base-linked, and unresolved containers, exposing read-only search, owner scope, category, sorting, and location details without changing sav-cli or save data.",
+  "notes": "Patch ordering remains lexical. Dependencies describe hard prerequisites. validation_checkpoint=false keeps cumulative source state until a later corrective patch closes the group; 0008/0009 are validated after 0010, and 0011 is validated after 0012. 0013 fixes player annotation lookup for online-only players. 0014 adds verified, exact-version panel patch hot update through the existing job queue; 0015 displays the existing audit response summary in desktop and mobile operation logs; 0016 restores the patch-update OpenAPI contract, and 0017 adds click-through audit response details without expanding stored response data; 0018 persists conservative player presence sessions and totals from the official REST players endpoint without treating an unavailable source as an all-player logout; 0019 resolves stable Releases from the published workspace before falling back to the GitHub REST API, avoiding anonymous shared-IP rate limits and accepting deployment token aliases; 0020 portals the audit response dialog to document.body so the app-main scroll/transform stacking context cannot clip or empty it; 0021 captures bounded, recursively redacted structured write-response details in the existing audit message field; 0022 exposes PalPanel's pinned Rust UID remapper as a managed co-op host migration workflow, deriving the dedicated UID from SteamID64, running a read-only preflight, and creating a new imported save source without overwriting or deploying the input world; 0023 aggregates localized non-empty inventory slots across player, base-linked, and unresolved containers, exposing read-only search, owner scope, category, sorting, and location details without changing sav-cli or save data; 0024 uses player-presence history and the current server save index to baseline existing players, then persists frozen item and Pal-template gift plans with serialized batch delivery, retry, and offline-to-online rearm semantics.",
   "patches": [
     {
       "file": "0001-add-patch-info-api.patch",
@@ -189,6 +189,16 @@
         "0002-add-base-custom-names.patch",
         "0005-enhance-base-storage-display.patch",
         "0022-add-host-save-migrator.patch"
+      ],
+      "validation_checkpoint": true
+    },
+    {
+      "file": "0024-add-new-player-starter-gifts.patch",
+      "feature": "new-player-starter-gift",
+      "depends_on": [
+        "0001-add-patch-info-api.patch",
+        "0018-add-player-presence-history.patch",
+        "0021-capture-audit-response-details.patch"
       ],
       "validation_checkpoint": true
     }

@@ -722,4 +722,122 @@ expect_failure unrelated-conflict "${apply_script}" "${unrelated_base}" "${work}
 grep -Fq '未匹配任何已登记的精确重定位规则' "${work}/unrelated-conflict.err"
 ! grep -Fq '已知测试路径必须在补丁中恰好出现一次' "${work}/unrelated-conflict.err"
 
+# 0024 新玩家礼包必须基于累计 v1.3.0 上下文直接应用，并保留历史玩家基线、冻结计划和分批发送语义。
+starter_target="${work}/starter-gift-direct"
+mkdir -p \
+    "${starter_target}/backend/internal/monitor" \
+    "${starter_target}/backend/internal/api" \
+    "${starter_target}/frontend/src/i18n" \
+    "${starter_target}/frontend/src" \
+    "${starter_target}/docs"
+python3 - "${starter_target}" <<'PYSTARTERGIFT'
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+(root / "backend/internal/monitor/player_presence.go").write_text('''package monitor
+
+import (
+\t"context"
+\t"net/http"
+\t"time"
+
+\t"palpanel/internal/palrest"
+\t"palpanel/internal/playerpresence"
+)
+
+func (m Manager) observePlayerPresence(ctx context.Context, client palrest.Client) error {
+\trequestCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+\tdefer cancel()
+
+\tresponse, err := client.Do(requestCtx, http.MethodGet, "players", nil)
+\tif err != nil {
+\t\treturn err
+\t}
+\t_, err = playerpresence.Observe(requestCtx, m.store, m.currentTime(), playerpresence.ParseRESTPlayers(response.Body))
+\treturn err
+}
+''', encoding="utf-8")
+(root / "backend/internal/api/routes.go").write_text('''package api
+func fixture() {
+\tapi.GET("/security/paldefender/gm/pal-templates/:name", s.palDefenderGMGetTemplate)
+\tapi.PUT("/security/paldefender/gm/pal-templates/:name", Require(PermSecurityWrite), s.palDefenderGMPutTemplate)
+\tapi.DELETE("/security/paldefender/gm/pal-templates/:name", Require(PermSecurityWrite), s.palDefenderGMDeleteTemplate)
+\tapi.GET("/security/paldefender/access", Require(PermSecurityWrite), s.palDefenderAccessSettings)
+}
+''', encoding="utf-8")
+(root / "frontend/src/routes.tsx").write_text('''import React from 'react';
+import {
+  Activity, Archive, ClipboardList, Database, Dna, FolderArchive, Globe2, LayoutDashboard,
+  ListTodo, Map as MapIcon, PackageSearch, Puzzle, Settings as SettingsIcon, Shield, Sparkles,
+  UserCog, UserX, Users,
+} from 'lucide-react';
+const PalDefenderGM = lazyPage(() => import('./pages/PalDefenderGM'), 'PalDefenderGM');
+const Players = lazyPage(() => import('./pages/Players'), 'Players');
+const SaveSources = lazyPage(() => import('./pages/SaveSources'), 'SaveSources');
+const Inventory = lazyPage(() => import('./pages/Inventory'), 'Inventory');
+const Security = lazyPage(() => import('./pages/Security'), 'Security');
+export const appRoutes: AppRoute[] = [
+  { id: 'community-servers', path: '/community-servers', title: '社区服务器', navLabel: '社区服务器', titleKey: 'route.communityServers', navGroup: 'workspace', icon: <Globe2 size={18} />, element: <CommunityServers /> },
+  { id: 'player-center', path: '/player-center', title: '玩家中心', navLabel: '玩家中心', titleKey: 'route.playerCenter', navGroup: 'world', activePaths: ['/gm'], icon: <UserCog size={18} />, element: <PalDefenderGM /> },
+  { id: 'save-sources', path: '/save-sources', title: '存档中心', navLabel: '存档中心', titleKey: 'route.saveSources', navGroup: 'world', icon: <FolderArchive size={18} />, element: <SaveSources /> },
+];
+''', encoding="utf-8")
+(root / "frontend/src/i18n/index.tsx").write_text('''const zhCN = {
+  'route.communityServers': '社区服务器',
+  'route.playerCenter': '玩家中心',
+  'route.saveSources': '存档中心',
+  'route.inventory': '库存管理',
+} as const;
+export type TranslationKey = keyof typeof zhCN;
+const enUS: Record<TranslationKey, string> = {
+  'route.setup': 'Server setup', 'route.dashboard': 'Server overview', 'route.monitor': 'Live monitoring', 'route.communityServers': 'Community servers', 'route.playerCenter': 'Player center', 'route.saveSources': 'Save center', 'route.inventory': 'Inventory', 'route.worldArchive': 'World archive', 'route.palInventory': 'Pal inventory', 'route.breeding': 'Breeding lab', 'route.liveMap': 'Live map', 'route.mods': 'Mod management', 'route.backups': 'Backups & restore', 'route.tasks': 'Task queue', 'route.security': 'Security', 'route.banlist': 'Ban list', 'route.audit': 'Audit log', 'route.settings': 'System settings', 'route.panel': 'Admin panel',
+  'header.setup': 'Getting started', 'header.workspace': 'Overview', 'header.world': 'World data', 'header.system': 'Operations', 'header.openNavigation': 'Open navigation', 'header.toggleNavigation': 'Toggle navigation', 'header.autoRefresh': 'Auto refresh', 'header.paused': 'Paused', 'header.syncTitle': 'Sync latest data', 'header.sync': 'Sync', 'header.saveWorld': 'Save world', 'header.restartServer': 'Restart server', 'header.restart': 'Restart', 'header.announcement': 'Broadcast announcement', 'header.broadcast': 'Broadcast',
+};
+''', encoding="utf-8")
+(root / "docs/openapi.yaml").write_text('''openapi: 3.1.0
+paths:
+  /dummy:
+    get: {}
+components:
+  schemas:
+    PalDefenderItemCatalogEntry:
+      type: object
+    GlobalInventoryResult:
+      type: object
+    ListSummary:
+      type: object
+''', encoding="utf-8")
+PYSTARTERGIFT
+git -C "${starter_target}" init -q
+git_config "${starter_target}"
+git -C "${starter_target}" add .
+git -C "${starter_target}" commit -qm "0024 cumulative base"
+starter_source="${script_dir}/../patches/bootstrap-v1.3.0/source/0024-add-new-player-starter-gifts.patch"
+expect_success starter-gift-direct "${apply_script}" "${starter_target}" "${starter_source}"
+grep -Fq 'BaselineKnownPlayers' "${starter_target}/backend/internal/startergift/service.go"
+grep -Fq 'func ValidateConfig' "${starter_target}/backend/internal/startergift/service.go"
+grep -Fq 'presence, loadErr := playerpresence.Load' "${starter_target}/backend/internal/startergift/service.go"
+grep -Fq 'PlanTemplates' "${starter_target}/backend/internal/startergift/service.go"
+grep -Fq 'workerRunning' "${starter_target}/backend/internal/startergift/service.go"
+grep -Fq 'RESTGivePalTemplates' "${starter_target}/backend/internal/startergift/service.go"
+grep -Fq 'api.GET("/security/paldefender/starter-gift"' "${starter_target}/backend/internal/api/routes.go"
+grep -Fq 'item_catalog' "${starter_target}/backend/internal/api/starter_gift.go"
+grep -Fq 'canonicalizeStarterGiftTemplates' "${starter_target}/backend/internal/api/starter_gift.go"
+grep -Fq 'starter_gift_baseline_unavailable' "${starter_target}/backend/internal/api/starter_gift.go"
+grep -Fq 'PalDefender 帕鲁模板' "${starter_target}/frontend/src/pages/StarterGift.tsx"
+grep -Fq "allSelected ? '取消全选' : '全选'" "${starter_target}/frontend/src/pages/StarterGift.tsx"
+grep -Fq 'StarterGiftSnapshot:' "${starter_target}/docs/openapi.yaml"
+grep -Fq "titleKey: 'route.starterGift'" "${starter_target}/frontend/src/routes.tsx"
+! grep -Fq 'diff --git a/frontend/src/api/generated/contracts.ts' "${starter_source}"
+! grep -Fq "import { api } from './client'" "${starter_target}/frontend/src/api/starterGift.ts"
+git -C "${starter_target}" diff --check
+if command -v gofmt >/dev/null 2>&1; then
+    test -z "$(gofmt -d \
+        "${starter_target}/backend/internal/monitor/player_presence.go" \
+        "${starter_target}/backend/internal/startergift/service.go" \
+        "${starter_target}/backend/internal/startergift/service_test.go" \
+        "${starter_target}/backend/internal/api/starter_gift.go")"
+fi
+
 echo "apply-source-patch regression tests passed."

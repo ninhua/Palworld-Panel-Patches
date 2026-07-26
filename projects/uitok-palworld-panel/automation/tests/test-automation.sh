@@ -64,7 +64,7 @@ printf 'fake bootstrap patch\n' >"${bootstrap}/source/0001.patch"
 cat >"${bootstrap}/manifest.template.json" <<'EOF'
 {
   "patch_version": "0.8.0-dev.1",
-  "features": ["patch-info-api", "base-custom-names", "player-presence-history", "host-save-migrator", "global-inventory-browser"]
+  "features": ["patch-info-api", "base-custom-names", "player-presence-history", "host-save-migrator", "global-inventory-browser", "new-player-starter-gift"]
 }
 EOF
 
@@ -73,7 +73,7 @@ printf 'stable merged patch\n' >"${previous_release}/${merged_name}"
 cat >"${previous_release}/manifest.json" <<'EOF'
 {
   "patch_version": "0.8.0",
-  "features": ["patch-info-api", "base-custom-names", "player-presence-history", "host-save-migrator", "global-inventory-browser"],
+  "features": ["patch-info-api", "base-custom-names", "player-presence-history", "host-save-migrator", "global-inventory-browser", "new-player-starter-gift"],
   "compatibility": {
     "mode": "exact",
     "target_version": "v1.2.0",

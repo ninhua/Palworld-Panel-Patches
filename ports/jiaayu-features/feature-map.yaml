@@ -136,3 +136,19 @@ features:
       - frontend/src/pages/Inventory.tsx
       - frontend/src/routes.tsx
     notes: Aggregates the target project's existing localized save-index container slots across player, base-linked, and unresolved owners. It is read-only, copies no Jiaayu source code, does not extend sav-cli, and does not modify Palworld saves.
+
+  - id: new-player-starter-gift
+    reference_label: 新玩家初始礼包
+    status: implemented-independently
+    patch_version: 0.8.10
+    implementation: behavior-reimplementation
+    source_paths: []
+    target_paths:
+      - backend/internal/startergift/service.go
+      - backend/internal/api/starter_gift.go
+      - backend/internal/api/routes.go
+      - backend/internal/monitor/player_presence.go
+      - frontend/src/api/starterGift.ts
+      - frontend/src/pages/StarterGift.tsx
+      - frontend/src/routes.tsx
+    notes: Detects previously unseen players through the target project's existing presence sampler, baselines known players from presence history and the server save index, and sends configurable PalDefender item and Pal-template plans through a persistent serialized batch worker. It copies no Jiaayu source code and does not modify Palworld saves.

@@ -70,3 +70,13 @@ fallback. Sensitive keys and Bearer tokens are redacted before the existing
 - 据点显示名称复用 `base-custom-names`，容器名称和物品图标复用 `base-storage-browser`。
 - 未识别容器明确标为 `unknown`，不会静默忽略；不提供任何库存写操作。
 
+## 0024 new-player-starter-gifts
+
+- 复用 `player-presence-history` 的 15 秒在线采样识别新身份，不新增独立轮询器。
+- 启用配置时将在线历史和当前服务器 save index 的已有玩家导入基线，避免对老玩家补发。
+- 物品 ItemID/数量与 PalDefender 帕鲁模板均可配置；前端支持模板搜索、多选和全选。
+- 每位玩家保存冻结计划和批次游标；物品与模板按独立批大小串行发送，并在批次间延迟。
+- 失败保留已完成进度，在线后可自动续传，也可由管理员手动重试。
+- 重置记录会等待玩家离线再重新进入，避免当前在线状态触发重复礼包。
+- 状态保存在 PalPanel SQLite KV，不修改 Palworld 存档；实际物品和帕鲁写入通过 PalDefender REST 完成。
+

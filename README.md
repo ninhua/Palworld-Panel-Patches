@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.24`
+仓库版本：`v0.12.25`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -11,7 +11,7 @@
 上游项目：uitok/palworld-panel
 当前维护目标：v1.3.0
 bootstrap 源轨道：patches/bootstrap-v1.3.0
-稳定补丁版本：0.8.9
+稳定补丁版本：0.8.10
 候选状态：candidate / 未发布前 verified=false
 ```
 
@@ -49,7 +49,18 @@ audit-log-response-display
 player-presence-history（stable 必需功能，迁移或构建失败时禁止发布）
 host-save-migrator（stable 必需功能）
 global-inventory-browser（stable 必需功能，只读全服库存聚合）
+new-player-starter-gift（stable 必需功能，新玩家初始物品与帕鲁模板分批发放）
 ```
+
+`new-player-starter-gift` 提供：
+
+- 在现有 15 秒在线玩家采样后识别新身份，不增加独立高频轮询；
+- 启用时将玩家在线历史和当前服务器 save index 中的已有玩家写入基线，避免老玩家补发；如果现有存档无法安全索引则拒绝启用；
+- 配置 PalDefender 物品 ItemID、数量和多个帕鲁模板，模板支持全选；
+- 物品和帕鲁模板分别按可配置批大小发送，批次之间设置延迟，并使用单个串行 worker 限制瞬时压力；
+- 每位玩家冻结一份领取计划并持久化批次进度；失败后暂停，管理员点击重试时从未完成位置继续；
+- 管理页面展示状态、进度、尝试次数和错误，可重试或重置；重置后必须先离线再进入，防止在线状态下立即重复发放；
+- 依赖 PalDefender REST 与已有模板目录，不修改 Palworld 存档。
 
 `player-presence-history` 提供：
 
@@ -348,8 +359,8 @@ bash common/scripts/validate-repository.sh
 
 ```text
 目标上游：v1.3.0
-稳定补丁版本：0.8.9
-预期 Release：uitok-stable-v1.3.0-p0.8.9
+稳定补丁版本：0.8.10
+预期 Release：uitok-stable-v1.3.0-p0.8.10
 ```
 
 `host-save-migrator` 使用随 Release 分发的 `palworld-uid-remap`。helper 作为 overlay 附加文件分发，但不列为安装前必须已存在的 manifest 目标，以兼容旧安装器。旧部署脚本或热更新只替换主二进制时，面板会在首次预检时从同版本 Release 包自举 helper 并按构建时 SHA-256 校验；离线环境可设置 `PALPANEL_UID_REMAPPER_BIN`。

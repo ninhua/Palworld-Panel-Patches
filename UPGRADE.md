@@ -1,43 +1,47 @@
-# Upgrade v0.12.23 → v0.12.24
+# Upgrade v0.12.24 → v0.12.25
 
-本次更新修复 stable `0.8.9` 前端 TypeScript 构建中的 OpenAPI 生成契约缺失，不增加功能编号，也不修改一键部署脚本。
+本次更新新增 stable patch `0.8.10` 的新玩家初始礼包功能，不修改一键部署脚本。
 
-应用增量包后应确认：
+应用增量包后应新增或更新：
 
 ```text
-projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source/0022-add-host-save-migrator.patch
+projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source/0024-add-new-player-starter-gifts.patch
 projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source/SHA256SUMS
+projects/uitok-palworld-panel/automation/config.json
+projects/uitok-palworld-panel/automation/patch-catalog.json
 projects/uitok-palworld-panel/automation/test-apply-source-patch.sh
+projects/uitok-palworld-panel/automation/test-build-release-layout.sh
+projects/uitok-palworld-panel/automation/tests/test-automation.sh
+projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/manifest.template.json
 ```
 
-修复内容：
+功能行为：
 
-- 在 OpenAPI components 中新增 `SaveSource` Schema；
-- `HostMigrationResult.source` 继续使用 `$ref: '#/components/schemas/SaveSource'`，但该引用现在有真实定义；
-- Schema 字段与 PalPanel v1.3.0 前端 `SaveSource` 类型对齐，包括 `id`、`name`、`kind`、`active`、时间字段及可选索引元数据；
-- 新增组件引用闭包检查，并用 TypeScript 编译探针验证不会再次生成悬空索引类型。
+- 页面路径：`/starter-gift`；
+- API：`GET/PUT /api/security/paldefender/starter-gift`；
+- 可配置物品、数量、多个 PalDefender 帕鲁模板、物品批大小、模板批大小和批次间隔；
+- 模板支持全选；
+- 首次启用会基于玩家在线历史与当前服务器 save index 建立已有玩家基线；无法安全读取现有存档时拒绝启用；
+- 每个新玩家的领取计划在创建时冻结，配置变更不会改变进行中的计划；
+- 失败进度持久化并暂停自动重试；管理员点击重试后从未完成批次续传；
+- 重置玩家记录后，必须等该玩家离线并再次进入才会重新发放。
 
-下一次 Release 标签仍为：
+下一次 Release 标签：
 
 ```text
-uitok-stable-v1.3.0-p0.8.9
+uitok-stable-v1.3.0-p0.8.10
 ```
 
-重新运行 Action 后，以下阶段应通过：
+重新运行 Action 后应确认：
 
 ```text
-npm run generate:api-types
-npm run typecheck
-npm run build
+0024-add-new-player-starter-gifts.patch:
+  apply_status=passed
+  compile_status=passed
+  included_in_merged=true
 ```
 
-重点确认不再出现：
-
-```text
-Property 'SaveSource' does not exist on type ...
-```
-
-兼容性报告应满足：
+兼容性报告应包含：
 
 ```json
 {
@@ -46,7 +50,10 @@ Property 'SaveSource' does not exist on type ...
   "effective_features": [
     "player-presence-history",
     "host-save-migrator",
-    "global-inventory-browser"
+    "global-inventory-browser",
+    "new-player-starter-gift"
   ]
 }
 ```
+
+完整 clean-room 仍必须通过 Go 测试、OpenAPI 类型生成、前端 typecheck/build、Linux amd64 构建和 `/api/patch/info` smoke validation 后才能创建 immutable Release。

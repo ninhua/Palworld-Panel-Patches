@@ -21,3 +21,7 @@
 ## 稳定版自动发布
 
 `automation/` 每天检查上游正式 Release，构建验证成功后直接创建稳定补丁 Release。不会创建 PR 或 Issue；失败时不发布。稳定版本匹配只使用 PalPanel 版本号，commit 仅保留用于源码追踪。
+
+## 当前稳定扩展
+
+`new-player-starter-gift` 基于玩家在线历史和服务器 save index 识别新玩家，通过 PalDefender 分批发放可配置物品与帕鲁模板，并持久化每位玩家的进度。

@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.12.25
+
+### Added
+
+- 新增 `0024-add-new-player-starter-gifts.patch` 与 stable required feature `new-player-starter-gift`。
+- 新增“新玩家初始礼包”页面，可配置 PalDefender 物品条目、数量和多个帕鲁模板；模板支持搜索、逐项选择、全选与取消全选。
+- 复用 15 秒在线玩家采样，在玩家第一次被识别为新身份时自动发放；首次启用会导入 `player-presence-history` 和当前服务器 save index 的已有玩家作为基线，避免给老玩家批量补发。
+- 每位玩家冻结领取时的物品和模板计划，后续修改全局配置不会导致进行中的发放跳项或重复。
+- 物品和模板分别支持批大小，批次间隔可配置；全局串行 worker 防止大量 PalDefender 请求并发造成瞬时卡顿。
+- 发放进度、失败原因和完成状态持久化到 PalPanel SQLite KV；失败后停止自动重试，管理员确认后可从已完成批次继续，或重置为“离线后再次进入”重新发放。
+- 启用前验证配置、PalDefender 模板存在性和服务器 save index 基线；无法安全建立老玩家基线时拒绝启用，避免误给历史玩家补发。
+
+### Validation
+
+- 新增 0024 累计源码直接应用回归，覆盖 monitor、API routes、OpenAPI、前端路由、i18n 和新增文件。
+- 新增 starter-gift Go 单元测试，覆盖历史玩家基线、物品/模板分批、失败续传、冻结计划及重置后必须离线再进入。
+- stable patch 版本升级为 `0.8.10`，预期 Release 标签为 `uitok-stable-v1.3.0-p0.8.10`。
+
 ## v0.12.24
 
 ### Fixed
