@@ -122,3 +122,12 @@ fallback. Sensitive keys and Bearer tokens are redacted before the existing
 - 点击单项后内部滚动容器保持当前位置，便于连续选择相邻条目。
 - “只看已选”仍按选中状态过滤，但普通列表的排序不依赖选中状态。
 - 不修改礼包配置结构、发放协议、WorldID 隔离或 Palworld 存档。
+## 0030 player summary and Chinese regions
+
+- 在世界档案标签栏增加 `/player-summary` 只读页面。
+- 复用现有玩家、帕鲁和 WorldID 在线历史接口，不增加新的服务端轮询。
+- 按 PlayerUID / SteamID 关联持有帕鲁，展示数量、种类和等级摘要。
+- 使用实时地图同一坐标投影，把有效玩家坐标匹配为宽泛中文区域；结果明确为估算。
+- 科技、配方、图鉴和首领进度未由当前 sav-cli 输出时不生成猜测值。
+- 不修改 Palworld 存档。
+

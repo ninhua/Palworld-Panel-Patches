@@ -90,7 +90,7 @@ git -C "${upstream}" checkout -- payload.txt
 cat >"${track}/manifest.template.json" <<'JSON'
 {
   "patch_version":"0.8.1",
-  "features":["patch-info-api","base-custom-names","player-presence-history","host-save-migrator", "global-inventory-browser", "new-player-starter-gift", "unattended-inventory-delta"],
+  "features":["patch-info-api","base-custom-names","player-presence-history","host-save-migrator", "global-inventory-browser", "new-player-starter-gift", "unattended-inventory-delta", "player-summary"],
   "files":{"bin/palpanel":{"original_sha256":"0000000000000000000000000000000000000000000000000000000000000000","patched_sha256":"0000000000000000000000000000000000000000000000000000000000000000"}}
 }
 JSON

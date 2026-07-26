@@ -28,3 +28,7 @@
 
 `unattended-inventory-delta` 复用玩家在线采样和全服库存索引，按 WorldID 记录至少 5 分钟的无人时段及物品正向净变化；采样中断时重建基线，页面明确该指标不等同于生产量。
 `global-inventory-browser` 的页面路径为 `/inventory`，左侧入口位于“存档管理工具 → 库存管理”；`unattended-inventory-delta` 状态卡显示在该页面顶部。
+
+## 玩家存档概览
+
+`player-summary` 通过 `/player-summary` 页面复用现有玩家、帕鲁、坐标和在线历史数据，展示只读玩家摘要与宽泛中文区域估算。当前索引未提供的深层进度字段不会被猜测。

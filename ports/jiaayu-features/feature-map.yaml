@@ -68,10 +68,18 @@ features:
     notes: Enriches the target project's existing read-only guild detail endpoint with member annotations and linked base metadata, copies no source code from the reference repository, and performs no save mutation.
 
   - id: player-summary
-    status: planned
-    implementation: not-decided
+    reference_label: 玩家存档概览与中文区域定位
+    status: implemented-independently
+    patch_version: 0.8.16
+    implementation: behavior-reimplementation
     source_paths: []
-    target_paths: []
+    target_paths:
+      - backend/internal/api/player_summary_feature.go
+      - frontend/src/lib/playerRegion.ts
+      - frontend/src/pages/PlayerSummary.tsx
+      - frontend/src/components/ui/SaveDataTabs.tsx
+      - frontend/src/routes.tsx
+    notes: Reuses the target project's existing player archive, indexed Pals, WorldID-scoped presence history, and verified live-map coordinate projection. It shows level, guild, owned Pal counts, Pal level summaries, online duration, raw coordinates, and broad Chinese region estimates. Metrics not emitted by the locked sav-cli, including technology, recipe, Paldeck, and boss progress, are explicitly omitted rather than inferred. No Jiaayu source code is copied and no save data is modified.
 
   - id: base-worker-browser
     reference_label: 基地工作帕鲁浏览

@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.30-hotfix1`
+仓库版本：`v0.12.31`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -11,8 +11,8 @@
 上游项目：uitok/palworld-panel
 当前维护目标：v1.3.0
 bootstrap 源轨道：patches/bootstrap-v1.3.0
-当前已发布稳定补丁：0.8.14
-下一稳定补丁候选：0.8.15 / 未发布前 verified=false
+当前已发布稳定补丁：0.8.15
+下一稳定补丁候选：0.8.16 / 未发布前 verified=false
 ```
 
 `bootstrap-v1.3.0` 是不可变的自包含发布源轨道，拥有自己的 `source/`、`build/`、manifest 和许可文件；所有补丁应用、测试和构建均以官方 `v1.3.0` tag 为基线。`candidate-v1.3.0` 仅用于保存迁移失败或无变更工作区，可以不存在、被覆盖或由 Draft PR 更新，不再作为下一次发布的输入。只有完整 stable Workflow 通过后，Release manifest 才会写入 `mode=exact`、`target_version=v1.3.0` 和 `verified=true`。
@@ -51,6 +51,7 @@ host-save-migrator（stable 必需功能）
 global-inventory-browser（stable 必需功能，只读全服库存聚合）
 new-player-starter-gift（stable 必需功能，新玩家初始物品与帕鲁模板分批发放）
 unattended-inventory-delta（stable 必需功能，无人时段库存正向净变化）
+player-summary（stable 必需功能，玩家存档概览与中文区域定位）
 ```
 
 `new-player-starter-gift` 提供：
@@ -76,6 +77,18 @@ unattended-inventory-delta（stable 必需功能，无人时段库存正向净�
 - 状态、基线和最近一次完整结果按 WorldID 独立保存在 PalPanel SQLite KV 中；导入存档不参与实时统计；
 - 库存页面显示当前/最近一次无人时段、持续时间、有效门槛、索引状态和净增加最多的物品；
 - 结果只表示全服库存正向净变化，不等同于据点生产量，不修改 Palworld 存档。
+
+
+`player-summary` 提供：
+
+- 在“世界档案”顶部标签中增加“玩家概览”，页面路径为 `/player-summary`；
+- 复用现有玩家档案、帕鲁索引和 WorldID 在线历史，不增加新的后端轮询或存档解析器；
+- 按 PlayerUID / SteamID 关联玩家持有帕鲁，展示数量、种类、平均等级和最高等级；
+- 展示玩家等级、公会、在线状态、本次/上次在线、累计在线和最近上线时间；
+- 复用实时地图已验证的坐标投影，将玩家坐标匹配为世界树外缘、雪山、樱花岛、沙丘、中央群岛、火山岛、天坠之地或起始群岛等宽泛中文区域；
+- 中文区域明确标记为估算，不冒充精确游戏地标；坐标无效时显示“位置未记录”；
+- 当前 sav-cli 未输出科技、配方、图鉴和首领进度时明确省略，不使用猜测值填充；
+- 全程只读，不修改 Palworld 存档。
 
 `player-presence-history` 提供：
 

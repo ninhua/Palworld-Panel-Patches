@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.12.31
+
+### Added
+
+- 新增 `0030-add-player-summary-and-landmarks.patch` 与 stable required feature `player-summary`。
+- 在“世界档案”标签栏增加“玩家概览”，汇总玩家等级、公会、在线状态、累计在线以及按 UID 关联的帕鲁数量、种类、平均等级和最高等级。
+- 复用实时地图的已验证世界坐标投影，将玩家位置显示为宽泛中文区域；区域结果明确标记为估算，不冒充精确地标。
+- 当前锁定的 `sav-cli` 未输出科技、配方、图鉴和首领进度时，页面明确说明并省略这些指标，不填充猜测数据。
+- 页面只读取现有玩家、帕鲁和在线历史接口，不增加后台轮询、不扩展存档写入能力。
+
+### Validation
+
+- 新增 patch 文件白名单、SHA-256、feature 注册、坐标投影、缺失坐标和前端关键结构回归；正式 TypeScript 编译继续由 clean-room Release 构建门禁执行。
+- stable patch 版本升级为 `0.8.16`，预期 Release 标签为 `uitok-stable-v1.3.0-p0.8.16`。
+
 ## v0.12.30-hotfix1
 
 ### Fixed

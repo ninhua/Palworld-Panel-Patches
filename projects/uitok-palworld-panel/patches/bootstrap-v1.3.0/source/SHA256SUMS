@@ -27,3 +27,4 @@ a8fcd812cf136ff8c4b8584a0ec949a6563e9a7dcd3a0a50d53695b2736a9578  0026-redesign-
 3b9dfe5a4a6527156b7530dc65857afe9e39e31f4bdd97e61b1bb8491acd8075  0027-add-unattended-inventory-delta.patch
 e4547494989615ad50382fc54f40f06c860e9fe02e3fd87bfcd37d86b3d22a8f  0028-fix-global-inventory-sidebar-entry.patch
 dde2932c8271e2b342f838ec0552194c67ac7312c7eb29a53247c4cf8fbfba51  0029-fix-starter-gift-selection-scroll.patch
+74088359c384d16993bf92b9e55f6791235481950fcc24831f5736a6e81b5e7a  0030-add-player-summary-and-landmarks.patch
