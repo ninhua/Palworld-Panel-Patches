@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.25`
+仓库版本：`v0.12.26`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -11,7 +11,7 @@
 上游项目：uitok/palworld-panel
 当前维护目标：v1.3.0
 bootstrap 源轨道：patches/bootstrap-v1.3.0
-稳定补丁版本：0.8.10
+稳定补丁版本：0.8.11
 候选状态：candidate / 未发布前 verified=false
 ```
 
@@ -359,11 +359,11 @@ bash common/scripts/validate-repository.sh
 
 ```text
 目标上游：v1.3.0
-稳定补丁版本：0.8.10
-预期 Release：uitok-stable-v1.3.0-p0.8.10
+稳定补丁版本：0.8.11
+预期 Release：uitok-stable-v1.3.0-p0.8.11
 ```
 
-`host-save-migrator` 使用随 Release 分发的 `palworld-uid-remap`。helper 作为 overlay 附加文件分发，但不列为安装前必须已存在的 manifest 目标，以兼容旧安装器。旧部署脚本或热更新只替换主二进制时，面板会在首次预检时从同版本 Release 包自举 helper 并按构建时 SHA-256 校验；离线环境可设置 `PALPANEL_UID_REMAPPER_BIN`。
+`host-save-migrator` 使用随 Release 分发的 `palworld-uid-remap`。helper 现在以 `oodle` feature 构建，可解析 Palworld v1.0+ 的 `PlM`/Oodle `Level.sav`。执行迁移时保留受管导入源，若服务器正在运行则先停止，然后将迁移结果复制到 `Pal/Saved/SaveGames/0/<DedicatedServerName>`，原子更新 `Pal/Saved/Config/WindowsServer/GameUserSettings.ini`，并仅在迁移前处于运行状态时重新启动。helper 作为 overlay 附加文件分发，但不列为安装前必须已存在的 manifest 目标，以兼容旧安装器；旧部署或热更新只替换主二进制时，面板会从同版本 Release 包自举 helper 并按构建时 SHA-256 校验。离线环境可设置 `PALPANEL_UID_REMAPPER_BIN`。
 
 主机迁移 OpenAPI 同时声明 `SaveSource` component，确保 `HostMigrationResult.source` 经内置 `openapi-types` 生成后不会产生悬空的 `components['schemas']['SaveSource']` TypeScript 引用。
 

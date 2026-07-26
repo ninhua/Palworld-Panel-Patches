@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.12.26
+
+### Fixed
+
+- 修复 `palworld-uid-remap` 未启用 `uesave/oodle`，导致 Palworld v1.0+ `PlM` 容器在偏移量 0 报“未启用 Oodle 压缩支持”的问题；helper Cargo feature 默认启用 Oodle，且 `ooz-rs` 固定到 commit `c197be7a4b49b2f37f339888da1c10ab87780c19`。
+- 构建脚本显式使用 `cargo build --features oodle`；因上游锁文件原本不含可选 git 依赖，helper 构建不再使用会拒绝补全依赖的 `--locked`。
+- 主机迁移不再只生成一个未部署的导入源。迁移完成后会在服务器停机状态下将完整世界复制到 `Pal/Saved/SaveGames/0/<DedicatedServerName>`，并原子更新 `GameUserSettings.ini`。
+- 迁移前服务器处于运行状态时自动停止并在切换成功后重新启动；原本已停止时保持停止。复制、配置写入、数据库登记或重启失败时执行回滚。
+- PalPanel 活动数据源切回 `server`，使存档中心继续表示实际运行中的服务器世界；受管迁移输出仍作为独立 import 归档保留。
+
+### Validation
+
+- 新增 Oodle feature、固定依赖与构建参数回归。
+- 新增 `GameUserSettings.ini` CRLF 保留、重复键拒绝、`SaveGames/0` 部署路径、停服→复制→配置→启服顺序以及复制失败恢复原服务器的 Go 回归。
+- stable patch 版本升级为 `0.8.11`，预期 Release 标签为 `uitok-stable-v1.3.0-p0.8.11`。
+
 ## v0.12.25
 
 ### Added

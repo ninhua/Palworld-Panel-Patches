@@ -57,8 +57,11 @@ fallback. Sensitive keys and Bearer tokens are redacted before the existing
 - 基于上游已固定源码的 `tools/palworld-uid-remap`，不引入 Python/Tk 运行时。
 - 对受管导入存档执行 SteamID64 主机 UID 迁移。
 - 使用现有 `/save-sources/import/inspect` 与 `/save-sources/import` 的 JSON 分流，保持 API 路径集合不变。
-- 输出注册为新的 `kind=import` 存档源；源目录只读。
+- 输入的受管导入源保持只读；迁移输出同时保留为新的 `kind=import` 归档源。
 - 当前拒绝目标 UID 已存在的存档。
+- helper 默认启用 `oodle` feature，并将 `ooz-rs` 固定到明确 commit，可解析 Palworld v1.0+ 的 `PlM`/Oodle `Level.sav`。
+- 执行成功后，若服务器运行则先停止；随后把迁移世界部署到 `Pal/Saved/SaveGames/0/<DedicatedServerName>`，原子修改 `Pal/Saved/Config/WindowsServer/GameUserSettings.ini`，并仅在迁移前运行时重新启动。
+- 任一部署、配置、数据库或重启步骤失败时，恢复原 `DedicatedServerName`、移除未提交的迁移世界，并尽力恢复原服务器运行状态。
 - helper 随 Release overlay 分发，但不列为安装前必须已存在的 manifest 目标；完整 overlay 安装会复制它。若旧部署或热更新只替换 `palpanel`，面板会从同版本 Release 直链包自举 helper，并校验构建时嵌入的 SHA-256。
 - 离线环境可用 `PALPANEL_UID_REMAPPER_BIN` 指定预装 helper；镜像环境可用 `PALPANEL_UID_REMAPPER_PACKAGE_URL` 覆盖自举包地址。
 ## 0023 global-inventory-browser

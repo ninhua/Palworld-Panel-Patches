@@ -840,4 +840,130 @@ if command -v gofmt >/dev/null 2>&1; then
         "${starter_target}/backend/internal/api/starter_gift.go")"
 fi
 
+
+# 0022 主机迁移必须支持 Palworld v1.0+ 的 Oodle 存档，并把迁移结果部署到真实服务器世界目录。
+host_migration_source="${script_dir}/../patches/bootstrap-v1.3.0/source/0022-add-host-save-migrator.patch"
+host_migration_build="${script_dir}/../patches/bootstrap-v1.3.0/build/build-palpanel.sh"
+grep -Fq 'default = ["oodle"]' "${host_migration_source}"
+grep -Fq 'oodle = ["uesave/oodle"]' "${host_migration_source}"
+grep -Fq 'rev = "c197be7a4b49b2f37f339888da1c10ab87780c19"' "${host_migration_source}"
+grep -Fq -- '--features oodle' "${host_migration_build}"
+! grep -Fq -- '--locked' "${host_migration_build}"
+python3 - "${host_migration_source}" <<'PYHOSTDEPLOY'
+from pathlib import Path
+import sys
+text = Path(sys.argv[1]).read_text(encoding="utf-8")
+required = [
+    '"Pal", "Saved", "SaveGames", "0"',
+    '"Pal", "Saved", "Config", "WindowsServer", "GameUserSettings.ini"',
+    'DedicatedServerName=',
+    's.store.ActivateSaveSource(ctx, "server")',
+]
+for value in required:
+    if value not in text:
+        raise SystemExit(f"0022 missing deployment contract: {value}")
+start = text.index('+func (s Server) deployHostMigrationWorld')
+end = text.index('+func (activation *hostMigrationActivation) commit()', start)
+body = text[start:end]
+positions = [
+    body.index('+\t\tif err := hostMigrationStopServer'),
+    body.index('+\tif err := hostMigrationCopyTree'),
+    body.index('+\tif err := writeHostMigrationFileAtomic'),
+    body.index('+\t\tif err := hostMigrationStartServer'),
+]
+if positions != sorted(positions):
+    raise SystemExit(f"0022 unsafe deployment order: {positions}")
+PYHOSTDEPLOY
+
+
+# Oodle Cargo sections must directly apply to the exact PalPanel v1.3.0 manifests.
+oodle_target="${work}/oodle-cargo-direct"
+mkdir -p "${oodle_target}/tools/palworld-uid-remap" "${oodle_target}/third_party/uesave/uesave"
+cat > "${oodle_target}/tools/palworld-uid-remap/Cargo.toml" <<'CARGOHELPER'
+[package]
+name = "palworld-uid-remap"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+name = "palworld_uid_remap"
+path = "src/lib.rs"
+
+[[bin]]
+name = "palworld-uid-remap"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+uesave = { path = "../../third_party/uesave/uesave" }
+
+[dev-dependencies]
+tempfile = "3"
+CARGOHELPER
+cat > "${oodle_target}/third_party/uesave/uesave/Cargo.toml" <<'CARGOUESAVE'
+[package]
+name = "uesave"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description.workspace = true
+keywords.workspace = true
+license.workspace = true
+
+[features]
+default = []
+tracing = ["dep:tracing"]
+oodle = ["dep:ooz-rs"]
+cli = ["dep:serde_json"]
+
+[dependencies]
+byteorder = "1.5.0"
+flate2 = "1"
+serde = { version = "1.0.195", features = ["derive"] }
+thiserror = "1.0.56"
+indexmap = { version = "2.1.0", features = ["serde"] }
+bitflags = "2.6.0"
+tracing = { version = "0.1.37", optional = true }
+ooz-rs = { git = "https://github.com/palworld-save-pal/ooz-rs", optional = true }
+serde_json = { version = "1.0", features = ["float_roundtrip"], optional = true }
+
+[dev-dependencies]
+pretty_assertions = "1.4.0"
+serde_json = { version = "1.0", features = ["float_roundtrip"] }
+CARGOUESAVE
+git -C "${oodle_target}" init -q
+git_config "${oodle_target}"
+git -C "${oodle_target}" add .
+git -C "${oodle_target}" commit -qm "PalPanel v1.3.0 Oodle Cargo base"
+oodle_patch="${work}/0022-oodle-cargo-direct.patch"
+python3 - "${host_migration_source}" "${oodle_patch}" <<'PYOODLEPATCH'
+from pathlib import Path
+import sys
+source = Path(sys.argv[1]).read_text(encoding="utf-8")
+targets = {
+    "tools/palworld-uid-remap/Cargo.toml",
+    "third_party/uesave/uesave/Cargo.toml",
+}
+sections = []
+for chunk in source.split("diff --git ")[1:]:
+    path = chunk.splitlines()[0].split(" b/", 1)[1]
+    if path in targets:
+        sections.append("diff --git " + chunk)
+if len(sections) != 2:
+    raise SystemExit(f"0022 Oodle Cargo sections = {len(sections)}, want 2")
+Path(sys.argv[2]).write_text("".join(sections), encoding="utf-8")
+PYOODLEPATCH
+expect_success host-migration-oodle-cargo-direct "${apply_script}" "${oodle_target}" "${oodle_patch}"
+grep -Fq 'default = ["oodle"]' "${oodle_target}/tools/palworld-uid-remap/Cargo.toml"
+grep -Fq 'oodle = ["uesave/oodle"]' "${oodle_target}/tools/palworld-uid-remap/Cargo.toml"
+grep -Fq 'rev = "c197be7a4b49b2f37f339888da1c10ab87780c19"' "${oodle_target}/third_party/uesave/uesave/Cargo.toml"
+
 echo "apply-source-patch regression tests passed."

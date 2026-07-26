@@ -82,9 +82,12 @@ if [[ -f "${helper_source}" ]]; then
     }
     cargo_target="$(dirname "${output_binary}")/.cargo-$(basename "${output_binary}")"
     rm -rf "${cargo_target}"
+    # Palworld v1.0+ Level.sav may use the PlM/Oodle container. The helper
+    # forwards its oodle feature to uesave; its pinned git backend is added to
+    # the ephemeral lockfile during this release build.
     CARGO_TARGET_DIR="${cargo_target}" cargo build \
-        --locked \
         --release \
+        --features oodle \
         --manifest-path "${helper_manifest}"
     cp "${cargo_target}/release/palworld-uid-remap" "${helper_output}"
     chmod 0755 "${helper_output}"

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "uitok-palworld-panel",
-  "patch_version": "0.8.10",
+  "patch_version": "0.8.11",
   "patch_type": "source-build",
   "upstream": {
     "repository": "uitok/palworld-panel",
@@ -39,5 +39,5 @@
     "global-inventory-browser",
     "new-player-starter-gift"
   ],
-  "notes": "Self-contained v1.3.0 stable source track. Adds persistent new-player starter gifts through PalDefender, baseline protection for existing players, configurable item and Pal-template plans, frozen per-player progress, and serialized batch delivery with retry and rearm controls."
+  "notes": "Self-contained v1.3.0 stable source track. Enables Oodle/PlM support in the pinned Rust UID remapper; host migration now stops a running server, publishes the migrated world under Pal/Saved/SaveGames/0, atomically updates GameUserSettings.ini DedicatedServerName, and restarts only when the server was previously running. Includes persistent serialized new-player starter gifts."
 }
