@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.12.31-hotfix1
+
+### Fixed
+
+- 新增 `0031-read-starter-gift-template-pal-id.patch`，新玩家礼包不再从 PalDefender 模板文件名推断帕鲁 ID。
+- 后端从 `Pal/Binaries/Win64/PalDefender/Pals/Templates/*.json` 顶层 `PalID` 字段读取真实帕鲁 ID，并通过现有本地化目录返回帕鲁名称。
+- 模板卡片使用 `pal_id` 加载头像，展示本地化帕鲁名、内部 PalID、模板文件名、可选昵称和等级；JSON 无效或缺少 `PalID` 时显示明确解析错误。
+- 模板文件读取限制为 1 MiB，只允许模板目录内的普通 JSON 文件，拒绝路径穿越、符号链接和非 JSON 扩展名。
+
+### Validation
+
+- 增加误导性文件名与文件内 `PalID` 不一致的回归夹具，确保界面始终采用 JSON 中的 `PalID`。
+- stable patch 候选保持 `0.8.16`。
+
 ## v0.12.31
 
 ### Added

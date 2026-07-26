@@ -130,4 +130,7 @@ fallback. Sensitive keys and Bearer tokens are redacted before the existing
 - 使用实时地图同一坐标投影，把有效玩家坐标匹配为宽泛中文区域；结果明确为估算。
 - 科技、配方、图鉴和首领进度未由当前 sav-cli 输出时不生成猜测值。
 - 不修改 Palworld 存档。
+## 0031 starter-gift template PalID
+
+`0031-read-starter-gift-template-pal-id.patch` keeps the template filename as the delivery key but reads the displayed Pal identity from the template JSON `PalID`. The API also exposes the localized Pal name, optional nickname and level, and a per-template parse error. Template reads are bounded to 1 MiB and reject traversal, symlinks, non-regular files, and non-JSON extensions.
 
