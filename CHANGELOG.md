@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.12.31-hotfix2
+
+### Fixed
+
+- 修复 `0030-add-player-summary-and-landmarks.patch` 中 `PlayerSummary.tsx` 调用未定义的 `normalizeID`，导致 TypeScript 构建失败。
+- `normalizeID` 现在显式接受 `string | null | undefined`，统一清理 PlayerUID、SteamID 与帕鲁所有者 ID，避免可选字段传参类型错误。
+- 修复 `0031-read-starter-gift-template-pal-id.patch` 在重构模板显示后遗留未使用的 `itemByID`，消除 ESLint `no-unused-vars` 阻断。
+
+### Validation
+
+- 玩家概览回归新增可选 ID 归一化函数检查。
+- PalDefender 模板回归在应用补丁后确认 `StarterGift.tsx` 不再包含未使用的 `itemByID`。
+- stable patch 候选保持 `0.8.16`。
+
 ## v0.12.31-hotfix1
 
 ### Fixed

@@ -105,6 +105,7 @@ required_page_markers = [
     "playersApi.getPlayersList",
     "palsApi.getPalsList",
     "estimatePlayerRegion",
+    "const normalizeID = (value?: string | null): string",
     "科技、配方、图鉴和首领进度尚未由当前 sav-cli 索引输出",
 ]
 for marker in required_page_markers:

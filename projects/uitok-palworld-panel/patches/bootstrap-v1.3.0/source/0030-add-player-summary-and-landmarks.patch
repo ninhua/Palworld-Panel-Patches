@@ -133,10 +133,10 @@ index 0000000000000000000000000000000000000000..57689a70ef0694dcf532b421592d0fa3
 +};
 diff --git a/frontend/src/pages/PlayerSummary.tsx b/frontend/src/pages/PlayerSummary.tsx
 new file mode 100644
-index 0000000000000000000000000000000000000000..cb4e7346635b5e57f28da97c5ce524452c8c1a7a
+index 0000000000000000000000000000000000000000..ea09ec87087cf09e828bdf56e9ac2057061e7bcb
 --- /dev/null
 +++ b/frontend/src/pages/PlayerSummary.tsx
-@@ -0,0 +1,192 @@
+@@ -0,0 +1,194 @@
 +import React, { useMemo, useState } from 'react';
 +import { useQuery } from '@tanstack/react-query';
 +import {
@@ -148,6 +148,8 @@ index 0000000000000000000000000000000000000000..cb4e7346635b5e57f28da97c5ce52445
 +import { SaveDataTabs } from '../components/ui/SaveDataTabs';
 +import { estimatePlayerRegion } from '../lib/playerRegion';
 +import type { Pal, Player } from '../types';
++
++const normalizeID = (value?: string | null): string => String(value || '').trim().toLowerCase();
 +
 +type PlayerSnapshot = {
 +  player: Player;

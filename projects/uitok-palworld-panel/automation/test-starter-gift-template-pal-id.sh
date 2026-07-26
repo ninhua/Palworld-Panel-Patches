@@ -99,5 +99,9 @@ if grep -Fq 'const templatePalID' "${work}/frontend/src/pages/StarterGift.tsx"; 
     echo "前端仍从文件名推断 PalID" >&2
     exit 1
 fi
+if grep -Fq 'const itemByID' "${work}/frontend/src/pages/StarterGift.tsx"; then
+    echo "StarterGift.tsx 遗留未使用的 itemByID" >&2
+    exit 1
+fi
 
 echo "starter-gift template PalID regression passed."

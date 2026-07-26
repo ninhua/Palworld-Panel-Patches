@@ -251,7 +251,7 @@ index c50c0a5..6155949 100644
      }).filter((template) => template.name),
      item_catalog: (Array.isArray(data.item_catalog) ? data.item_catalog : []).map((rawItem) => {
 diff --git a/frontend/src/pages/StarterGift.tsx b/frontend/src/pages/StarterGift.tsx
-index ecc55cc..06d8628 100644
+index ecc55cc..3a11319 100644
 --- a/frontend/src/pages/StarterGift.tsx
 +++ b/frontend/src/pages/StarterGift.tsx
 @@ -7,6 +7,7 @@ import {
@@ -280,7 +280,15 @@ index ecc55cc..06d8628 100644
  
  const ItemIcon: React.FC<{ item: StarterGiftCatalogItem; className?: string }> = ({ item, className = '' }) => {
    const source = item.icon ? `/assets/items/${encodeURIComponent(item.icon)}.webp` : '';
-@@ -165,17 +164,20 @@ export const StarterGift: React.FC = () => {
+@@ -146,7 +145,6 @@ export const StarterGift: React.FC = () => {
+ 
+   useEffect(() => { void load(); }, []);
+ 
+-  const itemByID = useMemo(() => new Map((snapshot?.item_catalog || []).map((item) => [item.id, item])), [snapshot]);
+   const selectedItemIDs = useMemo(() => new Set(config.items.map((item) => item.item_id)), [config.items]);
+   const categoryCounts = useMemo(() => {
+     const counts = new Map<ItemCategory, number>([['all', snapshot?.item_catalog.length || 0]]);
+@@ -165,17 +163,20 @@ export const StarterGift: React.FC = () => {
        .sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'));
    }, [snapshot, itemCategory, itemSearch, onlySelectedItems, selectedItemIDs]);
  
@@ -308,7 +316,7 @@ index ecc55cc..06d8628 100644
  
    const grantCounts = useMemo(() => {
      const grants = snapshot?.grants || [];
-@@ -216,9 +218,10 @@ export const StarterGift: React.FC = () => {
+@@ -216,9 +217,10 @@ export const StarterGift: React.FC = () => {
    };
  
    const setVisibleTemplatesSelected = (selected: boolean) => {
@@ -321,7 +329,7 @@ index ecc55cc..06d8628 100644
        : { ...current, pal_templates: current.pal_templates.filter((name) => !visible.has(name)) });
    };
  
-@@ -361,14 +364,22 @@ export const StarterGift: React.FC = () => {
+@@ -361,14 +363,22 @@ export const StarterGift: React.FC = () => {
              </div>
            </div>
            <div className="mt-4 grid max-h-[42rem] gap-2 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50/50 p-2 md:grid-cols-2 2xl:grid-cols-3" role="listbox" aria-label="帕鲁模板" aria-multiselectable="true">
