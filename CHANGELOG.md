@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.12.27-hotfix2
+
+### Fixed
+
+- 修复 hotfix 覆盖后 `VERSION` 已为 `0.12.27-hotfix1`，但 README 与 CHANGELOG 仍停留在 `v0.12.27`，导致 `validate_repository.py` 版本一致性检查失败的问题。
+- 保留 `0025-fix-starter-gift-ui-and-save-scope.patch` 的正式 `PlayerCenter.tsx` 累计源码上下文修复；本次仅同步仓库版本元数据，不改变 stable patch 候选 `0.8.12`。
+
+### Validation
+
+- `VERSION`、README 骨架版本和 CHANGELOG 最新版本统一为 `0.12.27-hotfix2`。
+
 ## v0.12.27
 
 ### Fixed
