@@ -210,6 +210,14 @@
         "0024-add-new-player-starter-gifts.patch"
       ],
       "validation_checkpoint": true
+    },
+    {
+      "file": "0026-redesign-starter-gift-ui.patch",
+      "feature": "new-player-starter-gift",
+      "depends_on": [
+        "0025-fix-starter-gift-ui-and-save-scope.patch"
+      ],
+      "validation_checkpoint": true
     }
   ]
 }

@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.27-hotfix3`
+仓库版本：`v0.12.28`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -11,8 +11,8 @@
 上游项目：uitok/palworld-panel
 当前维护目标：v1.3.0
 bootstrap 源轨道：patches/bootstrap-v1.3.0
-当前已发布稳定补丁：0.8.11
-下一稳定补丁候选：0.8.12 / 未发布前 verified=false
+当前已发布稳定补丁：0.8.12
+下一稳定补丁候选：0.8.13 / 未发布前 verified=false
 ```
 
 `bootstrap-v1.3.0` 是不可变的自包含发布源轨道，拥有自己的 `source/`、`build/`、manifest 和许可文件；所有补丁应用、测试和构建均以官方 `v1.3.0` tag 为基线。`candidate-v1.3.0` 仅用于保存迁移失败或无变更工作区，可以不存在、被覆盖或由 Draft PR 更新，不再作为下一次发布的输入。只有完整 stable Workflow 通过后，Release manifest 才会写入 `mode=exact`、`target_version=v1.3.0` 和 `verified=true`。
@@ -57,9 +57,11 @@ new-player-starter-gift（stable 必需功能，新玩家初始物品与帕鲁�
 - 在现有 15 秒在线玩家采样后识别新身份，不增加独立高频轮询；
 - 启用时将玩家在线历史和当前服务器 save index 中的已有玩家写入基线，避免老玩家补发；如果现有存档无法安全索引则拒绝启用；
 - 每个存档世界独立保存礼包配置、已见玩家、冻结计划和批次进度；新世界继承最新配置模板，但不会改写已有世界配置；
-- 物品可按分类或关键词筛选并点击多选、全选当前筛选；帕鲁模板同样支持搜索、多选和全选；物品与模板按可配置批大小通过每世界串行 worker 发送；
+- 左侧“玩家与世界”菜单提供“新玩家礼包”入口；礼包页面以物品、帕鲁模板和发放记录三个 Tab 组织操作；
+- 物品目录显示本地化图标，按帕鲁球、工具、近战、枪械、弹药、防具、食物、药品、基础/高级材料、关键物品和图纸分类；支持搜索、多选、只看已选、当前筛选全选/取消与行内数量调整；
+- PalDefender 模板显示从模板名解析的帕鲁头像，支持搜索、多选、只看已选和当前筛选批量操作；物品与模板按可配置批大小通过每世界串行 worker 发送；
 - 每位玩家冻结一份领取计划并持久化批次进度；失败后暂停，管理员点击重试时从未完成位置继续；
-- 玩家中心提供“初始礼包”直达入口；页面内物品、模板、已选项和发放记录使用固定高度滚动区域；失败任务可重试或重置，重置后必须先离线再进入；
+- 页面顶部显示当前 WorldID、启用状态、礼包内容和任务摘要；底部固定操作栏汇总未保存修改并提供撤销/保存；失败任务可重试或重置，重置后必须先离线再进入；
 - 依赖 PalDefender REST 与已有模板目录，不修改 Palworld 存档。
 
 `player-presence-history` 提供：
@@ -359,9 +361,9 @@ bash common/scripts/validate-repository.sh
 
 ```text
 目标上游：v1.3.0
-当前已发布稳定补丁：0.8.11
-下一稳定补丁候选：0.8.12
-预期 Release：uitok-stable-v1.3.0-p0.8.12
+当前已发布稳定补丁：0.8.12
+下一稳定补丁候选：0.8.13
+预期 Release：uitok-stable-v1.3.0-p0.8.13
 ```
 
 `host-save-migrator` 使用随 Release 分发的 `palworld-uid-remap`。helper 现在以 `oodle` feature 构建，可解析 Palworld v1.0+ 的 `PlM`/Oodle `Level.sav`。执行迁移时保留受管导入源，若服务器正在运行则先停止，然后将迁移结果复制到 `Pal/Saved/SaveGames/0/<DedicatedServerName>`，原子更新 `Pal/Saved/Config/WindowsServer/GameUserSettings.ini`，并仅在迁移前处于运行状态时重新启动。helper 作为 overlay 附加文件分发，但不列为安装前必须已存在的 manifest 目标，以兼容旧安装器；旧部署或热更新只替换主二进制时，面板会从同版本 Release 包自举 helper 并按构建时 SHA-256 校验。离线环境可设置 `PALPANEL_UID_REMAPPER_BIN`。

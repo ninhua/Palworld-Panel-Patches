@@ -13,6 +13,7 @@ python3 common/scripts/validate_repository.py
 automation="projects/uitok-palworld-panel/automation"
 "${automation}/test-apply-source-patch.sh"
 "${automation}/test-starter-gift-save-scope.sh"
+"${automation}/test-starter-gift-ui-redesign.sh"
 "${automation}/test-resolve-official-palpanel.sh"
 python3 "${automation}/test-adapt-frontend-api-tests.py"
 python3 "${automation}/test-migrate-patch-workspace.py"

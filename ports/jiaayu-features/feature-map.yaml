@@ -135,12 +135,13 @@ features:
       - frontend/src/api/inventory.ts
       - frontend/src/pages/Inventory.tsx
       - frontend/src/routes.tsx
+      - frontend/src/components/layout/Sidebar.tsx
     notes: Aggregates the target project's existing localized save-index container slots across player, base-linked, and unresolved owners. It is read-only, copies no Jiaayu source code, does not extend sav-cli, and does not modify Palworld saves.
 
   - id: new-player-starter-gift
     reference_label: 新玩家初始礼包
     status: implemented-independently
-    patch_version: 0.8.12
+    patch_version: 0.8.13
     implementation: behavior-reimplementation
     source_paths: []
     target_paths:
@@ -153,4 +154,4 @@ features:
       - frontend/src/pages/StarterGift.tsx
       - frontend/src/pages/PlayerCenter.tsx
       - frontend/src/routes.tsx
-    notes: Detects previously unseen players through the target project's existing presence sampler, resolves the active world from DedicatedServerName, and isolates presence sessions, starter-gift configuration, progress, and serialized workers by WorldID. New worlds inherit the latest configuration template without overwriting existing worlds. The page uses bounded categorized multi-select catalogs. It copies no Jiaayu source code and does not modify Palworld saves.
+    notes: Detects previously unseen players through the target project's existing presence sampler, resolves the active world from DedicatedServerName, and isolates presence sessions, starter-gift configuration, progress, and serialized workers by WorldID. New worlds inherit the latest configuration template without overwriting existing worlds. The page uses a sidebar entry, tabbed workspaces, local item icons, parsed Pal template portraits, refined categories, inline quantities, and a sticky save summary. It copies no Jiaayu source code and does not modify Palworld saves.
