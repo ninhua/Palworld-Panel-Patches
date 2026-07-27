@@ -1,4 +1,4 @@
-$ /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/apply-source-patch.sh /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track/source/0020-fix-audit-response-dialog-portal.patch
+$ /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/apply-source-patch.sh /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track/source/0035-fix-player-summary-optional-pal-id.patch
 [exit=0]
 $ git diff --check
 [exit=0]
@@ -16,5 +16,5 @@ $ npm run lint
 > oxlint
 
 Found 0 warnings and 0 errors.
-Finished in 30ms on 133 files with 103 rules using 4 threads.
+Finished in 35ms on 141 files with 103 rules using 4 threads.
 [exit=0]
