@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.12.32-hotfix2
+
+### Fixed
+
+- 修复上一覆盖提交把更新后的 `0032-read-starter-gift-template-indexes.patch` 错放到 `source/source/`，导致顶层实际补丁仍为旧 SHA-256。
+- 本覆盖包在仓库根目录相对路径下直接提供正确的顶层 `source/0032-read-starter-gift-template-indexes.patch`，其 SHA-256 为 `43fcdfa066ed8d3741220babaca0b6676aeb679f6ddc29593bb574ea64a19232`。
+- `SHA256SUMS` 与实际顶层补丁重新成对校验；stable patch 候选保持 `0.8.16`。
+
+### Cleanup
+
+- 删除上一提交误创建的 `projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source/source/0032-read-starter-gift-template-indexes.patch`。
+
 ## v0.12.32-hotfix1
 
 ### Fixed

@@ -212,12 +212,12 @@ index 6499df39a4227b704166b7aa74583d8fbaf9acb5..107c4291800d863e8cbbeda862180e23
 +	entries := make([]starterGiftTemplateIndexEntry, 0, len(documents))
 +	for _, document := range documents {
 +		entry := starterGiftTemplateIndexEntry{
-+			Category:     firstNonEmpty(document.CategoryCN, document.Category),
-+			TemplateName: firstNonEmpty(document.TemplateNameCN, document.TemplateName),
-+			FileName:     firstNonEmpty(document.FileNameCN, document.FileName),
-+			ChineseName:  firstNonEmpty(document.ChineseNameCN, document.ChineseName),
++			Category:     starterGiftFirstNonEmpty(document.CategoryCN, document.Category),
++			TemplateName: starterGiftFirstNonEmpty(document.TemplateNameCN, document.TemplateName),
++			FileName:     starterGiftFirstNonEmpty(document.FileNameCN, document.FileName),
++			ChineseName:  starterGiftFirstNonEmpty(document.ChineseNameCN, document.ChineseName),
 +			PalID:        strings.TrimSpace(document.PalID),
-+			EnglishName:  firstNonEmpty(document.EnglishNameCN, document.EnglishName),
++			EnglishName:  starterGiftFirstNonEmpty(document.EnglishNameCN, document.EnglishName),
 +		}
 +		if entry.FileName == "" && entry.TemplateName == "" {
 +			continue
@@ -227,7 +227,7 @@ index 6499df39a4227b704166b7aa74583d8fbaf9acb5..107c4291800d863e8cbbeda862180e23
 +	return entries
 +}
 +
-+func firstNonEmpty(values ...string) string {
++func starterGiftFirstNonEmpty(values ...string) string {
 +	for _, value := range values {
 +		if trimmed := strings.TrimSpace(value); trimmed != "" {
 +			return trimmed
