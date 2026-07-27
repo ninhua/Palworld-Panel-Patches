@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.12.34-hotfix2
+
+### Fixed
+
+- 修复根目录 `VERSION` 已升级为 `0.12.34-hotfix1`，但 README、CHANGELOG 与 UPGRADE 仍停留在 `0.12.34`，导致仓库骨架版本一致性校验失败。
+- 新增 `common/scripts/validate-release-metadata.sh`，在昂贵的补丁迁移、编译与 Release 测试前校验四处版本元数据。
+- `common/scripts/validate-repository.sh` 现在首先执行版本元数据门禁，再执行 Python 仓库校验与补丁 SHA-256 校验。
+- README 与根目录 `PATCH-MAINTENANCE.md` 增加醒目标记：禁止单独修改 `VERSION`，覆盖包必须同时交付所有版本元数据文件。
+
+### Validation
+
+- 正向验证 `VERSION`、README、CHANGELOG 与 UPGRADE 均为 `0.12.34-hotfix2`。
+- 负向夹具分别篡改 README、CHANGELOG 和 UPGRADE，确认门禁均返回非零状态。
+- 覆盖包在当前 `v0.12.34-hotfix1` 仓库副本上重新解压并验证。
+
 ## v0.12.34
 
 ### Fixed

@@ -8,6 +8,8 @@ while IFS= read -r -d '' script; do
     bash -n "${script}"
 done < <(find . -type f -name '*.sh' -print0)
 
+bash common/scripts/validate-release-metadata.sh
+
 python3 common/scripts/validate_repository.py
 
 source_dir="projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source"

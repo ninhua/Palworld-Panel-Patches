@@ -2,6 +2,28 @@
 
 本文件位于仓库根目录。后续新增或修正 `projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source/*.patch` 时必须遵守以下规则。
 
+## 0. VERSION 不得单独修改
+
+> [!CAUTION]
+> 根目录 `VERSION` 是版本单一事实来源，但它不是唯一需要更新的文件。任何修改 `VERSION` 的提交或目录覆盖包，必须同时更新 README 顶部 `仓库版本`、CHANGELOG 的首个 `## v...` 标题和 UPGRADE 标题中的目标版本。禁止先提交 `VERSION`、再等待 CI 提醒其他文件遗漏。
+
+固定变更集合：
+
+```text
+VERSION
+README.md
+CHANGELOG.md
+UPGRADE.md
+```
+
+制作覆盖包和提交前都必须执行：
+
+```bash
+bash common/scripts/validate-release-metadata.sh
+```
+
+`common/scripts/validate-repository.sh` 必须把该命令放在全部累计迁移、编译和 Release 测试之前。覆盖包还必须在当前完整仓库副本上重新解压后再次执行，不能只检查增量 staging 目录。
+
 ## 1. 补丁只能基于完整前序链生成
 
 禁止在官方源码、局部夹具、旧 candidate 或只应用部分补丁的工作区上直接生成后续补丁。

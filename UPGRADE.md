@@ -1,50 +1,59 @@
-# Upgrade v0.12.32-hotfix4 → v0.12.34
+# Upgrade v0.12.34-hotfix1 → v0.12.34-hotfix2
 
-本次覆盖包同时包含运行时 API 目录和新玩家礼包实际发放修复。基线是当前远程仓库 `v0.12.32-hotfix4`；无需先单独覆盖 v0.12.33。
+本次更新修复仓库版本元数据不同步，并将该规则固化为自动门禁；不修改 PalPanel 功能补丁或运行时行为。
 
-## 新增补丁
+## 原因
+
+上一提交只更新了根目录 `VERSION`，但没有在同一提交更新：
 
 ```text
-projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source/0036-add-runtime-api-catalog.patch
-projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source/0037-fix-starter-gift-paldefender-status-resolution.patch
+README.md
+CHANGELOG.md
+UPGRADE.md
 ```
 
-## 新玩家礼包修正
+因此仓库校验报告：
 
-旧 `0033` 在 PalDefender `/v1/pdapi/players` 中只接受 `Status=online` 的记录。但该接口返回已知账户目录，`Status` 不是可靠的在线存在标记，因此正确玩家可能永远保持 `pending`。
-
-修正后：
-
-1. 官方 Palworld REST `/players` 继续作为当前在线玩家的唯一来源；
-2. PalDefender 账户列表不再按 `Status` 过滤；
-3. 使用归一化后的 `UserId` / `PlayerUID` 解析实际发放目标；
-4. PlayerUID 对照忽略连字符，兼容官方紧凑形式与 PalDefender UUID 形式；
-5. 已有 `pending` 或旧 `PLAYER_NOT_FOUND` 任务在下一次 15 秒采样自动恢复。
-
-同一账号如果已被旧版本写入“已见玩家”且从未产生任务，无法自动判断它是否是真正老玩家。请用从未进入该 WorldID 的账号复测；已有任务可在发放记录中重置后完成一次离线→上线。
-
-## API 目录
-
-```http
-GET /api/catalog
+```text
+README.md 中的骨架版本与 VERSION 不一致
 ```
 
-该接口位于受认证的 `/api` 路由组，实时返回当前进程注册的全部 API、方法、路径、权限、用途、请求和返回说明。根目录 README 已列出补丁新增或增强接口的使用方法。
+## 修正
+
+- `VERSION`、README 顶部仓库版本、CHANGELOG 首个版本标题和 UPGRADE 目标版本统一为 `0.12.34-hotfix2`；
+- 新增 `common/scripts/validate-release-metadata.sh`；
+- `common/scripts/validate-repository.sh` 在其他验证前先运行版本同步门禁；
+- README 和 `PATCH-MAINTENANCE.md` 加入醒目的版本同步硬规则。
+
+## 强制规则
+
+任何后续覆盖包只要修改 `VERSION`，必须同时包含：
+
+```text
+VERSION
+README.md
+CHANGELOG.md
+UPGRADE.md
+```
+
+提交前必须在仓库根目录执行：
+
+```bash
+bash common/scripts/validate-release-metadata.sh
+bash common/scripts/validate-repository.sh
+```
+
+第一条命令必须输出：
+
+```text
+[OK] 仓库版本元数据一致：0.12.34-hotfix2
+```
 
 ## 版本
 
 ```text
-仓库版本：0.12.34
+仓库版本：0.12.34-hotfix2
 当前已发布 stable patch：0.8.16
 下一 stable patch：0.8.17
 预期 Release：uitok-stable-v1.3.0-p0.8.17
-```
-
-## 提交前检查
-
-```bash
-cd projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source
-sha256sum -c SHA256SUMS
-cd ../../../..
-bash common/scripts/validate-repository.sh
 ```
