@@ -18,6 +18,11 @@ if [[ -n "${nested_source_dir}" ]]; then
     exit 1
 fi
 
+(
+    cd "${source_dir}"
+    sha256sum -c SHA256SUMS
+)
+
 automation="projects/uitok-palworld-panel/automation"
 "${automation}/test-apply-source-patch.sh"
 "${automation}/test-starter-gift-save-scope.sh"
