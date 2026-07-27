@@ -3,7 +3,7 @@
   "upstream_repository": "uitok/palworld-panel",
   "release_tag_prefix": "uitok-stable-",
   "platform": "linux-amd64",
-  "stable_patch_version": "0.8.16",
+  "stable_patch_version": "0.8.17",
   "required_features": [
     "patch-info-api",
     "base-custom-names",
@@ -13,7 +13,8 @@
     "new-player-starter-gift",
     "unattended-inventory-delta",
     "player-summary",
-    "pal-inventory-advanced-filters"
+    "pal-inventory-advanced-filters",
+    "api-catalog"
   ],
   "optional_features": [],
   "bootstrap_source_track": "projects/uitok-palworld-panel/patches/bootstrap-v1.3.0",

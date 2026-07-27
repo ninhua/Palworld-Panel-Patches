@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.12.34
+
+### Fixed
+
+- 新增 `0037-fix-starter-gift-paldefender-status-resolution.patch`，修复新玩家任务持续等待、实际不发放的问题。
+- PalDefender `/v1/pdapi/players` 返回的是已知账户目录，`Status` 不再被错误当作在线状态门禁。
+- 当前在线身份仍由官方 Palworld REST `/players` 决定；发放阶段只按归一化后的 `UserId` / `PlayerUID` 在 PalDefender 账户列表中解析实际写入目标。
+- 空 `Status`、`Offline` 或其他账户状态不再阻止已由官方 REST 确认在线的玩家领取礼包。
+- 现有 `pending` 与旧 `PLAYER_NOT_FOUND` 记录无需删除，会在后续 15 秒采样自动恢复。
+- 同时保留 v0.12.33 的运行时 API 目录功能，并将下一 stable patch 提升为 `0.8.17`。
+
+### Validation
+
+- 0024 → 0025 → 0033 → 0037 精确累计应用。
+- 紧凑 PlayerUID 与 PalDefender 连字符 UUID 对照、Steam UserId 对照、空/非 online Status、无关账户拒绝测试。
+- 使用实际修补后的 `service.go` 和最小包契约执行 Go 语义编译与行为测试。
+
+## v0.12.33
+
+### Added
+
+- 新增 `0036-add-runtime-api-catalog.patch` 和稳定必需功能 `api-catalog`。
+- 后端新增受认证保护的 `GET /api/catalog`，直接枚举当前 Gin 进程实际注册的全部 `/api` 路由。
+- 每条接口返回方法、路径、分类、中文用途、认证方式、权限、请求提示、返回说明、处理器名称和补丁标记。
+- 根目录 README 新增补丁链全部新增或增强 API 的权限、参数、用途与 curl 示例。
+- 上游原生 API 不再复制易失真的静态清单，运行时目录与 `docs/openapi.yaml` 共同作为精确来源。
+
+### Validation
+
+- 0036 变更文件白名单、SHA-256、路由 hunk、OpenAPI operation、稳定排序和非 API 路由过滤回归。
+- stable patch 候选保持 `0.8.16`。
+
 ## v0.12.32-hotfix4
 
 ### Fixed

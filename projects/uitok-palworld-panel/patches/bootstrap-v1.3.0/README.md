@@ -146,3 +146,20 @@ fallback. Sensitive keys and Bearer tokens are redacted before the existing
 - 自动恢复旧版本因 `PLAYER_NOT_FOUND` 产生的失败任务。
 - 每世界串行 worker 与监控采样上下文解耦，并设置三小时上限，避免采样请求结束使异步批次提前取消。
 
+
+## 0036 runtime API catalog
+
+- 新增受认证保护的 `GET /api/catalog`。
+- 直接枚举 Gin 当前进程实际注册的 `/api` 路由，不使用手工维护的路由快照。
+- 返回方法、路径、分类、中文用途、认证、权限、请求/返回提示、处理器和补丁标记。
+- `docs/openapi.yaml` 增加 `getAPICatalog` operation；根目录 README 列出全部补丁 API 用法。
+- 只读，不修改 PalPanel 配置、数据库或 Palworld 存档。
+
+## 0037 starter-gift PalDefender account resolution
+
+- 当前在线玩家仍由官方 Palworld REST `/players` 决定。
+- PalDefender `/v1/pdapi/players` 作为已知账户目录读取，不再要求账户 `Status=online`。
+- 使用忽略大小写和 PlayerUID 连字符的归一化键匹配 `UserId` / `PlayerUID`，并优先使用 `UserId` 作为发放目标。
+- 空、离线或其他账户状态不会阻止已由官方 REST 确认在线的玩家发放。
+- 现有 pending 与旧 PLAYER_NOT_FOUND 任务在后续观察自动重试；不自动把所有历史已见玩家重新发放。
+

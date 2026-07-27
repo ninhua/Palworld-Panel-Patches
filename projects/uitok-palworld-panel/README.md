@@ -24,7 +24,7 @@
 
 ## 当前稳定扩展
 
-`new-player-starter-gift` 基于玩家在线历史和服务器 save index 识别新玩家，通过 PalDefender 分批发放可配置物品与帕鲁模板，并持久化每位玩家的进度；页面提供侧栏入口、物品/模板图标、精细分类、Tab 工作区、行内数量编辑和固定保存摘要；模板帕鲁身份与头像读取模板 JSON 内 `PalID`，同目录可选索引 JSON 按文件名补充分类、中英文名称和索引筛选，未命中索引时显示文件名；单项选择不会改变当前列表顺序或滚动位置；实际发放会先将官方 REST 身份与 PalDefender 在线玩家对齐，未就绪时保持等待并自动重试。
+`new-player-starter-gift` 基于玩家在线历史和服务器 save index 识别新玩家，通过 PalDefender 分批发放可配置物品与帕鲁模板，并持久化每位玩家的进度；页面提供侧栏入口、物品/模板图标、精细分类、Tab 工作区、行内数量编辑和固定保存摘要；模板帕鲁身份与头像读取模板 JSON 内 `PalID`，同目录可选索引 JSON 按文件名补充分类、中英文名称和索引筛选，未命中索引时显示文件名；单项选择不会改变当前列表顺序或滚动位置；实际发放以官方 Palworld REST 在线列表为准，再在 PalDefender 完整账户目录中按归一化 UserId/PlayerUID 解析写入目标；不把 PalDefender 账户 Status 当作在线门禁，未登记时保持等待并自动重试。
 
 `unattended-inventory-delta` 复用玩家在线采样和全服库存索引，按 WorldID 记录至少 5 分钟的无人时段及物品正向净变化；采样中断时重建基线，页面明确该指标不等同于生产量。
 `global-inventory-browser` 的页面路径为 `/inventory`，左侧入口位于“存档管理工具 → 库存管理”；`unattended-inventory-delta` 状态卡显示在该页面顶部。
@@ -36,3 +36,7 @@
 ## 玩家存档概览
 
 `player-summary` 通过 `/player-summary` 页面复用现有玩家、帕鲁、坐标和在线历史数据，展示只读玩家摘要与宽泛中文区域估算。当前索引未提供的深层进度字段不会被猜测。
+
+## 运行时 API 目录
+
+`api-catalog` 新增受认证保护的 `GET /api/catalog`。接口直接读取 Gin 当前运行时路由表，过滤 `/api` 路径后按路径和方法排序，并附加中文用途、认证方式、权限、请求/返回提示、处理器名称以及补丁标记。根目录 README 列出本仓库新增或增强的全部 API；上游原生接口以运行时目录和 `docs/openapi.yaml` 为准。

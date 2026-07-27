@@ -1,0 +1,92 @@
+diff --git a/backend/internal/startergift/service.go b/backend/internal/startergift/service.go
+index b1fab2270d138df837c512ca70e1e833f3f986ed..78d2119f99e831973743fe0c8b54069d851d2d06 100644
+--- a/backend/internal/startergift/service.go
++++ b/backend/internal/startergift/service.go
+@@ -116,6 +116,14 @@ func NewPalDefenderDispatcher(manager paldefender.Manager) Dispatcher {
+ }
+ 
+ func (d palDefenderDispatcher) ResolvePlayer(ctx context.Context, aliases []string) (string, error) {
++	response, err := d.manager.RESTPlayers(ctx)
++	if err != nil {
++		return "", err
++	}
++	return resolvePalDefenderPlayer(response.Players, aliases)
++}
++
++func resolvePalDefenderPlayer(players []paldefender.RESTPlayer, aliases []string) (string, error) {
+ 	wanted := map[string]bool{}
+ 	for _, alias := range aliases {
+ 		if key := identity(alias); key != "" {
+@@ -125,14 +133,12 @@ func (d palDefenderDispatcher) ResolvePlayer(ctx context.Context, aliases []stri
+ 	if len(wanted) == 0 {
+ 		return "", errors.New("player identifier is unavailable")
+ 	}
+-	response, err := d.manager.RESTPlayers(ctx)
+-	if err != nil {
+-		return "", err
+-	}
+-	for _, player := range response.Players {
+-		if !strings.EqualFold(strings.TrimSpace(player.Status), "online") {
+-			continue
+-		}
++	for _, player := range players {
++		// /v1/pdapi/players is an account catalog and may include offline records.
++		// Its Status value is not a reliable online-presence flag. The caller has
++		// already limited dispatch to the official Palworld REST online list, so
++		// matching by UserID/PlayerUID is sufficient and avoids permanently
++		// skipping valid players whose Status is empty or an account-state value.
+ 		if !wanted[identity(player.UserID)] && !wanted[identity(player.PlayerUID)] {
+ 			continue
+ 		}
+diff --git a/backend/internal/startergift/service_test.go b/backend/internal/startergift/service_test.go
+index ed73c2d30e2a058b18e07324b819caa3d2b489ba..26d38b01facdd17e405729ed9453523a943ecd7b 100644
+--- a/backend/internal/startergift/service_test.go
++++ b/backend/internal/startergift/service_test.go
+@@ -10,6 +10,7 @@ import (
+ 	"time"
+ 
+ 	"palpanel/internal/db"
++	"palpanel/internal/paldefender"
+ 	"palpanel/internal/playerpresence"
+ )
+ 
+@@ -41,6 +42,39 @@ func (f *fakeDispatcher) ResolvePlayer(_ context.Context, aliases []string) (str
+ 	return "", ErrPlayerNotReady
+ }
+ 
++func TestResolvePalDefenderPlayerIgnoresAccountStatus(t *testing.T) {
++	players := []paldefender.RESTPlayer{
++		{UserID: "steam_76561198000000001", PlayerUID: "11111111-2222-3333-4444-555555555555", Status: "Offline"},
++	}
++	resolved, err := resolvePalDefenderPlayer(players, []string{"11111111222233334444555555555555"})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if resolved != "steam_76561198000000001" {
++		t.Fatalf("resolved=%q", resolved)
++	}
++}
++
++func TestResolvePalDefenderPlayerAcceptsEmptyStatusAndSteamAlias(t *testing.T) {
++	players := []paldefender.RESTPlayer{
++		{UserID: "steam_76561198000000002", PlayerUID: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},
++	}
++	resolved, err := resolvePalDefenderPlayer(players, []string{"steam_76561198000000002"})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if resolved != "steam_76561198000000002" {
++		t.Fatalf("resolved=%q", resolved)
++	}
++}
++
++func TestResolvePalDefenderPlayerRejectsUnrelatedAccount(t *testing.T) {
++	players := []paldefender.RESTPlayer{{UserID: "steam_other", PlayerUID: "other-player", Status: "online"}}
++	if _, err := resolvePalDefenderPlayer(players, []string{"steam_expected", "expected-player"}); !errors.Is(err, ErrPlayerNotReady) {
++		t.Fatalf("err=%v", err)
++	}
++}
++
+ func (f *fakeDispatcher) counts() (int, int) {
+ 	f.mu.Lock()
+ 	defer f.mu.Unlock()

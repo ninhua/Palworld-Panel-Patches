@@ -125,3 +125,20 @@ npm run build
 ```
 
 出现 TypeScript 编译错误时，应新增或修正紧随相关功能补丁之后的纠正补丁，并把该错误对应的可选字段类型写入回归夹具；不得仅通过类型断言 `as string` 掩盖空值。
+
+## 8. 新增或增强 API 必须同步三处契约
+
+任何补丁新增路由、改变权限、扩展 Query/Body 或显著改变返回字段时，必须同时更新：
+
+1. `docs/openapi.yaml`：operation、schema 和 `x-palpanel-permission`；
+2. 根目录 `README.md` 的“API 使用说明”：方法、路径、权限、参数、用途和示例；
+3. `api-catalog` 的精确描述表；未单独描述的上游接口至少应由路由家族说明覆盖。
+
+提交前必须确认 `GET /api/catalog` 从 `router.Routes()` 读取运行时路由，不能维护一份与实际路由分离的静态路径总表。路由删除或改名时必须同步删除旧说明。
+
+## 9. 外部接口状态字段不得凭名称推断语义
+
+第三方接口中的 `Status`、`State`、`Online` 等字段必须按其实际契约解释，不得仅凭字段名称作为运行门禁。跨接口关联时应明确一个权威来源：本项目的新玩家礼包以官方 Palworld REST `/players` 决定当前在线集合，PalDefender `/v1/pdapi/players` 只负责把已确认在线的身份映射为可写入的 `UserId` / `PlayerUID`。
+
+涉及外部身份映射的补丁至少要覆盖：空状态、非预期状态、大小写、格式差异（例如 UUID 连字符）、无关账户和延迟出现。测试必须执行实际修补后的 helper，而不是只 grep 标记。
+

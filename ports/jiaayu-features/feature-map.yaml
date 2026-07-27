@@ -162,7 +162,7 @@ features:
       - frontend/src/pages/StarterGift.tsx
       - frontend/src/pages/PlayerCenter.tsx
       - frontend/src/routes.tsx
-    notes: Detects previously unseen players through the target project's existing presence sampler, resolves the active world from DedicatedServerName, and isolates presence sessions, starter-gift configuration, progress, and serialized workers by WorldID. New worlds inherit the latest configuration template without overwriting existing worlds. The page uses a sidebar entry, tabbed workspaces, local item icons, Pal portraits whose identity comes from each template JSON PalID, optional same-directory index JSON files for category/Chinese/English display and list-based filters, refined categories, inline quantities, and a sticky save summary. Templates not present in an index retain their filename as the display fallback. Runtime delivery resolves the official REST PlayerUID/SteamID against PalDefender online players, keeps not-yet-registered players pending for automatic retry, and baselines existing players only on the disabled-to-enabled transition. It copies no Jiaayu source code and does not modify Palworld saves.
+    notes: Detects previously unseen players through the target project's existing presence sampler, resolves the active world from DedicatedServerName, and isolates presence sessions, starter-gift configuration, progress, and serialized workers by WorldID. New worlds inherit the latest configuration template without overwriting existing worlds. The page uses a sidebar entry, tabbed workspaces, local item icons, Pal portraits whose identity comes from each template JSON PalID, optional same-directory index JSON files for category/Chinese/English display and list-based filters, refined categories, inline quantities, and a sticky save summary. Templates not present in an index retain their filename as the display fallback. Runtime delivery treats the official Palworld REST list as the online authority, resolves PlayerUID/SteamID against the complete PalDefender account catalog without filtering on its account Status field, keeps not-yet-registered players pending for automatic retry, and baselines existing players only on the disabled-to-enabled transition. It copies no Jiaayu source code and does not modify Palworld saves.
   - id: unattended-inventory-delta
     reference_label: 无人时段库存净增加
     status: implemented-independently
@@ -193,3 +193,15 @@ features:
       - frontend/src/types/index.ts
     notes: Reuses fields already emitted by the target project's locked save index to add read-only level, star, IV, gender, location, and passive filtering plus stable sorting. SlotIndex and LocationType are converted into party, base-worker, expedition, or Pal terminal page-row-column labels. No Jiaayu source code is copied and no save data is modified.
 
+
+  - id: api-catalog
+    reference_label: 运行时 API 目录与使用说明
+    status: implemented-independently
+    patch_version: 0.8.16
+    implementation: target-native-extension
+    source_paths: []
+    target_paths:
+      - backend/internal/api/api_catalog.go
+      - backend/internal/api/routes.go
+      - docs/openapi.yaml
+    notes: Enumerates the target process actual Gin API routes at request time and enriches them with Chinese authentication, permission, request, and response guidance. The repository README documents every API added or enhanced by this patch chain. No Jiaayu source code is copied and no game save data is modified.

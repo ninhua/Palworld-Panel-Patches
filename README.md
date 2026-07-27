@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.32-hotfix4`
+仓库版本：`v0.12.34`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -13,8 +13,8 @@
 上游项目：uitok/palworld-panel
 当前维护目标：v1.3.0
 bootstrap 源轨道：patches/bootstrap-v1.3.0
-当前已发布稳定补丁：0.8.15
-下一稳定补丁候选：0.8.16 / 未发布前 verified=false
+当前已发布稳定补丁：0.8.16
+下一稳定补丁候选：0.8.17 / 未发布前 verified=false
 ```
 
 `bootstrap-v1.3.0` 是不可变的自包含发布源轨道，拥有自己的 `source/`、`build/`、manifest 和许可文件；所有补丁应用、测试和构建均以官方 `v1.3.0` tag 为基线。`candidate-v1.3.0` 仅用于保存迁移失败或无变更工作区，可以不存在、被覆盖或由 Draft PR 更新，不再作为下一次发布的输入。只有完整 stable Workflow 通过后，Release manifest 才会写入 `mode=exact`、`target_version=v1.3.0` 和 `verified=true`。
@@ -55,7 +55,91 @@ new-player-starter-gift（stable 必需功能，新玩家初始物品与帕鲁�
 unattended-inventory-delta（stable 必需功能，无人时段库存正向净变化）
 player-summary（stable 必需功能，玩家存档概览与中文区域定位）
 pal-inventory-advanced-filters（stable 必需功能，帕鲁仓库多项筛选与终端位置）
+api-catalog（stable 必需功能，运行时 API 目录与中文使用说明）
 ```
+
+## API 使用说明（补丁新增或增强的全部接口）
+
+PalPanel 的标准响应使用统一 JSON envelope：成功为 `{"ok":true,"data":...}`，失败为 `{"ok":false,"error":{"code":"...","message":"..."}}`。除表中标记为 `public` 的接口外，请使用已登录浏览器会话 Cookie 或 PalPanel Development Key；Development Key 的具体传递方式以运行版本 `docs/openapi.yaml` 为准。
+
+`GET /api/catalog` 会从当前 Gin 路由表实时枚举**所有** `/api` 接口，包括上游原生接口和本仓库补丁接口，并返回方法、路径、分类、用途、认证方式、权限、请求说明、返回说明、处理器名称以及 `patched` 标记。它是判断实际运行二进制支持哪些 API 的首选依据。
+
+```bash
+# 公共接口
+curl -sS http://127.0.0.1:8080/api/patch/info
+
+# 使用已登录会话 Cookie 查询完整 API 目录
+curl -sS -b cookies.txt http://127.0.0.1:8080/api/catalog
+```
+
+### 系统与补丁
+
+| 方法 | 路径 | 权限 | 用途与主要返回 |
+|---|---|---|---|
+| GET | `/api/patch/info` | public | 查询上游版本、目标版本、补丁版本、verified 状态、构建信息和功能列表。 |
+| GET | `/api/catalog` | authenticated | 查询当前进程实际注册的全部 API 和中文说明。 |
+| GET | `/api/patch/update/status` | authenticated | 查询当前补丁、可用稳定 Release 和最近更新状态。 |
+| POST | `/api/patch/update/check` | `server:control` | 强制重新检查与当前 PalPanel 正式版本完全匹配的 verified stable Release。 |
+| POST | `/api/patch/update` | `server:control` | 创建 `patch_hot_update` 任务，校验资产并原子替换面板二进制。 |
+
+```bash
+curl -sS -b cookies.txt -X POST http://127.0.0.1:8080/api/patch/update/check
+curl -sS -b cookies.txt -X POST http://127.0.0.1:8080/api/patch/update
+```
+
+### 玩家、基地与存档索引
+
+| 方法 | 路径 | 权限 | 请求与用途 |
+|---|---|---|---|
+| GET | `/api/players` | authenticated | 玩家列表；补丁版附加备注、标签和 WorldID 在线历史。支持现有 `limit`、`offset`、`q` 等列表参数。 |
+| GET | `/api/players/{id}` | authenticated | 玩家详情；附加管理元数据、累计在线和最近会话。 |
+| PUT | `/api/players/{id}/annotation` | `players:write` | JSON `{"note":"管理备注","tags":["标签"]}`；备注最多 500 字，标签最多 8 个。 |
+| DELETE | `/api/players/{id}/annotation` | `players:write` | 删除该玩家在当前存档源下的备注和标签。 |
+| GET | `/api/guilds/{id}` | authenticated | 公会会长、成员、成员注释和关联基地详情。 |
+| PUT | `/api/bases/{id}/name` | `server:control` | JSON `{"name":"新的据点名称"}`；只写 PalPanel 元数据。 |
+| DELETE | `/api/bases/{id}/name` | `server:control` | 删除据点别名并恢复原始名称。 |
+| GET | `/api/bases/{id}/storage` | authenticated | 据点关联容器、槽位、本地化物品和数量。 |
+| GET | `/api/bases/{id}/workers` | authenticated | 基地工作帕鲁及等级、性别、状态和被动词条。 |
+| GET | `/api/bases/{id}/feed-boxes` | authenticated | 普通/低温饲料箱数量、占用格和物品聚合。 |
+| GET | `/api/inventory` | authenticated | 全服库存；参数 `q`、`owner_type`、`category`、`sort`、`source_id`，返回位置明细与 `unattended` 无人时段状态。 |
+| GET | `/api/pals` | authenticated | 帕鲁列表；补丁参数 `min_level`、`min_stars`、`min_iv_average`、`gender`、`location`、`passive`、`sort`。 |
+| POST | `/api/save-sources/import/inspect` | `server:control` | 标准存档导入检查；补丁版同时支持合作房主档 UID 重映射检查。 |
+
+```bash
+curl -sS -b cookies.txt \
+  'http://127.0.0.1:8080/api/pals?min_level=50&min_stars=4&min_iv_average=90&location=palbox&sort=iv_desc'
+
+curl -sS -b cookies.txt -X PUT \
+  -H 'Content-Type: application/json' \
+  -d '{"note":"重点观察","tags":["管理","活跃"]}' \
+  http://127.0.0.1:8080/api/players/PLAYER_UID/annotation
+```
+
+### 新玩家礼包与 PalDefender
+
+| 方法 | 路径 | 权限 | 请求与用途 |
+|---|---|---|---|
+| GET | `/api/security/paldefender/starter-gift` | authenticated | 返回当前 WorldID、礼包配置、物品目录、模板与索引、任务摘要和发放记录。 |
+| PUT | `/api/security/paldefender/starter-gift` | `security:write` | 保存 `enabled`、批大小、`items` 和 `pal_templates`；首次从禁用切换为启用时建立已有玩家基线。 |
+| POST | `/api/security/paldefender/starter-gift/grants/{id}/retry` | `security:write` | 从持久化的未完成批次继续重试。 |
+| DELETE | `/api/security/paldefender/starter-gift/grants/{id}` | `security:write` | 重置发放记录；玩家必须离线后重新进入才能再次触发。 |
+
+```bash
+curl -sS -b cookies.txt \
+  http://127.0.0.1:8080/api/security/paldefender/starter-gift
+```
+
+发放目标解析规则：当前在线身份以官方 Palworld REST `/players` 为准；PalDefender `/v1/pdapi/players` 仅用于把该在线身份映射到可写入的 `UserId` / `PlayerUID`。PalDefender 返回的 `Status` 是账户状态字段，不再作为在线过滤条件。已有 `pending` 或旧 `PLAYER_NOT_FOUND` 记录会在下一次 15 秒采样后自动续发。
+
+已经被旧版本写入“已见玩家”但从未生成发放记录的测试账号，无法与真正老玩家安全区分。此类账号应使用一个从未进入过该 WorldID 的账号复测，或先在“发放记录”中重置已有记录并完成一次离线→上线。
+
+### 上游原生 API
+
+补丁版继续支持 PalPanel v1.3.0 的全部原生 API，包括认证、Development Key、异步任务、审计、服务器生命周期、监控、备份/WebDAV、配置、模组、AI 翻译、PalDefender GM、存档源、玩家、公会、基地、帕鲁、地图和配种等接口。由于上游接口数量较多且会随正式 PalPanel 版本变化，README 不复制一份可能失真的静态清单；请使用：
+
+- `GET /api/catalog`：当前运行二进制的精确路由和说明；
+- `docs/openapi.yaml`：精确请求/响应 schema 和 `x-palpanel-permission`；
+- `GET /api/patch/info`：确认当前补丁和目标 PalPanel 版本。
 
 `new-player-starter-gift` 提供：
 
