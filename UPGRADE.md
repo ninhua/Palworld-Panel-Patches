@@ -1,34 +1,38 @@
-# Upgrade v0.12.31-hotfix4 → v0.12.31-hotfix5
+# Upgrade v0.12.31-hotfix5 → v0.12.32
 
-本次更新只修正补丁源码校验清单，不修改 PalPanel 功能代码。
+本次更新为现有帕鲁仓库增加多项筛选、质量排序和终端位置显示。
 
-## 问题
-
-`0022-add-host-save-migrator.patch` 在 `v0.12.26` 已更新，但后续增量包中的 `source/SHA256SUMS` 误恢复为旧文件的哈希，stable Workflow 因此报告：
+## 新增补丁
 
 ```text
-sha256sum: WARNING: 1 computed checksum did NOT match
-Error: Process completed with exit code 1.
+projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source/0034-add-pal-inventory-advanced-filters.patch
 ```
 
-## 修正
+## 功能入口
 
 ```text
-projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source/SHA256SUMS
+世界管理 → 存档管理工具 → 帕鲁仓库
+页面：/pal-inventory
 ```
 
-`0022-add-host-save-migrator.patch` 的正确条目为：
+## 筛选与排序
 
-```text
-aee8e8e084e1b8dd4920aa571981e1ce501f15fee618de41dc66679b839fe58f  0022-add-host-save-migrator.patch
-```
+- 最低等级：0–65；
+- 最低星级：0–4，按存档 Rank 换算；
+- 最低平均 IV：0–100；
+- 性别：雄性、雌性、通配；
+- 位置：帕鲁终端、队伍、据点工作、远征、未知；
+- 被动词条：使用逗号分隔，多项条件必须全部命中；
+- 排序：等级、平均 IV、星级或名称。
 
-补丁文件本身不需要替换。
+## 终端位置
+
+帕鲁终端按每页 30 格、每行 6 格，将 `SlotIndex` 显示为“终端第 N 页 · 第 N 行第 N 列”。队伍、据点工作位和远征使用对应中文位置。该功能只读取现有 save index，不修改存档。
 
 ## 版本
 
 ```text
-仓库版本：0.12.31-hotfix5
+仓库版本：0.12.32
 当前已发布 stable patch：0.8.15
 下一 stable patch：0.8.16
 预期 Release：uitok-stable-v1.3.0-p0.8.16

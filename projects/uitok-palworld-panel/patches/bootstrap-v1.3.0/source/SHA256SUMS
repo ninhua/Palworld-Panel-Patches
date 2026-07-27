@@ -31,3 +31,4 @@ dde2932c8271e2b342f838ec0552194c67ac7312c7eb29a53247c4cf8fbfba51  0029-fix-start
 71cff8cabaed9493b31fa8ed1957dc234d0c14b02bc3d6b33973bb72a00bead4  0031-read-starter-gift-template-pal-id.patch
 187e601b329bcdc162ab5b383576e73cfd86eca5e0d167158a5ca9bbd5e9feb4  0032-read-starter-gift-template-indexes.patch
 80ff243eec2768d8ff9a1b5d51aaaf4332b103c3bf1858c909b55797a9aa0701  0033-fix-starter-gift-runtime-dispatch.patch
+c9f4b004e06c4ab9488d55055c32dd2b2d4b0fc38cea9583816f11557b60380e  0034-add-pal-inventory-advanced-filters.patch

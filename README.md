@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.31-hotfix5`
+仓库版本：`v0.12.32`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -52,6 +52,7 @@ global-inventory-browser（stable 必需功能，只读全服库存聚合）
 new-player-starter-gift（stable 必需功能，新玩家初始物品与帕鲁模板分批发放）
 unattended-inventory-delta（stable 必需功能，无人时段库存正向净变化）
 player-summary（stable 必需功能，玩家存档概览与中文区域定位）
+pal-inventory-advanced-filters（stable 必需功能，帕鲁仓库多项筛选与终端位置）
 ```
 
 `new-player-starter-gift` 提供：
@@ -77,6 +78,16 @@ player-summary（stable 必需功能，玩家存档概览与中文区域定位�
 - 状态、基线和最近一次完整结果按 WorldID 独立保存在 PalPanel SQLite KV 中；导入存档不参与实时统计；
 - 库存页面显示当前/最近一次无人时段、持续时间、有效门槛、索引状态和净增加最多的物品；
 - 结果只表示全服库存正向净变化，不等同于据点生产量，不修改 Palworld 存档。
+
+
+`pal-inventory-advanced-filters` 提供：
+
+- 扩展现有 `/pal-inventory` 帕鲁仓库，不新增存档解析器或写入能力；
+- 支持最低等级、最低星级、最低平均 IV、性别、位置和多个被动词条联合筛选；
+- 支持按等级、平均 IV、星级或名称排序；
+- 展示 HP/攻击/防御 IV、平均 IV 和 0–4 星浓缩等级；
+- 根据 save index 的 `LocationType` 与 `SlotIndex` 显示队伍位置、据点工作位、远征状态或帕鲁终端页/行/列；
+- 帕鲁终端按每页 30 格、每行 6 格换算，所有结果保持只读。
 
 
 `player-summary` 提供：

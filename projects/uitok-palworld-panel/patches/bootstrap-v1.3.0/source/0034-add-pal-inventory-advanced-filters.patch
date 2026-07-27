@@ -1,0 +1,653 @@
+diff --git a/backend/internal/api/pal_inventory_filters_feature.go b/backend/internal/api/pal_inventory_filters_feature.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..21b8ba038e13f5abcf5a6acdba1e465ce77ffc81
+--- /dev/null
++++ b/backend/internal/api/pal_inventory_filters_feature.go
+@@ -0,0 +1,5 @@
++package api
++
++func init() {
++	patchFeatures = append(patchFeatures, "pal-inventory-advanced-filters")
++}
+diff --git a/backend/internal/api/pal_inventory_filters_test.go b/backend/internal/api/pal_inventory_filters_test.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..7e4cca4137e42cfc9e24cf191fac591ba37ae407
+--- /dev/null
++++ b/backend/internal/api/pal_inventory_filters_test.go
+@@ -0,0 +1,87 @@
++package api
++
++import (
++	"net/http/httptest"
++	"testing"
++
++	"github.com/gin-gonic/gin"
++
++	"palpanel/internal/saveindex"
++)
++
++func palFilterContext(rawQuery string) *gin.Context {
++	recorder := httptest.NewRecorder()
++	context, _ := gin.CreateTestContext(recorder)
++	request := httptest.NewRequest("GET", "/api/pals?"+rawQuery, nil)
++	context.Request = request
++	return context
++}
++
++func TestPalInventoryAdvancedFilters(t *testing.T) {
++	players := []saveindex.Player{{PlayerUID: "owner-a", Nickname: "Alice"}}
++	pals := []saveindex.Pal{
++		{InstanceID: "a", CharacterID: "Anubis", OwnerPlayerUID: "owner-a", Level: 55, Gender: "male", Rank: 5, IVHP: 100, IVAttack: 90, IVDefense: 80, Passives: []string{"Workaholic"}, LocationType: "PalStorage", SlotIndex: 31},
++		{InstanceID: "b", CharacterID: "PinkCat", OwnerPlayerUID: "owner-a", Level: 20, Gender: "female", Rank: 1, IVHP: 20, IVAttack: 20, IVDefense: 20, Passives: []string{"Runner"}, LocationType: "Party", SlotIndex: 2},
++	}
++
++	filtered := filterPals(pals, players, palFilterContext("min_level=50&min_stars=4&min_iv_average=80&gender=male&location=storage&passive=Workaholic"))
++	if len(filtered) != 1 || filtered[0].InstanceID != "a" {
++		t.Fatalf("filtered = %#v", filtered)
++	}
++}
++
++func TestPalTerminalLocation(t *testing.T) {
++	tests := []struct {
++		pal  saveindex.Pal
++		want string
++	}{
++		{saveindex.Pal{LocationType: "PalStorage", SlotIndex: 31}, "终端第2页 · 第1行第2列"},
++		{saveindex.Pal{LocationType: "Party", SlotIndex: 2}, "队伍第3位"},
++		{saveindex.Pal{LocationType: "BaseCamp", SlotIndex: 4}, "据点工作位 5"},
++		{saveindex.Pal{OnExpedition: true}, "远征中"},
++	}
++	for _, test := range tests {
++		if got := palTerminalLocation(test.pal); got != test.want {
++			t.Fatalf("palTerminalLocation(%#v) = %q, want %q", test.pal, got, test.want)
++		}
++	}
++}
++
++func TestSortPalsByIVAndStars(t *testing.T) {
++	pals := []saveindex.Pal{
++		{InstanceID: "low", Level: 60, Rank: 1, IVHP: 10, IVAttack: 10, IVDefense: 10},
++		{InstanceID: "high", Level: 30, Rank: 5, IVHP: 100, IVAttack: 90, IVDefense: 80},
++	}
++	sortPals(pals, "iv_desc")
++	if pals[0].InstanceID != "high" {
++		t.Fatalf("iv sort = %#v", pals)
++	}
++	sortPals(pals, "stars_desc")
++	if pals[0].InstanceID != "high" {
++		t.Fatalf("stars sort = %#v", pals)
++	}
++}
++
++func TestFlattenPalIncludesTerminalAndQualityFields(t *testing.T) {
++	pal := saveindex.Pal{
++		InstanceID: "pal-1", CharacterID: "Anubis", Rank: 5,
++		IVHP: 100, IVAttack: 90, IVDefense: 80,
++		LocationType: "PalStorage", SlotIndex: 31,
++	}
++	view := flattenPal(pal, map[string]saveindex.Player{})
++	if view["stars"] != 4 || view["iv_average"] != 90 {
++		t.Fatalf("quality fields = %#v", view)
++	}
++	if view["location_kind"] != "storage" || view["terminal_location"] != "终端第2页 · 第1行第2列" {
++		t.Fatalf("location fields = %#v", view)
++	}
++}
++
++func TestPalInventoryAdvancedFiltersFeatureRegistered(t *testing.T) {
++	for _, feature := range patchFeatures {
++		if feature == "pal-inventory-advanced-filters" {
++			return
++		}
++	}
++	t.Fatalf("pal-inventory-advanced-filters not registered in %#v", patchFeatures)
++}
+diff --git a/backend/internal/api/save_index.go b/backend/internal/api/save_index.go
+index 0633e106c9c573172de573fe72b891d0106a0a6b..e03982fcef5787596f989cd6d53805da4ac4f333 100644
+--- a/backend/internal/api/save_index.go
++++ b/backend/internal/api/save_index.go
+@@ -5,6 +5,7 @@ import (
+ 	"encoding/json"
+ 	"errors"
+ 	"net/http"
++	"sort"
+ 	"strconv"
+ 	"strings"
+ 	"time"
+@@ -30,6 +31,7 @@ func (s Server) listSavePals(c *gin.Context) {
+ 		index = saveindex.EmptyIndex()
+ 	}
+ 	pals := filterPals(index.Pals, index.Players, c)
++	sortPals(pals, c.Query("sort"))
+ 	limit, offset := limitOffset(c)
+ 	paged, summary := paginate(pals, limit, offset)
+ 	ok(c, gin.H{"pals": flattenPals(paged, index.Players), "status": status, "summary": summary})
+@@ -47,32 +49,46 @@ func flattenPal(pal saveindex.Pal, lookup map[string]saveindex.Player) gin.H {
+ 	status := firstNonEmpty(pal.Status, "Healthy")
+ 	speciesName := pallocalize.PalName(pal.CharacterID)
+ 	return gin.H{
+-		"id":               pal.InstanceID,
+-		"instance_id":      pal.InstanceID,
+-		"character_id":     pal.CharacterID,
+-		"species_name":     speciesName,
+-		"name":             firstNonEmpty(pal.Nickname, speciesName, pal.CharacterID, pal.InstanceID),
+-		"nickname":         pal.Nickname,
+-		"level":            pal.Level,
+-		"rarity":           "Common",
+-		"rarity_name":      "普通",
+-		"owner_player_uid": pal.OwnerPlayerUID,
+-		"owner_nickname":   owner.Nickname,
+-		"owner_steam_id":   owner.SteamID,
+-		"guild_id":         firstNonEmpty(pal.GuildID, owner.GuildID),
+-		"container_id":     pal.ContainerID,
+-		"location":         pal.Location,
+-		"x":                pal.Location.X,
+-		"y":                pal.Location.Y,
+-		"z":                pal.Location.Z,
+-		"skills":           []gin.H{},
+-		"passives":         localizeStrings(pal.Passives, pallocalize.PassiveName),
+-		"raw_passives":     pal.Passives,
+-		"raw_skills":       pal.Skills,
+-		"work_suitability": []gin.H{},
+-		"health":           0,
+-		"max_health":       0,
+-		"status":           status,
++		"id":                pal.InstanceID,
++		"instance_id":       pal.InstanceID,
++		"character_id":      pal.CharacterID,
++		"species_name":      speciesName,
++		"name":              firstNonEmpty(pal.Nickname, speciesName, pal.CharacterID, pal.InstanceID),
++		"nickname":          pal.Nickname,
++		"level":             pal.Level,
++		"rarity":            "Common",
++		"rarity_name":       "普通",
++		"owner_player_uid":  pal.OwnerPlayerUID,
++		"owner_nickname":    owner.Nickname,
++		"owner_steam_id":    owner.SteamID,
++		"guild_id":          firstNonEmpty(pal.GuildID, owner.GuildID),
++		"container_id":      pal.ContainerID,
++		"slot_index":        pal.SlotIndex,
++		"location_type":     pal.LocationType,
++		"location_kind":     palLocationKind(pal),
++		"terminal_location": palTerminalLocation(pal),
++		"gender":            pal.Gender,
++		"rank":              pal.Rank,
++		"stars":             palStars(pal),
++		"iv_hp":             pal.IVHP,
++		"iv_attack":         pal.IVAttack,
++		"iv_defense":        pal.IVDefense,
++		"iv_average":        palIVAverage(pal),
++		"equipped_skills":   append([]string(nil), pal.EquippedSkills...),
++		"old_owner_uids":    append([]string(nil), pal.OldOwnerUIDs...),
++		"on_expedition":     pal.OnExpedition,
++		"location":          pal.Location,
++		"x":                 pal.Location.X,
++		"y":                 pal.Location.Y,
++		"z":                 pal.Location.Z,
++		"skills":            []gin.H{},
++		"passives":          localizeStrings(pal.Passives, pallocalize.PassiveName),
++		"raw_passives":      pal.Passives,
++		"raw_skills":        pal.Skills,
++		"work_suitability":  []gin.H{},
++		"health":            0,
++		"max_health":        0,
++		"status":            status,
+ 	}
+ }
+ 
+@@ -89,14 +105,29 @@ func filterPals(pals []saveindex.Pal, players []saveindex.Player, c *gin.Context
+ 	ownerUID := normalizeQuery(c.Query("owner_player_uid"))
+ 	guildID := normalizeQuery(c.Query("guild_id"))
+ 	containerID := normalizeQuery(c.Query("container_id"))
++	gender := normalizeQuery(c.Query("gender"))
++	location := normalizeQuery(c.Query("location"))
++	minLevel := boundedQueryInt(c.Query("min_level"), 0, 65)
++	minStars := boundedQueryInt(c.Query("min_stars"), 0, 4)
++	minIVAverage := boundedQueryInt(c.Query("min_iv_average"), 0, 100)
++	requiredPassives := splitQueryList(c.Query("passive"))
+ 	lookup := playerLookup(players)
+ 	out := make([]saveindex.Pal, 0, len(pals))
+ 	for _, pal := range pals {
+ 		owner := lookup[pal.OwnerPlayerUID]
+ 		palGuildID := firstNonEmpty(pal.GuildID, owner.GuildID)
++		if pal.Level < minLevel || palStars(pal) < minStars || palIVAverage(pal) < minIVAverage {
++			continue
++		}
+ 		if status != "" && normalizeQuery(pal.Status) != status {
+ 			continue
+ 		}
++		if gender != "" && normalizeQuery(pal.Gender) != gender {
++			continue
++		}
++		if location != "" && palLocationKind(pal) != location {
++			continue
++		}
+ 		if ownerUID != "" && normalizeQuery(pal.OwnerPlayerUID) != ownerUID {
+ 			continue
+ 		}
+@@ -109,11 +140,145 @@ func filterPals(pals []saveindex.Pal, players []saveindex.Player, c *gin.Context
+ 		if q != "" && !containsAny(q, pal.InstanceID, pal.CharacterID, pallocalize.PalName(pal.CharacterID), pal.Nickname, owner.Nickname, owner.SteamID) {
+ 			continue
+ 		}
++		if !palHasAllPassives(pal, requiredPassives) {
++			continue
++		}
+ 		out = append(out, pal)
+ 	}
+ 	return out
+ }
+ 
++func boundedQueryInt(value string, minimum, maximum int) int {
++	parsed, err := strconv.Atoi(strings.TrimSpace(value))
++	if err != nil || parsed < minimum {
++		return minimum
++	}
++	if parsed > maximum {
++		return maximum
++	}
++	return parsed
++}
++
++func splitQueryList(value string) []string {
++	value = strings.NewReplacer("，", ",", ";", ",", "；", ",").Replace(value)
++	seen := map[string]bool{}
++	out := make([]string, 0)
++	for _, item := range strings.Split(value, ",") {
++		item = normalizeQuery(item)
++		if item == "" || seen[item] {
++			continue
++		}
++		seen[item] = true
++		out = append(out, item)
++	}
++	return out
++}
++
++func palHasAllPassives(pal saveindex.Pal, required []string) bool {
++	if len(required) == 0 {
++		return true
++	}
++	available := map[string]bool{}
++	for _, passive := range pal.Passives {
++		available[normalizeQuery(passive)] = true
++		available[normalizeQuery(pallocalize.PassiveName(passive))] = true
++	}
++	for _, passive := range required {
++		if !available[passive] {
++			return false
++		}
++	}
++	return true
++}
++
++func palStars(pal saveindex.Pal) int {
++	stars := pal.Rank - 1
++	if stars < 0 {
++		return 0
++	}
++	if stars > 4 {
++		return 4
++	}
++	return stars
++}
++
++func palIVAverage(pal saveindex.Pal) int {
++	total := pal.IVHP + pal.IVAttack + pal.IVDefense
++	if total <= 0 {
++		return 0
++	}
++	return (total + 1) / 3
++}
++
++func palLocationKind(pal saveindex.Pal) string {
++	location := normalizeQuery(pal.LocationType)
++	switch {
++	case pal.OnExpedition || strings.Contains(location, "expedition"):
++		return "expedition"
++	case strings.Contains(location, "storage"), strings.Contains(location, "palbox"):
++		return "storage"
++	case strings.Contains(location, "party"), strings.Contains(location, "otomo"):
++		return "party"
++	case strings.Contains(location, "base"), strings.Contains(location, "worker"):
++		return "base"
++	case location == "":
++		return "unknown"
++	default:
++		return location
++	}
++}
++
++func palTerminalLocation(pal saveindex.Pal) string {
++	slot := pal.SlotIndex
++	if slot < 0 {
++		slot = 0
++	}
++	switch palLocationKind(pal) {
++	case "storage":
++		pageSlot := slot % 30
++		return "终端第" + strconv.Itoa(slot/30+1) + "页 · 第" + strconv.Itoa(pageSlot/6+1) + "行第" + strconv.Itoa(pageSlot%6+1) + "列"
++	case "party":
++		return "队伍第" + strconv.Itoa(slot+1) + "位"
++	case "base":
++		return "据点工作位 " + strconv.Itoa(slot+1)
++	case "expedition":
++		return "远征中"
++	default:
++		return firstNonEmpty(pal.LocationType, "位置未知")
++	}
++}
++
++func sortPals(pals []saveindex.Pal, order string) {
++	order = normalizeQuery(order)
++	sort.SliceStable(pals, func(i, j int) bool {
++		left, right := pals[i], pals[j]
++		switch order {
++		case "iv_desc":
++			if palIVAverage(left) != palIVAverage(right) {
++				return palIVAverage(left) > palIVAverage(right)
++			}
++		case "stars_desc":
++			if palStars(left) != palStars(right) {
++				return palStars(left) > palStars(right)
++			}
++		case "name_asc":
++			leftName := normalizeQuery(firstNonEmpty(left.Nickname, pallocalize.PalName(left.CharacterID), left.CharacterID))
++			rightName := normalizeQuery(firstNonEmpty(right.Nickname, pallocalize.PalName(right.CharacterID), right.CharacterID))
++			if leftName != rightName {
++				return leftName < rightName
++			}
++		default:
++			if left.Level != right.Level {
++				return left.Level > right.Level
++			}
++		}
++		if left.Level != right.Level {
++			return left.Level > right.Level
++		}
++		return normalizeQuery(left.InstanceID) < normalizeQuery(right.InstanceID)
++	})
++}
++
+ func normalizeQuery(value string) string {
+ 	return strings.ToLower(strings.TrimSpace(value))
+ }
+diff --git a/frontend/src/api/pals.ts b/frontend/src/api/pals.ts
+index 8b6dde59b177428ed0f5c802f4b015dd4dd3b40b..06804708b46d00e74951d1a8d82e7759d3c3eea1 100644
+--- a/frontend/src/api/pals.ts
++++ b/frontend/src/api/pals.ts
+@@ -1,7 +1,7 @@
+ import { apiClient, handleRequest } from './client';
+ import { emptySummary, entityListQuery, mapSummary } from './entityList';
+ import { emptySaveIndexStatus, mapSaveIndexStatus } from './saveIndex';
+-import type { EntityListParams, EntityListResponse, Pal, UnsupportedActionResult } from '../types';
++import type { EntityListResponse, Pal, PalListParams, UnsupportedActionResult } from '../types';
+ 
+ export const mapPal = (raw: unknown): Pal => {
+   const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+@@ -23,11 +23,15 @@ export const mapPal = (raw: unknown): Pal => {
+     container_id: data.container_id ? String(data.container_id) : undefined,
+     slot_index: data.slot_index == null ? undefined : Number(data.slot_index),
+     location_type: data.location_type ? String(data.location_type) : undefined,
++    location_kind: data.location_kind ? String(data.location_kind) : undefined,
++    terminal_location: data.terminal_location ? String(data.terminal_location) : undefined,
+     gender: data.gender ? String(data.gender) : undefined,
+     rank: data.rank == null ? undefined : Number(data.rank),
++    stars: data.stars == null ? undefined : Number(data.stars),
+     iv_hp: data.iv_hp == null ? undefined : Number(data.iv_hp),
+     iv_attack: data.iv_attack == null ? undefined : Number(data.iv_attack),
+     iv_defense: data.iv_defense == null ? undefined : Number(data.iv_defense),
++    iv_average: data.iv_average == null ? undefined : Number(data.iv_average),
+     equipped_skills: Array.isArray(data.equipped_skills) ? data.equipped_skills.map(String) : [],
+     old_owner_uids: Array.isArray(data.old_owner_uids) ? data.old_owner_uids.map(String) : [],
+     on_expedition: Boolean(data.on_expedition),
+@@ -72,7 +76,7 @@ const unsupported = (message: string): Promise<UnsupportedActionResult> =>
+   Promise.resolve({ ok: false, unsupported: true, message });
+ 
+ export const palsApi = {
+-  getPalsList: (params: EntityListParams = {}) =>
++  getPalsList: (params: PalListParams = {}) =>
+     handleRequest<unknown, EntityListResponse<Pal>>(
+       () => apiClient.get(`/pals${entityListQuery(params)}`),
+       { items: [], status: emptySaveIndexStatus, summary: emptySummary },
+diff --git a/frontend/src/pages/Pals.tsx b/frontend/src/pages/Pals.tsx
+index 5d1fa8ad1ab15dd2d860258c88ef75891baf2b6b..24b590e53293dce4d556c7b127788ff6c87064af 100644
+--- a/frontend/src/pages/Pals.tsx
++++ b/frontend/src/pages/Pals.tsx
+@@ -1,6 +1,6 @@
+ import React, { useEffect, useState } from 'react';
+ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+-import { AlertCircle, Hammer, HeartPulse, RefreshCw, Trash2 } from 'lucide-react';
++import { AlertCircle, Hammer, HeartPulse, MapPin, RefreshCw, SlidersHorizontal, Trash2 } from 'lucide-react';
+ import { getErrorMessage } from '../api/client';
+ import { palsApi } from '../api/pals';
+ import { saveIndexApi } from '../api/saveIndex';
+@@ -27,23 +27,38 @@ export const Pals: React.FC = () => {
+   const [searchText, setSearchText] = useState('');
+   const [activeFilterTab, setActiveFilterTab] = useState('all');
+   const [page, setPage] = useState(1);
++  const [minLevel, setMinLevel] = useState(0);
++  const [minStars, setMinStars] = useState(0);
++  const [minIVAverage, setMinIVAverage] = useState(0);
++  const [gender, setGender] = useState('');
++  const [location, setLocation] = useState('');
++  const [passive, setPassive] = useState('');
++  const [sort, setSort] = useState<'level_desc' | 'iv_desc' | 'stars_desc' | 'name_asc'>('level_desc');
+   const [notice, setNotice] = useState<string | null>(null);
+   const [actionError, setActionError] = useState<string | null>(null);
+   const debouncedSearch = useDebouncedValue(searchText, 250);
++  const debouncedPassive = useDebouncedValue(passive, 250);
+   const statusFilter = statusFilterByTab[activeFilterTab];
+ 
+   useEffect(() => {
+     setPage(1);
+-  }, [activeFilterTab, debouncedSearch]);
++  }, [activeFilterTab, debouncedSearch, debouncedPassive, gender, location, minIVAverage, minLevel, minStars, sort]);
+ 
+   const palsQuery = useQuery({
+-    queryKey: ['pals', { page, q: debouncedSearch, status: statusFilter, refreshKey }],
++    queryKey: ['pals', { page, q: debouncedSearch, status: statusFilter, minLevel, minStars, minIVAverage, gender, location, passive: debouncedPassive, sort, refreshKey }],
+     queryFn: () =>
+       palsApi.getPalsList({
+         limit: pageSize,
+         offset: (page - 1) * pageSize,
+         q: debouncedSearch,
+         status: statusFilter,
++        min_level: minLevel || undefined,
++        min_stars: minStars || undefined,
++        min_iv_average: minIVAverage || undefined,
++        gender: gender || undefined,
++        location: location || undefined,
++        passive: debouncedPassive || undefined,
++        sort,
+       }),
+     placeholderData: (previous) => previous,
+   });
+@@ -62,6 +77,16 @@ export const Pals: React.FC = () => {
+   const error = actionError || (palsQuery.error ? getErrorMessage(palsQuery.error) : null);
+   const totalItems = summary?.total ?? pals.length;
+   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
++  const filtersActive = minLevel > 0 || minStars > 0 || minIVAverage > 0 || gender !== '' || location !== '' || passive.trim() !== '' || sort !== 'level_desc';
++  const resetFilters = () => {
++    setMinLevel(0);
++    setMinStars(0);
++    setMinIVAverage(0);
++    setGender('');
++    setLocation('');
++    setPassive('');
++    setSort('level_desc');
++  };
+ 
+   const unsupported = async (promise: Promise<{ message: string }>) => {
+     const result = await promise;
+@@ -71,9 +96,11 @@ export const Pals: React.FC = () => {
+   const headers = [
+     { key: 'name', label: '帕鲁 / 稀有度' },
+     { key: 'level', label: '等级' },
++    { key: 'quality', label: '星级 / 个体值' },
+     { key: 'health', label: '生命值' },
+     { key: 'suitability', label: '工作适应性' },
+     { key: 'owner', label: '所属玩家' },
++    { key: 'location', label: '终端位置' },
+     { key: 'status', label: '状态' },
+     { key: 'actions', label: '操作', align: 'center' as const },
+   ];
+@@ -95,6 +122,55 @@ export const Pals: React.FC = () => {
+         onRebuild={() => rebuildMutation.mutate()}
+       />
+ 
++      <section className="rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_2px_12px_-3px_rgba(15,23,42,0.02)] sm:p-5">
++        <div className="mb-4 flex items-center justify-between gap-3">
++          <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
++            <SlidersHorizontal size={15} className="text-sky-500" />
++            多项筛选
++          </div>
++          <button type="button" disabled={!filtersActive} onClick={resetFilters} className="text-[11px] font-bold text-sky-600 disabled:text-slate-300">
++            重置筛选
++          </button>
++        </div>
++        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
++          <FilterNumber label="最低等级" value={minLevel} max={65} onChange={setMinLevel} />
++          <FilterNumber label="最低星级" value={minStars} max={4} onChange={setMinStars} />
++          <FilterNumber label="最低平均 IV" value={minIVAverage} max={100} onChange={setMinIVAverage} />
++          <label className="flex flex-col gap-1.5 text-[10px] font-bold text-slate-500">
++            性别
++            <select value={gender} onChange={(event) => setGender(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
++              <option value="">全部</option>
++              <option value="male">雄性</option>
++              <option value="female">雌性</option>
++              <option value="wildcard">通配</option>
++            </select>
++          </label>
++          <label className="flex flex-col gap-1.5 text-[10px] font-bold text-slate-500">
++            位置
++            <select value={location} onChange={(event) => setLocation(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
++              <option value="">全部</option>
++              <option value="storage">帕鲁终端</option>
++              <option value="party">队伍</option>
++              <option value="base">据点工作</option>
++              <option value="expedition">远征</option>
++              <option value="unknown">未知</option>
++            </select>
++          </label>
++          <label className="flex flex-col gap-1.5 text-[10px] font-bold text-slate-500">
++            被动词条（逗号分隔）
++            <input value={passive} onChange={(event) => setPassive(event.target.value)} placeholder="例如：工匠精神,认真" className="rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-700" />
++          </label>
++          <label className="flex flex-col gap-1.5 text-[10px] font-bold text-slate-500">
++            排序
++            <select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
++              <option value="level_desc">等级从高到低</option>
++              <option value="iv_desc">平均 IV 从高到低</option>
++              <option value="stars_desc">星级从高到低</option>
++              <option value="name_asc">名称排序</option>
++            </select>
++          </label>
++        </div>
++      </section>
+       <section className="rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_2px_12px_-3px_rgba(15,23,42,0.02)] sm:p-6">
+         <DataTable
+           headers={headers}
+@@ -107,6 +183,9 @@ export const Pals: React.FC = () => {
+                   <PalIdentity pal={pal} />
+                 </td>
+                 <td className="px-6 py-4 text-xs font-bold text-slate-600">Lv.{pal.level}</td>
++                <td className="px-6 py-4">
++                  <PalQuality pal={pal} />
++                </td>
+                 <td className="px-6 py-4">
+                   <HealthBar pal={pal} hpPercent={hpPercent} />
+                 </td>
+@@ -119,6 +198,9 @@ export const Pals: React.FC = () => {
+                     <p className="truncate font-mono text-[9px] text-slate-400">{pal.owner_steam_id}</p>
+                   </div>
+                 </td>
++                <td className="px-6 py-4">
++                  <PalLocation pal={pal} />
++                </td>
+                 <td className="px-6 py-4">
+                   <StatusBadge status={pal.status} />
+                 </td>
+@@ -149,6 +231,35 @@ const Suitability: React.FC<{ pal: Pal }> = ({ pal }) => (
+   </div>
+ );
+ 
++const FilterNumber: React.FC<{ label: string; value: number; max: number; onChange: (value: number) => void }> = ({ label, value, max, onChange }) => (
++  <label className="flex flex-col gap-1.5 text-[10px] font-bold text-slate-500">
++    {label}
++    <input
++      type="number"
++      min={0}
++      max={max}
++      value={value}
++      onChange={(event) => onChange(Math.max(0, Math.min(max, Number(event.target.value) || 0)))}
++      className="rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-700"
++    />
++  </label>
++);
++
++const PalQuality: React.FC<{ pal: Pal }> = ({ pal }) => (
++  <div className="space-y-1 text-[10px] font-semibold text-slate-500">
++    <p>{'★'.repeat(pal.stars || 0) || '0 星'}</p>
++    <p>IV {pal.iv_average ?? 0}</p>
++    <p className="font-mono text-[9px] text-slate-400">{pal.iv_hp ?? 0}/{pal.iv_attack ?? 0}/{pal.iv_defense ?? 0}</p>
++  </div>
++);
++
++const PalLocation: React.FC<{ pal: Pal }> = ({ pal }) => (
++  <div className="flex max-w-[180px] items-start gap-1.5 text-[10px] font-semibold text-slate-500">
++    <MapPin size={12} className="mt-0.5 shrink-0 text-sky-500" />
++    <span>{pal.terminal_location || pal.location_type || '位置未知'}</span>
++  </div>
++);
++
+ const PalCard: React.FC<{ pal: Pal; onHeal: () => void; onDelete: () => void }> = ({ pal, onHeal, onDelete }) => {
+   const hpPercent = Math.min(100, Math.max(0, (pal.health / Math.max(1, pal.max_health)) * 100));
+   return (
+@@ -163,6 +274,10 @@ const PalCard: React.FC<{ pal: Pal; onHeal: () => void; onDelete: () => void }>
+       <div className="mt-4">
+         <Suitability pal={pal} />
+       </div>
++      <div className="mt-3 grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3">
++        <PalQuality pal={pal} />
++        <PalLocation pal={pal} />
++      </div>
+       <p className="mt-3 truncate text-[11px] font-semibold text-slate-500">所属玩家: {pal.owner_nickname}</p>
+       <div className="mt-4 grid grid-cols-2 gap-2">
+         <button type="button" onClick={onHeal} className="rounded-xl border border-slate-200 py-2 text-xs font-bold text-slate-600">
+diff --git a/frontend/src/types/index.ts b/frontend/src/types/index.ts
+index c63a2da44be7aa456347c74521cf65f47bf8b5b8..d63d61504c664b3f5db77c94f1597c89045b3412 100644
+--- a/frontend/src/types/index.ts
++++ b/frontend/src/types/index.ts
+@@ -15,11 +15,15 @@ export interface Pal {
+   container_id?: string;
+   slot_index?: number;
+   location_type?: string;
++  location_kind?: string;
++  terminal_location?: string;
+   gender?: 'male' | 'female' | 'wildcard' | string;
+   rank?: number;
++  stars?: number;
+   iv_hp?: number;
+   iv_attack?: number;
+   iv_defense?: number;
++  iv_average?: number;
+   equipped_skills?: string[];
+   old_owner_uids?: string[];
+   on_expedition?: boolean;
+@@ -55,6 +59,16 @@ export interface EntityListParams {
+   container_id?: string;
+ }
+ 
++export interface PalListParams extends EntityListParams {
++  min_level?: number;
++  min_stars?: number;
++  min_iv_average?: number;
++  gender?: string;
++  location?: string;
++  passive?: string;
++  sort?: 'level_desc' | 'iv_desc' | 'stars_desc' | 'name_asc';
++}
++
+ export type UnsupportedActionResult = {
+   ok: false;
+   unsupported: true;

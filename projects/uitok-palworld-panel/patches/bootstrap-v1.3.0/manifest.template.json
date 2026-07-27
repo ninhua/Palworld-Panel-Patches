@@ -39,7 +39,8 @@
     "global-inventory-browser",
     "new-player-starter-gift",
     "unattended-inventory-delta",
-    "player-summary"
+    "player-summary",
+    "pal-inventory-advanced-filters"
   ],
-  "notes": "Self-contained v1.3.0 stable source track. Retains Oodle/PlM host-save migration deployment, WorldID-scoped presence and starter gifts, stable starter-gift selection ordering, WorldID-scoped unattended inventory positive-delta tracking, the visible global inventory entry, and a read-only player summary page with broad Chinese coordinate regions."
+  "notes": "Self-contained v1.3.0 stable source track. Retains Oodle/PlM host-save migration deployment, WorldID-scoped presence and starter gifts, unattended inventory positive-delta tracking, player summary regions, and read-only Pal inventory quality filters with terminal slot locations."
 }

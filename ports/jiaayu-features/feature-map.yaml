@@ -178,3 +178,18 @@ features:
       - frontend/src/api/inventory.ts
       - frontend/src/pages/Inventory.tsx
     notes: Reuses the target project's 15-second player presence sampler and read-only global save index, requires a five-minute no-player interval, resets after observation gaps, stores state per WorldID, and reports only positive inventory net changes. It copies no Jiaayu source code and does not modify Palworld saves.
+  - id: pal-inventory-advanced-filters
+    reference_label: 帕鲁仓库多项筛选与终端位置
+    status: implemented-independently
+    patch_version: 0.8.16
+    implementation: behavior-reimplementation
+    source_paths: []
+    target_paths:
+      - backend/internal/api/pal_inventory_filters_feature.go
+      - backend/internal/api/pal_inventory_filters_test.go
+      - backend/internal/api/save_index.go
+      - frontend/src/api/pals.ts
+      - frontend/src/pages/Pals.tsx
+      - frontend/src/types/index.ts
+    notes: Reuses fields already emitted by the target project's locked save index to add read-only level, star, IV, gender, location, and passive filtering plus stable sorting. SlotIndex and LocationType are converted into party, base-worker, expedition, or Pal terminal page-row-column labels. No Jiaayu source code is copied and no save data is modified.
+

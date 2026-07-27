@@ -12,7 +12,8 @@
     "global-inventory-browser",
     "new-player-starter-gift",
     "unattended-inventory-delta",
-    "player-summary"
+    "player-summary",
+    "pal-inventory-advanced-filters"
   ],
   "optional_features": [],
   "bootstrap_source_track": "projects/uitok-palworld-panel/patches/bootstrap-v1.3.0",
