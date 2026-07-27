@@ -2,7 +2,7 @@
   "schema_version": 2,
   "target_version": "v1.3.0",
   "generated_at": "2026-07-27T17:42:32Z",
-  "state": "releasable",
+  "state": "released",
   "required_features": [
     "api-catalog",
     "base-custom-names",
