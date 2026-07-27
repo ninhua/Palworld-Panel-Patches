@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.12.32-hotfix1
+
+### Fixed
+
+- 修复 `0032-read-starter-gift-template-indexes.patch` 在 `backend/internal/api` 包内重复声明 `firstNonEmpty`，导致 validation checkpoint 0032 执行 `go test -run ^$ ./...` 时编译失败。
+- 将 0032 私有字符串选择函数改名为 `starterGiftFirstNonEmpty`；索引字段优先级和模板显示行为不变。
+- 更新 0032 的 SHA-256，并增加与现有包级 `firstNonEmpty` 同时编译的回归夹具。
+
+### Validation
+
+- 0032 补丁格式、变更文件白名单和 SHA-256 校验。
+- 模板索引解析与中文名、分类、索引成员关系测试。
+- 包级同名函数冲突回归测试。
+- stable patch 候选保持 `0.8.16`。
+
 ## v0.12.32
 
 ### Added

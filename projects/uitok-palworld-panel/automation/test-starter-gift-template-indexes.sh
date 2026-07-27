@@ -48,12 +48,15 @@ required = [
     "template.pal_name?.trim() || template.name",
     '常用毕业帕鲁清单.json',
     '模板中英文对照索引.json',
+    'starterGiftFirstNonEmpty',
 ]
 for marker in required:
     if marker not in text:
         raise SystemExit(f"0032 missing marker: {marker}")
 if re.search(r"^\+.*pallocalize\.PalName\(result\.PalID\)", text, re.M):
     raise SystemExit("0032 must not use the built-in localization as the no-index display fallback")
+if re.search(r"^\+func firstNonEmpty\(", text, re.M):
+    raise SystemExit("0032 must not redeclare api.firstNonEmpty")
 PY
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/palpatch-starter-index.XXXXXX")"
@@ -143,6 +146,10 @@ import (
 out = Path(sys.argv[3])
 (out / "index.go").write_text(header + source[start:end], encoding="utf-8")
 (out / "index_test.go").write_text(Path(sys.argv[2]).read_text(encoding="utf-8"), encoding="utf-8")
+(out / "existing_api_helper.go").write_text(
+    "package api\n\nfunc firstNonEmpty(values ...string) string { return \"existing\" }\n",
+    encoding="utf-8",
+)
 (out / "go.mod").write_text("module starterindex\n\ngo 1.23\n", encoding="utf-8")
 PY
 (
