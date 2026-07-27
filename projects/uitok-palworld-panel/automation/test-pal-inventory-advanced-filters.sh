@@ -6,12 +6,20 @@ repo_root="$(cd "${script_dir}/../../.." && pwd)"
 source_dir="${repo_root}/projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source"
 patch="${source_dir}/0034-add-pal-inventory-advanced-filters.patch"
 checksums="${source_dir}/SHA256SUMS"
+pals_fixture="${script_dir}/testdata/v1.3.0/frontend/src/pages/Pals.tsx"
+expected_pals_blob="adc7c4d80073b33439a805475fc62ec8567d8b00"
 
 for command in git go python3 sha256sum grep mktemp gofmt; do
     command -v "${command}" >/dev/null 2>&1 || { echo "缺少测试命令：${command}" >&2; exit 1; }
 done
 
 [[ -s "${patch}" ]] || { echo "缺少 0034 补丁：${patch}" >&2; exit 1; }
+[[ -s "${pals_fixture}" ]] || { echo "缺少 PalPanel v1.3.0 Pals.tsx 固定夹具：${pals_fixture}" >&2; exit 1; }
+actual_pals_blob="$(git hash-object "${pals_fixture}")"
+[[ "${actual_pals_blob}" == "${expected_pals_blob}" ]] || {
+    echo "Pals.tsx 固定夹具漂移：actual=${actual_pals_blob} expected=${expected_pals_blob}" >&2
+    exit 1
+}
 actual_sha="$(sha256sum "${patch}" | awk '{print $1}')"
 expected_sha="$(awk '$2 == "0034-add-pal-inventory-advanced-filters.patch" {print $1; exit}' "${checksums}")"
 [[ -n "${expected_sha}" && "${actual_sha}" == "${expected_sha}" ]] || {
@@ -35,12 +43,13 @@ actual_files="$(git apply --numstat "${patch}" | awk '{print $3}' | sort)"
     exit 1
 }
 
-python3 - "${patch}" <<'PY'
+python3 - "${patch}" "${expected_pals_blob}" <<'PY'
 from pathlib import Path
 import re
 import sys
 
 text = Path(sys.argv[1]).read_text(encoding="utf-8")
+expected_pals_blob = sys.argv[2]
 required = [
     'patchFeatures = append(patchFeatures, "pal-inventory-advanced-filters")',
     'min_level', 'min_stars', 'min_iv_average', 'passive',
@@ -57,6 +66,16 @@ if "// gap" in text:
     raise SystemExit("0034 意外包含合成夹具占位内容")
 if re.search(r"^(?:<<<<<<<|=======|>>>>>>>)", text, re.M):
     raise SystemExit("0034 含有合并冲突标记")
+pals_header = "diff --git a/frontend/src/pages/Pals.tsx b/frontend/src/pages/Pals.tsx"
+start = text.find(pals_header)
+if start < 0:
+    raise SystemExit("0034 缺少 Pals.tsx section")
+section = text[start:text.find("diff --git ", start + len(pals_header)) if text.find("diff --git ", start + len(pals_header)) >= 0 else len(text)]
+match = re.search(r"^index ([0-9a-f]{40})\.\.([0-9a-f]{40}) 100644$", section, re.M)
+if not match:
+    raise SystemExit("0034 Pals.tsx section 缺少完整 40 位 blob index")
+if match.group(1) != expected_pals_blob:
+    raise SystemExit(f"0034 Pals.tsx preimage 错误：actual={match.group(1)} expected={expected_pals_blob}")
 
 def terminal(slot: int) -> str:
     page_slot = slot % 30
@@ -75,7 +94,14 @@ PY
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/palpatch-pal-filters.XXXXXX")"
 trap 'rm -rf "${work}"' EXIT
+mkdir -p "${work}/frontend/src/pages"
+cp "${pals_fixture}" "${work}/frontend/src/pages/Pals.tsx"
 git -C "${work}" init -q
+git -C "${work}" apply --check --include=frontend/src/pages/Pals.tsx "${patch}"
+git -C "${work}" apply --include=frontend/src/pages/Pals.tsx "${patch}"
+grep -Fq '多项筛选' "${work}/frontend/src/pages/Pals.tsx"
+grep -Fq '{loading && pals.length === 0 ? (' "${work}/frontend/src/pages/Pals.tsx"
+
 git -C "${work}" apply \
     --include=backend/internal/api/pal_inventory_filters_feature.go \
     --include=backend/internal/api/pal_inventory_filters_test.go \

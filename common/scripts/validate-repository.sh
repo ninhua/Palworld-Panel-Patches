@@ -10,6 +10,14 @@ done < <(find . -type f -name '*.sh' -print0)
 
 python3 common/scripts/validate_repository.py
 
+source_dir="projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source"
+nested_source_dir="$(find "${source_dir}" -mindepth 1 -type d -print -quit)"
+if [[ -n "${nested_source_dir}" ]]; then
+    echo "错误：补丁 source/ 下禁止出现子目录：${nested_source_dir}" >&2
+    echo "目录覆盖包必须从仓库根目录制作和解压，补丁文件必须直接位于 source/*.patch。" >&2
+    exit 1
+fi
+
 automation="projects/uitok-palworld-panel/automation"
 "${automation}/test-apply-source-patch.sh"
 "${automation}/test-starter-gift-save-scope.sh"

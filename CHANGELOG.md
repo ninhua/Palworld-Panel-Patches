@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.12.32-hotfix3
+
+### Fixed
+
+- 重新基于官方 `uitok/palworld-panel v1.3.0` 的实际 `frontend/src/pages/Pals.tsx` 生成 `0034-add-pal-inventory-advanced-filters.patch` 的前端 section。
+- 保留官方页面原有的加载态分支，并在其外部插入高级筛选面板；不再使用来源不明的局部工作区作为 0034 preimage。
+- `Pals.tsx` 的 old blob 固定为官方 v1.3.0 blob `adc7c4d80073b33439a805475fc62ec8567d8b00`，累计迁移可直接应用。
+- 新增根目录 `PATCH-MAINTENANCE.md`，明确完整前序链生成、累计迁移、覆盖包根路径、精确重定位和 SHA-256 交付规则。
+- 仓库验证现在拒绝 `source/source/` 等嵌套补丁目录；0034 回归测试使用锁定的官方 Pals.tsx 夹具执行真实 `git apply --check`。
+
+### Validation
+
+- 0034 Pals.tsx section 在官方 v1.3.0 固定夹具上直接应用。
+- 官方夹具 Git blob 与 0034 old blob 双向锁定。
+- 0034 SHA-256、变更文件白名单、Go helper、仓库布局与覆盖包路径回归。
+- stable patch 候选保持 `0.8.16`。
+
 ## v0.12.32-hotfix2
 
 ### Fixed

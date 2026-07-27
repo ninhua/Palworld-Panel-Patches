@@ -13,7 +13,7 @@
 
 1. 从 `main` 创建短期分支。
 2. 明确修改属于源码补丁、功能移植还是 AIO 兼容接入。
-3. 更新对应 manifest 或 feature port 记录。
+3. 更新对应 manifest 或 feature port 记录；PalPanel 源码补丁必须遵守根目录 [`PATCH-MAINTENANCE.md`](PATCH-MAINTENANCE.md)，并在完整前序补丁链上生成。
 4. 运行：
 
 ```bash

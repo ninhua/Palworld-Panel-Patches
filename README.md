@@ -1,9 +1,11 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.32-hotfix2`
+仓库版本：`v0.12.32-hotfix3`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
+
+源码补丁生成、累计迁移、覆盖包路径和 SHA-256 的硬性规则见根目录 [`PATCH-MAINTENANCE.md`](PATCH-MAINTENANCE.md)。
 
 ## 当前维护基线
 

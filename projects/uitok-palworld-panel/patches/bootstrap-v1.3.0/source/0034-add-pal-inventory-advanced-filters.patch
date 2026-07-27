@@ -410,7 +410,7 @@ index 8b6dde59b177428ed0f5c802f4b015dd4dd3b40b..06804708b46d00e74951d1a8d82e7759
        () => apiClient.get(`/pals${entityListQuery(params)}`),
        { items: [], status: emptySaveIndexStatus, summary: emptySummary },
 diff --git a/frontend/src/pages/Pals.tsx b/frontend/src/pages/Pals.tsx
-index 5d1fa8ad1ab15dd2d860258c88ef75891baf2b6b..24b590e53293dce4d556c7b127788ff6c87064af 100644
+index adc7c4d80073b33439a805475fc62ec8567d8b00..56533beef8a4d48b6672874a180c9b75dadf7a87 100644
 --- a/frontend/src/pages/Pals.tsx
 +++ b/frontend/src/pages/Pals.tsx
 @@ -1,6 +1,6 @@
@@ -421,7 +421,7 @@ index 5d1fa8ad1ab15dd2d860258c88ef75891baf2b6b..24b590e53293dce4d556c7b127788ff6
  import { getErrorMessage } from '../api/client';
  import { palsApi } from '../api/pals';
  import { saveIndexApi } from '../api/saveIndex';
-@@ -27,23 +27,38 @@ export const Pals: React.FC = () => {
+@@ -46,23 +46,38 @@ export const Pals: React.FC = () => {
    const [searchText, setSearchText] = useState('');
    const [activeFilterTab, setActiveFilterTab] = useState('all');
    const [page, setPage] = useState(1);
@@ -462,7 +462,7 @@ index 5d1fa8ad1ab15dd2d860258c88ef75891baf2b6b..24b590e53293dce4d556c7b127788ff6
        }),
      placeholderData: (previous) => previous,
    });
-@@ -62,6 +77,16 @@ export const Pals: React.FC = () => {
+@@ -87,6 +102,16 @@ export const Pals: React.FC = () => {
    const error = actionError || (palsQuery.error ? getErrorMessage(palsQuery.error) : null);
    const totalItems = summary?.total ?? pals.length;
    const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
@@ -479,7 +479,7 @@ index 5d1fa8ad1ab15dd2d860258c88ef75891baf2b6b..24b590e53293dce4d556c7b127788ff6
  
    const unsupported = async (promise: Promise<{ message: string }>) => {
      const result = await promise;
-@@ -71,9 +96,11 @@ export const Pals: React.FC = () => {
+@@ -96,9 +121,11 @@ export const Pals: React.FC = () => {
    const headers = [
      { key: 'name', label: '帕鲁 / 稀有度' },
      { key: 'level', label: '等级' },
@@ -491,7 +491,7 @@ index 5d1fa8ad1ab15dd2d860258c88ef75891baf2b6b..24b590e53293dce4d556c7b127788ff6
      { key: 'status', label: '状态' },
      { key: 'actions', label: '操作', align: 'center' as const },
    ];
-@@ -95,6 +122,55 @@ export const Pals: React.FC = () => {
+@@ -134,6 +161,56 @@ export const Pals: React.FC = () => {
          onRebuild={() => rebuildMutation.mutate()}
        />
  
@@ -544,30 +544,31 @@ index 5d1fa8ad1ab15dd2d860258c88ef75891baf2b6b..24b590e53293dce4d556c7b127788ff6
 +          </label>
 +        </div>
 +      </section>
++
        <section className="rounded-3xl border border-slate-100 bg-white p-4 shadow-[0_2px_12px_-3px_rgba(15,23,42,0.02)] sm:p-6">
-         <DataTable
-           headers={headers}
-@@ -107,6 +183,9 @@ export const Pals: React.FC = () => {
-                   <PalIdentity pal={pal} />
-                 </td>
-                 <td className="px-6 py-4 text-xs font-bold text-slate-600">Lv.{pal.level}</td>
-+                <td className="px-6 py-4">
-+                  <PalQuality pal={pal} />
-+                </td>
-                 <td className="px-6 py-4">
-                   <HealthBar pal={pal} hpPercent={hpPercent} />
-                 </td>
-@@ -119,6 +198,9 @@ export const Pals: React.FC = () => {
-                     <p className="truncate font-mono text-[9px] text-slate-400">{pal.owner_steam_id}</p>
-                   </div>
-                 </td>
-+                <td className="px-6 py-4">
-+                  <PalLocation pal={pal} />
-+                </td>
-                 <td className="px-6 py-4">
-                   <StatusBadge status={pal.status} />
-                 </td>
-@@ -149,6 +231,35 @@ const Suitability: React.FC<{ pal: Pal }> = ({ pal }) => (
+         {loading && pals.length === 0 ? (
+           <div className="py-12 text-center text-xs font-semibold text-slate-400">
+@@ -181,6 +258,9 @@ export const Pals: React.FC = () => {
+                     <PalIdentity pal={pal} />
+                   </td>
+                   <td className="px-6 py-4 text-xs font-bold text-slate-600">Lv.{pal.level}</td>
++                  <td className="px-6 py-4">
++                    <PalQuality pal={pal} />
++                  </td>
+                   <td className="px-6 py-4">
+                     <HealthBar pal={pal} hpPercent={hpPercent} />
+                   </td>
+@@ -193,6 +273,9 @@ export const Pals: React.FC = () => {
+                       <p className="truncate font-mono text-[9px] text-slate-400">{pal.owner_steam_id}</p>
+                     </div>
+                   </td>
++                  <td className="px-6 py-4">
++                    <PalLocation pal={pal} />
++                  </td>
+                   <td className="px-6 py-4">
+                     <StatusBadge status={pal.status} />
+                   </td>
+@@ -293,6 +376,35 @@ const Suitability: React.FC<{ pal: Pal }> = ({ pal }) => (
    </div>
  );
  
@@ -603,7 +604,7 @@ index 5d1fa8ad1ab15dd2d860258c88ef75891baf2b6b..24b590e53293dce4d556c7b127788ff6
  const PalCard: React.FC<{ pal: Pal; onHeal: () => void; onDelete: () => void }> = ({ pal, onHeal, onDelete }) => {
    const hpPercent = Math.min(100, Math.max(0, (pal.health / Math.max(1, pal.max_health)) * 100));
    return (
-@@ -163,6 +274,10 @@ const PalCard: React.FC<{ pal: Pal; onHeal: () => void; onDelete: () => void }>
+@@ -307,6 +419,10 @@ const PalCard: React.FC<{ pal: Pal; onHeal: () => void; onDelete: () => void }>
        <div className="mt-4">
          <Suitability pal={pal} />
        </div>
