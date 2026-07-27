@@ -68,6 +68,8 @@ candidate-vX.Y.Z/
 
 失败不会创建 Release；blocked migration 会更新 Issue 和 Draft PR，并以成功状态结束 workflow。
 
+`test-starter-gift-runtime-dispatch.sh` 复验礼包补丁累计上下文、启用转换基线、PalDefender 在线身份解析、等待重试和异步 worker 上下文。
+
 ## Axios 测试响应适配
 
 PalPanel v1.3.0 仅在模拟响应同时包含 `data` 与顶层 `status` 时将对象识别为 AxiosResponse。

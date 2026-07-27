@@ -137,3 +137,12 @@ fallback. Sensitive keys and Bearer tokens are redacted before the existing
 ## 0032 starter-gift template indexes
 
 `0032-read-starter-gift-template-indexes.patch` reads optional index/list JSON files from the PalDefender Templates directory. Index entries match templates by `文件名` or `模板名`, enrich category plus Chinese/English display names, and expose each index file as a frontend filter. The template JSON `PalID` remains authoritative. Templates without an index match fall back to their filename, and detected index files are excluded from delivery choices.
+
+## 0033 starter-gift runtime dispatch
+
+- 保存已启用配置时不再重复重建已有玩家基线；只有从禁用切换到启用时导入存档和在线历史，避免配置调整把刚进入的玩家提前标记为已见。
+- 发放前使用官方 REST 的 PlayerUID/SteamID 在 PalDefender `/players` 结果中解析真实在线目标，不再直接假设两套接口的首选 ID 完全一致。
+- PalDefender 尚未登记新玩家时，任务保持 `pending` 并在后续 15 秒采样自动重试，不消耗发放次数。
+- 自动恢复旧版本因 `PLAYER_NOT_FOUND` 产生的失败任务。
+- 每世界串行 worker 与监控采样上下文解耦，并设置三小时上限，避免采样请求结束使异步批次提前取消。
+

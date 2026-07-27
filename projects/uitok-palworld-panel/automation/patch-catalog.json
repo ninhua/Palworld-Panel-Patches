@@ -271,6 +271,15 @@
         "0031-read-starter-gift-template-pal-id.patch"
       ],
       "validation_checkpoint": true
+    },
+    {
+      "file": "0033-fix-starter-gift-runtime-dispatch.patch",
+      "feature": "new-player-starter-gift",
+      "depends_on": [
+        "0025-fix-starter-gift-ui-and-save-scope.patch",
+        "0032-read-starter-gift-template-indexes.patch"
+      ],
+      "validation_checkpoint": true
     }
   ]
 }

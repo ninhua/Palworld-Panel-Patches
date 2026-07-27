@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.12.31-hotfix4
+
+### Fixed
+
+- 新增 `0033-fix-starter-gift-runtime-dispatch.patch`，修复实际新玩家进入后礼包没有自动发放的问题。
+- 已启用配置的普通保存不再重复导入 save index 基线；只有禁用切换到启用时才基线已有玩家，避免配置调整吞掉刚进入但尚未完成观察的新玩家。
+- 发放前通过 PalDefender 在线玩家列表对照 PlayerUID/SteamID，使用 PalDefender 实际返回的目标 ID，而不是直接假定官方 REST 的首选 ID 可立即用于发放。
+- PalDefender 尚未登记新玩家时保持任务为 `pending`，在后续在线采样自动重试且不增加发放次数。
+- 自动重试旧版本中 `PLAYER_NOT_FOUND` / `player was not found` 造成的失败任务。
+- 每世界串行 worker 使用脱离采样取消信号的限时上下文，避免异步批次因调用方上下文结束而提前中断。
+
+### Validation
+
+- 新增禁用→启用基线转换、PalDefender 玩家就绪等待、旧失败恢复和取消父上下文后的异步 worker 回归。
+- 增加 `0024 → 0025 → 0031 → 0032 → 0033` 累计应用、changed-file 白名单与 SHA-256 检查。
+- stable patch 候选保持 `0.8.16`。
+
 ## v0.12.31-hotfix3
 
 ### Added

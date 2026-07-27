@@ -19,7 +19,7 @@ fd9c5a54710785b6555f2fb2897aa3e958d5c18076fe2fe47cade1667ad1646a  0018-add-playe
 7f71a6128a1cff6f037cba766cabe8d893ed539da97d887057a7ea9c9bc59658  0019-avoid-github-api-rate-limit.patch
 c250616d19bdb39cc39c67b5c9e5609720033e279d25374d8190bf658f14bad2  0020-fix-audit-response-dialog-portal.patch
 418e2ca31d7ab0a4257c099166649cf16c1e741d3688da5fd821bf66457c967f  0021-capture-audit-response-details.patch
-aee8e8e084e1b8dd4920aa571981e1ce501f15fee618de41dc66679b839fe58f  0022-add-host-save-migrator.patch
+d3dd7f6e8d2199110a4445a93895d9d64170fef627492f5ff9720fe9ec8cd1cc  0022-add-host-save-migrator.patch
 2978a3d2a9c772c36039f2a7b70a2b61567623e52917b976e7e1fde4b1272e6c  0023-add-global-inventory-browser.patch
 ba2308aa003d6c97e4c4e453b7a05c3420a371b8bbdbd8b1a08a1f22ed64b085  0024-add-new-player-starter-gifts.patch
 047c20454e5018fd7c6df1042d4e552c0aa7155f6d0964619018511c9f2a51f0  0025-fix-starter-gift-ui-and-save-scope.patch
@@ -30,3 +30,4 @@ dde2932c8271e2b342f838ec0552194c67ac7312c7eb29a53247c4cf8fbfba51  0029-fix-start
 37d61dfae56639e2206b75e4fd4d299593d2a65f35c01e90e38f6db7ae3f52cd  0030-add-player-summary-and-landmarks.patch
 71cff8cabaed9493b31fa8ed1957dc234d0c14b02bc3d6b33973bb72a00bead4  0031-read-starter-gift-template-pal-id.patch
 187e601b329bcdc162ab5b383576e73cfd86eca5e0d167158a5ca9bbd5e9feb4  0032-read-starter-gift-template-indexes.patch
+80ff243eec2768d8ff9a1b5d51aaaf4332b103c3bf1858c909b55797a9aa0701  0033-fix-starter-gift-runtime-dispatch.patch
