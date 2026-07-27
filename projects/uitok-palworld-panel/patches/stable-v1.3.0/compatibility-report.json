@@ -1,9 +1,10 @@
 {
   "schema_version": 2,
   "target_version": "v1.3.0",
-  "generated_at": "2026-07-27T09:54:49Z",
-  "state": "released",
+  "generated_at": "2026-07-27T17:42:32Z",
+  "state": "releasable",
   "required_features": [
+    "api-catalog",
     "base-custom-names",
     "global-inventory-browser",
     "host-save-migrator",
@@ -15,6 +16,7 @@
     "unattended-inventory-delta"
   ],
   "preserved_features": [
+    "api-catalog",
     "audit-log-response-display",
     "base-custom-names",
     "base-feed-box-summary",
@@ -999,13 +1001,62 @@
       "log": "reports/0035-fix-player-summary-optional-pal-id.patch.log",
       "validated_at_checkpoint": "0035-fix-player-summary-optional-pal-id.patch",
       "included_in_merged": true
+    },
+    {
+      "order": 36,
+      "file": "0036-add-runtime-api-catalog.patch",
+      "sha256": "e52073cf655f65ecda1efbf7153d601c7900b0a20ab930dc72192dab72f3fc0f",
+      "feature": "api-catalog",
+      "required": true,
+      "depends_on": [
+        "0001-add-patch-info-api.patch",
+        "0033-fix-starter-gift-runtime-dispatch.patch",
+        "0034-add-pal-inventory-advanced-filters.patch",
+        "0035-fix-player-summary-optional-pal-id.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/api_catalog.go",
+        "backend/internal/api/api_catalog_test.go",
+        "backend/internal/api/routes.go",
+        "docs/openapi.yaml"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0036-add-runtime-api-catalog.patch.log",
+      "validated_at_checkpoint": "0036-add-runtime-api-catalog.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 37,
+      "file": "0037-fix-starter-gift-paldefender-status-resolution.patch",
+      "sha256": "4f5fc3f965036fd8c20745ae9f797b4f8b8ee9b5a834c71e0d68d7a46ba1cee4",
+      "feature": "new-player-starter-gift",
+      "required": true,
+      "depends_on": [
+        "0033-fix-starter-gift-runtime-dispatch.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/startergift/service.go",
+        "backend/internal/startergift/service_test.go"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0037-fix-starter-gift-paldefender-status-resolution.patch.log",
+      "validated_at_checkpoint": "0037-fix-starter-gift-paldefender-status-resolution.patch",
+      "included_in_merged": true
     }
   ],
   "adaptations": [
     {
       "name": "retarget-stable-source",
       "status": "applied",
-      "details": "Retargeted patch metadata to v1.3.0 / 0.8.16"
+      "details": "Retargeted patch metadata to v1.3.0 / 0.8.17"
     },
     {
       "name": "frontend-axios-test-fixture-adapter",
@@ -1014,15 +1065,16 @@
     }
   ],
   "summary": {
-    "adapted": 1,
     "pending": 0,
+    "adapted": 1,
+    "compatible": 36,
     "superseded": 0,
     "blocked": 0,
-    "incompatible": 0,
-    "compatible": 34
+    "incompatible": 0
   },
   "excluded_features": [],
   "effective_features": [
+    "api-catalog",
     "audit-log-response-display",
     "base-custom-names",
     "base-feed-box-summary",
@@ -1042,8 +1094,8 @@
     "unattended-inventory-delta"
   ],
   "merged_patch": {
-    "file": "merged/stable-v1.3.0-patch-0.8.16.patch",
-    "sha256": "0dbaf4abeeaa1e314dcc195d3a81d217fdfc94de09b441794adb07c214ffef77",
+    "file": "merged/stable-v1.3.0-patch-0.8.17.patch",
+    "sha256": "5a7a45a43b306260c514ff2fc6b224aa1f86ad1909106cd5a738c92960a0d71a",
     "base_commit": "3c8d698abf1d9c4e271e3e62dcc736960f27e8eb"
   },
   "verified": true,

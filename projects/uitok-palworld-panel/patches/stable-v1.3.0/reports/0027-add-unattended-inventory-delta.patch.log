@@ -12,10 +12,10 @@ $ git diff --check
 [exit=0]
 $ go test -run ^$ ./...
 ok  	palpanel/cmd/openapi-types	(cached) [no tests to run]
-ok  	palpanel/cmd/palpanel	0.038s [no tests to run]
+ok  	palpanel/cmd/palpanel	0.035s [no tests to run]
 ok  	palpanel/cmd/palpanel-launcher	(cached) [no tests to run]
 ok  	palpanel/internal/aitranslation	(cached) [no tests to run]
-ok  	palpanel/internal/api	0.032s [no tests to run]
+ok  	palpanel/internal/api	0.034s [no tests to run]
 ok  	palpanel/internal/appconfig	(cached) [no tests to run]
 ok  	palpanel/internal/astrbotclient	(cached) [no tests to run]
 ok  	palpanel/internal/auditdetail	(cached) [no tests to run]
@@ -29,7 +29,7 @@ ok  	palpanel/internal/docker	(cached) [no tests to run]
 ?   	palpanel/internal/id	[no test files]
 ok  	palpanel/internal/jobs	(cached) [no tests to run]
 ok  	palpanel/internal/mods	(cached) [no tests to run]
-ok  	palpanel/internal/monitor	0.006s [no tests to run]
+ok  	palpanel/internal/monitor	0.005s [no tests to run]
 ok  	palpanel/internal/networkproxy	(cached) [no tests to run]
 ok  	palpanel/internal/palconfig	(cached) [no tests to run]
 ok  	palpanel/internal/paldefender	(cached) [no tests to run]
@@ -52,5 +52,5 @@ $ npm run lint
 ::warning file=src/pages/StarterGift.tsx,line=147,endLine=147,col=9,endColumn=17,title=eslint(no-unused-vars)::Variable 'itemByID' is declared but never used. Unused variables should start with a '_'.
 
 Found 1 warning and 0 errors.
-Finished in 31ms on 138 files with 103 rules using 4 threads.
+Finished in 35ms on 138 files with 103 rules using 4 threads.
 [exit=0]

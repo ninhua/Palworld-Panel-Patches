@@ -12,10 +12,10 @@ $ git diff --check
 [exit=0]
 $ go test -run ^$ ./...
 ok  	palpanel/cmd/openapi-types	(cached) [no tests to run]
-ok  	palpanel/cmd/palpanel	0.034s [no tests to run]
+ok  	palpanel/cmd/palpanel	0.035s [no tests to run]
 ok  	palpanel/cmd/palpanel-launcher	(cached) [no tests to run]
 ok  	palpanel/internal/aitranslation	(cached) [no tests to run]
-ok  	palpanel/internal/api	0.037s [no tests to run]
+ok  	palpanel/internal/api	0.039s [no tests to run]
 ok  	palpanel/internal/appconfig	(cached) [no tests to run]
 ok  	palpanel/internal/astrbotclient	(cached) [no tests to run]
 ok  	palpanel/internal/auditdetail	(cached) [no tests to run]
@@ -50,5 +50,5 @@ $ npm run lint
 > oxlint
 
 Found 0 warnings and 0 errors.
-Finished in 33ms on 141 files with 103 rules using 4 threads.
+Finished in 32ms on 141 files with 103 rules using 4 threads.
 [exit=0]
