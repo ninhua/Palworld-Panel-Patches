@@ -1,29 +1,34 @@
-# Upgrade v0.12.31-hotfix3 → v0.12.31-hotfix4
+# Upgrade v0.12.31-hotfix4 → v0.12.31-hotfix5
 
-本次更新修复新玩家已被识别但实际礼包未发放、或配置保存后新玩家被提前写入已见基线的问题。
+本次更新只修正补丁源码校验清单，不修改 PalPanel 功能代码。
 
-## 新增补丁
+## 问题
+
+`0022-add-host-save-migrator.patch` 在 `v0.12.26` 已更新，但后续增量包中的 `source/SHA256SUMS` 误恢复为旧文件的哈希，stable Workflow 因此报告：
 
 ```text
-projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source/0033-fix-starter-gift-runtime-dispatch.patch
+sha256sum: WARNING: 1 computed checksum did NOT match
+Error: Process completed with exit code 1.
 ```
 
-## 修正行为
+## 修正
 
-- 只有礼包从“禁用”切换到“启用”时才导入已有玩家基线；已启用状态下调整物品、模板或批次参数不会再次把当前存档玩家标记为老玩家。
-- 创建任务后，先使用官方 Palworld REST 返回的 PlayerUID/SteamID，在 PalDefender 在线玩家列表中解析实际发放目标。
-- 新玩家刚进入、PalDefender 尚未完成登记时，任务保持“等待发放”，后续 15 秒采样自动重试，不立即转为永久失败。
-- 自动恢复旧版本中 `PLAYER_NOT_FOUND` / `player was not found` 导致的失败任务。
-- 异步发放 worker 不再继承可提前取消的采样上下文，并保留三小时安全上限。
+```text
+projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source/SHA256SUMS
+```
 
-## 验证位置
+`0022-add-host-save-migrator.patch` 的正确条目为：
 
-进入“新玩家礼包 → 发放记录”。新玩家第一次被官方 REST 观察到后应出现记录；PalDefender 未就绪时记录保持等待，就绪后自动进入发放并完成。
+```text
+aee8e8e084e1b8dd4920aa571981e1ce501f15fee618de41dc66679b839fe58f  0022-add-host-save-migrator.patch
+```
+
+补丁文件本身不需要替换。
 
 ## 版本
 
 ```text
-仓库版本：0.12.31-hotfix4
+仓库版本：0.12.31-hotfix5
 当前已发布 stable patch：0.8.15
 下一 stable patch：0.8.16
 预期 Release：uitok-stable-v1.3.0-p0.8.16

@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.12.31-hotfix5
+
+### Fixed
+
+- 修正 `source/SHA256SUMS` 中 `0022-add-host-save-migrator.patch` 的过期 SHA-256。
+- `0022` 在 `v0.12.26` 已升级为支持 Oodle/PlM 并自动部署服务器世界的版本，但后续增量链误带回旧校验值，导致 stable Workflow 执行 `sha256sum -c` 时出现 1 项不匹配。
+- 补丁源码本身不变；仅将校验值恢复为当前仓库中 `0022` 文件的实际哈希。
+
+### Validation
+
+- 确认 `v0.12.26` 与当前 `v0.12.31-hotfix4` 的 `0022` Git blob 均为 `580b97a72ab5385d604b16314cd6ab8da6c05415`。
+- 对应 SHA-256 为 `aee8e8e084e1b8dd4920aa571981e1ce501f15fee618de41dc66679b839fe58f`。
+- stable patch 候选保持 `0.8.16`。
+
 ## v0.12.31-hotfix4
 
 ### Fixed
