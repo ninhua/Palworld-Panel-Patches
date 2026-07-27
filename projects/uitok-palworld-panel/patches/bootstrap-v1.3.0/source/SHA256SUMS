@@ -32,3 +32,4 @@ dde2932c8271e2b342f838ec0552194c67ac7312c7eb29a53247c4cf8fbfba51  0029-fix-start
 43fcdfa066ed8d3741220babaca0b6676aeb679f6ddc29593bb574ea64a19232  0032-read-starter-gift-template-indexes.patch
 80ff243eec2768d8ff9a1b5d51aaaf4332b103c3bf1858c909b55797a9aa0701  0033-fix-starter-gift-runtime-dispatch.patch
 1cc402fbbf121e51aec79e9e8acfe609f50974660e949e59d4cf2724e2b5699f  0034-add-pal-inventory-advanced-filters.patch
+4eca7b7a47fa27f14a45b902c7f095a8a03dcd8d0d6ebe5010af23ff26eee3e9  0035-fix-player-summary-optional-pal-id.patch

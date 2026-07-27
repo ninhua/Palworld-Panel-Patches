@@ -112,3 +112,16 @@ sha256sum -c SHA256SUMS
 - 覆盖包重新解压一致性检查。
 
 发现 migration blocked 时，应修正首次失败补丁本身或其精确前置依赖，不要继续叠加依赖失败状态的新功能补丁。
+
+## 7. TypeScript 可选字段必须经过语义编译
+
+前端类型中的 `string | undefined`、`number | undefined` 等可选字段，不得直接传给要求确定类型的 `Map.set`、`Set.add`、`localeCompare` 或其他严格参数。必须先归一化、判空或提供类型安全的回退值。
+
+补丁级 marker/grep 测试只能作为快速回归，不能替代完整候选工作区的 TypeScript 语义编译。stable 候选在发布前必须在全部补丁应用后的前端目录执行项目实际构建命令，例如：
+
+```bash
+npm ci
+npm run build
+```
+
+出现 TypeScript 编译错误时，应新增或修正紧随相关功能补丁之后的纠正补丁，并把该错误对应的可选字段类型写入回归夹具；不得仅通过类型断言 `as string` 掩盖空值。

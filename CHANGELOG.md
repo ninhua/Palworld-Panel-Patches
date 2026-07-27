@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.12.32-hotfix4
+
+### Fixed
+
+- 新增 `0035-fix-player-summary-optional-pal-id.patch`，修复 `PlayerSummary.tsx` 将可选 `pal.instance_id` 直接传入 `Map<string, Pal>.set` 导致的 TypeScript 编译失败。
+- 玩家帕鲁去重键统一按 `instance_id → id → character_id` 归一化，避免缺少 `instance_id` 时把多个帕鲁错误折叠为同一条。
+- 玩家概览回归测试现在先应用 0030，再应用 0035，并拒绝重新出现 `owned.set(pal.instance_id, ...)`。
+- 根目录补丁维护说明增加 TypeScript 可选字段与完整候选前端构建要求。
+
+### Validation
+
+- 0035 在 0030 生成的精确 `PlayerSummary.tsx` preimage 上通过 `git apply --check`。
+- 可选 Pal 标识严格类型夹具通过。
+- stable patch 候选保持 `0.8.16`。
+
 ## v0.12.32-hotfix3
 
 ### Fixed

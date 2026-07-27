@@ -5,16 +5,28 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/../../.." && pwd)"
 source_dir="${repo_root}/projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source"
 patch="${source_dir}/0030-add-player-summary-and-landmarks.patch"
+fix_patch="${source_dir}/0035-fix-player-summary-optional-pal-id.patch"
 
 for command in git go python3 sha256sum mktemp grep; do
     command -v "${command}" >/dev/null 2>&1 || { echo "缺少测试命令：${command}" >&2; exit 1; }
 done
 
 [[ -f "${patch}" ]] || { echo "缺少玩家概览补丁：${patch}" >&2; exit 1; }
+[[ -f "${fix_patch}" ]] || { echo "缺少玩家概览可选 ID 修复补丁：${fix_patch}" >&2; exit 1; }
 expected_sha="$(awk '$2 == "0030-add-player-summary-and-landmarks.patch" {print $1; exit}' "${source_dir}/SHA256SUMS")"
 actual_sha="$(sha256sum "${patch}" | awk '{print $1}')"
 [[ -n "${expected_sha}" && "${actual_sha}" == "${expected_sha}" ]] || {
     echo "0030 SHA-256 与 SHA256SUMS 不一致" >&2
+    exit 1
+}
+fix_expected_sha="$(awk '$2 == "0035-fix-player-summary-optional-pal-id.patch" {print $1; exit}' "${source_dir}/SHA256SUMS")"
+fix_actual_sha="$(sha256sum "${fix_patch}" | awk '{print $1}')"
+[[ -n "${fix_expected_sha}" && "${fix_actual_sha}" == "${fix_expected_sha}" ]] || {
+    echo "0035 SHA-256 与 SHA256SUMS 不一致" >&2
+    exit 1
+}
+[[ "$(git apply --numstat "${fix_patch}" | awk '{print $3}')" == "frontend/src/pages/PlayerSummary.tsx" ]] || {
+    echo "0035 只能修改 PlayerSummary.tsx" >&2
     exit 1
 }
 
@@ -55,6 +67,8 @@ git -C "${work}/extract" apply \
     --include=frontend/src/lib/playerRegion.test.ts \
     --include=frontend/src/pages/PlayerSummary.tsx \
     "${patch}"
+git -C "${work}/extract" apply --check --include=frontend/src/pages/PlayerSummary.tsx "${fix_patch}"
+git -C "${work}/extract" apply --include=frontend/src/pages/PlayerSummary.tsx "${fix_patch}"
 
 backend="${work}/backend"
 mkdir -p "${backend}/api"
@@ -106,11 +120,22 @@ required_page_markers = [
     "palsApi.getPalsList",
     "estimatePlayerRegion",
     "const normalizeID = (value?: string | null): string",
+    "const palIdentityKey = (pal: Pal): string",
+    "if (palKey) owned.set(palKey, pal)",
     "科技、配方、图鉴和首领进度尚未由当前 sav-cli 索引输出",
 ]
 for marker in required_page_markers:
     if marker not in page:
         raise SystemExit(f"PlayerSummary.tsx 缺少标记：{marker}")
+
+for forbidden in (
+    "owned.set(pal.instance_id, pal)",
+    "owned.set(pal.instance_id as string, pal)",
+):
+    if forbidden in page:
+        raise SystemExit(f"PlayerSummary.tsx 仍将可选 instance_id 直接作为字符串键：{forbidden}")
+if "pal.instance_id || pal.id || pal.character_id" not in page:
+    raise SystemExit("PlayerSummary.tsx 缺少可选 Pal 标识回退链")
 
 # Keep the projection contract synchronized with LiveMap's verified formula.
 for literal in ("458.355", "7.8", "256", "2048", "122500", "158100"):
@@ -149,4 +174,116 @@ for source_name, source in (("playerRegion.ts", region), ("PlayerSummary.tsx", p
     if re.search(r"^(?:<<<<<<<|=======|>>>>>>>)", source, re.MULTILINE):
         raise SystemExit(f"{source_name} 含有合并冲突标记")
 PY
+
+# When a TypeScript compiler is available, compile the actual corrected page against
+# strict optional-ID stubs. This catches string | undefined being passed to Map<string, Pal>.
+if command -v tsc >/dev/null 2>&1; then
+    tscheck="${work}/tscheck"
+    mkdir -p "${tscheck}/src/pages" "${tscheck}/src/api" "${tscheck}/src/components/ui" "${tscheck}/src/lib"
+    cp "${work}/extract/frontend/src/pages/PlayerSummary.tsx" "${tscheck}/src/pages/PlayerSummary.tsx"
+    cat >"${tscheck}/src/globals.d.ts" <<'TS'
+declare namespace React {
+  type ReactNode = unknown;
+  interface FC<P = Record<string, never>> { (props: P): any; }
+}
+declare namespace JSX {
+  interface IntrinsicAttributes { key?: string | number }
+  interface IntrinsicElements { [name: string]: any }
+}
+declare module 'react' {
+  export function useMemo<T>(factory: () => T, deps: readonly unknown[]): T;
+  export function useState<T>(initial: T): [T, (value: T | ((current: T) => T)) => void];
+  const React: { createElement: (...args: any[]) => any };
+  export default React;
+}
+declare module '@tanstack/react-query' {
+  export function useQuery<T>(options: { queryKey: readonly unknown[]; queryFn: () => Promise<T> | T; refetchInterval?: number }): {
+    data?: T;
+    error?: unknown;
+    isFetching: boolean;
+    refetch: () => Promise<unknown>;
+  };
+}
+declare module 'lucide-react' {
+  export const Activity: any;
+  export const AlertTriangle: any;
+  export const Clock3: any;
+  export const Compass: any;
+  export const Dna: any;
+  export const MapPin: any;
+  export const RefreshCw: any;
+  export const Search: any;
+  export const Users: any;
+}
+TS
+    cat >"${tscheck}/src/types.ts" <<'TS'
+export interface Pal {
+  id?: string;
+  instance_id?: string;
+  character_id?: string;
+  owner_player_uid?: string;
+  owner_steam_id?: string;
+  level?: number;
+}
+export interface Player {
+  id?: string;
+  player_uid?: string;
+  steam_id?: string;
+  nickname: string;
+  guild_name?: string;
+  level?: number;
+  x: number;
+  y: number;
+  z: number;
+  is_online: boolean;
+  total_seconds?: number;
+  session_seconds?: number;
+  presence_available?: boolean;
+  presence_stale?: boolean;
+  last_online_at?: string;
+}
+export interface ListResponse<T> {
+  items: T[];
+  summary: { total: number };
+  status: { warnings?: string[] };
+}
+TS
+    cat >"${tscheck}/src/api/client.ts" <<'TS'
+export const getErrorMessage = (value: unknown): string => String(value ?? '');
+TS
+    cat >"${tscheck}/src/api/pals.ts" <<'TS'
+import type { ListResponse, Pal } from '../types';
+export const palsApi = { getPalsList: async (_params: unknown): Promise<ListResponse<Pal>> => ({ items: [], summary: { total: 0 }, status: {} }) };
+TS
+    cat >"${tscheck}/src/api/players.ts" <<'TS'
+import type { ListResponse, Player } from '../types';
+export const playersApi = { getPlayersList: async (_params: unknown): Promise<ListResponse<Player>> => ({ items: [], summary: { total: 0 }, status: {} }) };
+TS
+    cat >"${tscheck}/src/components/ui/SaveDataTabs.tsx" <<'TS'
+import React from 'react';
+export const SaveDataTabs: React.FC = () => null;
+TS
+    cat >"${tscheck}/src/lib/playerRegion.ts" <<'TS'
+export const estimatePlayerRegion = (_x: number, _y: number) => ({ name: '位置未记录', map_x: 0, map_y: 0 });
+TS
+    cat >"${tscheck}/tsconfig.json" <<'JSON'
+{
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": false,
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react",
+    "skipLibCheck": true
+  },
+  "include": ["src"]
+}
+JSON
+    (cd "${tscheck}" && tsc -p tsconfig.json)
+else
+    echo "提示：未找到 tsc，已执行静态可选 ID 回归；stable 候选仍必须运行完整前端构建。" >&2
+fi
+
 echo "player summary and landmark regression passed."
