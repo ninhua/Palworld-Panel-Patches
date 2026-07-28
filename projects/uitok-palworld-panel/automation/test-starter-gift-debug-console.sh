@@ -37,7 +37,9 @@ required = [
     "starterGiftTemplateIndexCandidate", '"用途分类"', '"综合分级"', '"分类标签"', '"毕业用途"', '"词条中文"',
     "template-index-catalog", "PalIcon characterID={info?.pal_id",
     "TestManualNextLoginMarkCanBeRetestedWithoutDeletingPlayer", "TestGrantTimelineRecordsResolutionBatchesAndCompletion",
-    "TestStarterGiftTemplateCatalogReadsRichArbitraryNamedIndex",
+    "TestStarterGiftTemplateCatalogReadsRichKeywordNamedIndex",
+    "TestStarterGiftTemplateCatalogIgnoresJSONWithoutIndexKeyword",
+    'strings.Contains(lower, "index")', 'strings.Contains(lower, "索引")',
 ]
 for marker in required:
     if marker not in text:
@@ -123,6 +125,8 @@ type ActionRunner = (key: string, action: () => Promise<unknown>, success: strin
     queryFn: () => palDefenderGMApi.exportedPalTemplates(identifier),
     enabled: Boolean(identifier),
   });
+
+  const directGrant = async () => {
 
 // filler c
 // filler c

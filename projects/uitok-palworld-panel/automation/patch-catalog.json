@@ -322,14 +322,6 @@
         "0037-fix-starter-gift-paldefender-status-resolution.patch"
       ],
       "validation_checkpoint": true
-    },
-    {
-      "file": "0039-scan-only-index-keyword-json.patch",
-      "feature": "new-player-starter-gift",
-      "depends_on": [
-        "0038-add-starter-gift-debug-console-and-rich-template-indexes.patch"
-      ],
-      "validation_checkpoint": true
     }
   ]
 }

@@ -1,5 +1,5 @@
 diff --git a/backend/internal/api/starter_gift.go b/backend/internal/api/starter_gift.go
-index 0fd68fb..693a7ac 100644
+index 0fd68fb..0ab9677 100644
 --- a/backend/internal/api/starter_gift.go
 +++ b/backend/internal/api/starter_gift.go
 @@ -1,6 +1,7 @@
@@ -119,13 +119,10 @@ index 0fd68fb..693a7ac 100644
  }
  
  type starterGiftTemplateIndexMatch struct {
-@@ -145,23 +182,17 @@ func readStarterGiftTemplateIndexes(serverDir string) starterGiftTemplateIndexes
- }
- 
- func starterGiftTemplateIndexCandidate(name string) bool {
--	if !strings.EqualFold(filepath.Ext(name), ".json") {
--		return false
--	}
+@@ -148,20 +185,15 @@ func starterGiftTemplateIndexCandidate(name string) bool {
+ 	if !strings.EqualFold(filepath.Ext(name), ".json") {
+ 		return false
+ 	}
 -	lower := strings.ToLower(name)
 -	for _, marker := range []string{"index", "catalog", "list", "索引", "清单", "常用", "毕业"} {
 -		if strings.Contains(lower, marker) {
@@ -133,10 +130,8 @@ index 0fd68fb..693a7ac 100644
 -		}
 -	}
 -	return false
-+	// The index is intentionally data-driven and may use any ASCII or Chinese
-+	// file name. Every JSON in the template directory is probed; ordinary Pal
-+	// template objects are ignored because they do not contain an index array.
-+	return strings.EqualFold(filepath.Ext(name), ".json")
++	lower := strings.ToLower(strings.TrimSuffix(name, filepath.Ext(name)))
++	return strings.Contains(lower, "index") || strings.Contains(lower, "索引")
  }
  
  func parseStarterGiftTemplateIndex(raw []byte) (string, []starterGiftTemplateIndexEntry) {
@@ -149,7 +144,7 @@ index 0fd68fb..693a7ac 100644
  			payload, found := root[key]
  			if !found {
  				continue
-@@ -192,12 +223,21 @@ func decodeStarterGiftTemplateIndexEntries(raw []byte) []starterGiftTemplateInde
+@@ -192,12 +224,21 @@ func decodeStarterGiftTemplateIndexEntries(raw []byte) []starterGiftTemplateInde
  	entries := make([]starterGiftTemplateIndexEntry, 0, len(documents))
  	for _, document := range documents {
  		entry := starterGiftTemplateIndexEntry{
@@ -177,7 +172,7 @@ index 0fd68fb..693a7ac 100644
  		}
  		if entry.FileName == "" && entry.TemplateName == "" {
  			continue
-@@ -216,6 +256,20 @@ func starterGiftFirstNonEmpty(values ...string) string {
+@@ -216,6 +257,20 @@ func starterGiftFirstNonEmpty(values ...string) string {
  	return ""
  }
  
@@ -198,7 +193,7 @@ index 0fd68fb..693a7ac 100644
  func starterGiftTemplateLookupKey(value string) string {
  	keys := starterGiftTemplateLookupKeys(value)
  	if len(keys) == 0 {
-@@ -282,6 +336,21 @@ func readStarterGiftTemplateInfo(serverDir, name string, indexes starterGiftTemp
+@@ -282,6 +337,21 @@ func readStarterGiftTemplateInfo(serverDir, name string, indexes starterGiftTemp
  			if result.Category == "" {
  				result.Category = match.Entry.Category
  			}
@@ -220,7 +215,7 @@ index 0fd68fb..693a7ac 100644
  		}
  	}
  	return result
-@@ -345,7 +414,7 @@ func (s Server) starterGiftConfig(c *gin.Context) {
+@@ -345,7 +415,7 @@ func (s Server) starterGiftConfig(c *gin.Context) {
  		fail(c, http.StatusInternalServerError, "starter_gift_read_failed", err.Error())
  		return
  	}
@@ -229,7 +224,7 @@ index 0fd68fb..693a7ac 100644
  }
  
  func (s Server) putStarterGiftConfig(c *gin.Context) {
-@@ -396,7 +465,7 @@ func (s Server) putStarterGiftConfig(c *gin.Context) {
+@@ -396,7 +466,7 @@ func (s Server) putStarterGiftConfig(c *gin.Context) {
  		fail(c, http.StatusBadRequest, "invalid_starter_gift_config", err.Error())
  		return
  	}
@@ -238,7 +233,7 @@ index 0fd68fb..693a7ac 100644
  }
  
  func (s Server) canonicalizeStarterGiftTemplates(c *gin.Context, config *startergift.Config) bool {
-@@ -444,11 +513,41 @@ func (s Server) retryStarterGift(c *gin.Context) {
+@@ -444,11 +514,41 @@ func (s Server) retryStarterGift(c *gin.Context) {
  		fail(c, http.StatusConflict, "starter_gift_world_unavailable", err.Error())
  		return
  	}
@@ -283,7 +278,7 @@ index 0fd68fb..693a7ac 100644
  }
  
  func (s Server) forgetStarterGift(c *gin.Context) {
-@@ -464,7 +563,7 @@ func (s Server) forgetStarterGift(c *gin.Context) {
+@@ -464,7 +564,7 @@ func (s Server) forgetStarterGift(c *gin.Context) {
  	ok(c, gin.H{"rearmed": true, "message": "The player will be eligible after leaving and entering again."})
  }
  
@@ -292,7 +287,7 @@ index 0fd68fb..693a7ac 100644
  	templates, templateErr := s.defender.ListPalTemplates()
  	templateNames := make([]string, 0, len(templates))
  	for _, template := range templates {
-@@ -475,10 +574,27 @@ func (s Server) starterGiftResponse(snapshot startergift.Snapshot) gin.H {
+@@ -475,10 +575,27 @@ func (s Server) starterGiftResponse(snapshot startergift.Snapshot) gin.H {
  		"scope":            snapshot.Scope,
  		"config":           snapshot.Config,
  		"grants":           snapshot.Grants,
@@ -321,21 +316,52 @@ index 0fd68fb..693a7ac 100644
  		response["template_error"] = templateErr.Error()
  	}
 diff --git a/backend/internal/api/starter_gift_template_test.go b/backend/internal/api/starter_gift_template_test.go
-index 6808651..bf5b4b3 100644
+index 6808651..4c2fce2 100644
 --- a/backend/internal/api/starter_gift_template_test.go
 +++ b/backend/internal/api/starter_gift_template_test.go
-@@ -103,3 +103,41 @@ func TestStarterGiftTemplateFileNameRejectsTraversal(t *testing.T) {
+@@ -53,14 +53,14 @@ func TestStarterGiftTemplateCatalogUsesChineseIndexAndMemberships(t *testing.T)
+ 		t.Fatal(err)
+ 	}
+ 	graduate := `{"清单":[{"文件名":"BATTLE__Anubis.json","中文名":"阿努比斯","分类":"战斗"}]}`
+-	if err := os.WriteFile(filepath.Join(templateDir, "常用毕业帕鲁清单.json"), []byte(graduate), 0o644); err != nil {
++	if err := os.WriteFile(filepath.Join(templateDir, "常用毕业帕鲁索引.json"), []byte(graduate), 0o644); err != nil {
+ 		t.Fatal(err)
+ 	}
+ 
+ 	catalog, indexes := starterGiftTemplateCatalog(serverDir, []string{
+ 		"BATTLE__Anubis.json",
+ 		"模板中英文对照索引.json",
+-		"常用毕业帕鲁清单.json",
++		"常用毕业帕鲁索引.json",
+ 	})
+ 	if len(catalog) != 1 {
+ 		t.Fatalf("catalog = %#v, want one template and no index files", catalog)
+@@ -69,11 +69,11 @@ func TestStarterGiftTemplateCatalogUsesChineseIndexAndMemberships(t *testing.T)
+ 	if info.PalID != "Anubis" || info.PalName != "阿努比斯" || info.EnglishName != "Anubis" || info.Category != "战斗" {
+ 		t.Fatalf("indexed template metadata = %#v", info)
+ 	}
+-	wantMemberships := []string{"常用毕业帕鲁清单.json", "模板中英文对照索引.json"}
++	wantMemberships := []string{"常用毕业帕鲁索引.json", "模板中英文对照索引.json"}
+ 	if !reflect.DeepEqual(info.IndexNames, wantMemberships) {
+ 		t.Fatalf("index memberships = %#v, want %#v", info.IndexNames, wantMemberships)
+ 	}
+-	if len(indexes) != 2 || indexes[0].Name != "常用毕业帕鲁清单.json" || indexes[1].Name != "模板中英文对照索引.json" {
++	if len(indexes) != 2 || indexes[0].Name != "常用毕业帕鲁索引.json" || indexes[1].Name != "模板中英文对照索引.json" {
+ 		t.Fatalf("index catalog = %#v", indexes)
+ 	}
+ }
+@@ -103,3 +103,60 @@ func TestStarterGiftTemplateFileNameRejectsTraversal(t *testing.T) {
  		t.Fatalf("starterGiftTemplateFileName(Anubis) = %q, %v", got, err)
  	}
  }
 +
-+func TestStarterGiftTemplateCatalogReadsRichArbitraryNamedIndex(t *testing.T) {
++func TestStarterGiftTemplateCatalogReadsRichKeywordNamedIndex(t *testing.T) {
 +	serverDir, templateDir := starterGiftTestTemplateDir(t)
 +	if err := os.WriteFile(filepath.Join(templateDir, "WORK__Anubis.json"), []byte(`{"PalID":"Anubis","Level":60}`), 0o644); err != nil {
 +		t.Fatal(err)
 +	}
 +	rich := `{
-+		"说明":"文件名不需要包含索引关键字",
++		"说明":"索引文件名必须包含 index 或 索引关键字",
 +		"版本":"Palworld 1.0",
 +		"模板":[{
 +			"分类":"工作","模板名":"WORK__Anubis","文件名":"WORK__Anubis.json","中文名":"阿努比斯","英文名":"Anubis","PalID":"Anubis",
@@ -344,11 +370,11 @@ index 6808651..bf5b4b3 100644
 +			"夜间工作方式":"吸血鬼","词条中文":["恶魔之手","卓绝技艺","工匠精神","吸血鬼"]
 +		}]
 +	}`
-+	if err := os.WriteFile(filepath.Join(templateDir, "palworld-1.0.json"), []byte(rich), 0o644); err != nil {
++	if err := os.WriteFile(filepath.Join(templateDir, "palworld-template-index.json"), []byte(rich), 0o644); err != nil {
 +		t.Fatal(err)
 +	}
 +
-+	catalog, indexes := starterGiftTemplateCatalog(serverDir, []string{"WORK__Anubis.json", "palworld-1.0.json"})
++	catalog, indexes := starterGiftTemplateCatalog(serverDir, []string{"WORK__Anubis.json", "palworld-template-index.json"})
 +	if len(catalog) != 1 || len(indexes) != 1 {
 +		t.Fatalf("catalog=%#v indexes=%#v", catalog, indexes)
 +	}
@@ -362,8 +388,27 @@ index 6808651..bf5b4b3 100644
 +	if !reflect.DeepEqual(info.GraduationUses, []string{"战斗", "工作"}) || !reflect.DeepEqual(info.PassiveNames, []string{"恶魔之手", "卓绝技艺", "工匠精神", "吸血鬼"}) {
 +		t.Fatalf("rich arrays=%#v", info)
 +	}
-+	if indexes[0].Name != "palworld-1.0.json" || indexes[0].Label != "Palworld 1.0" {
-+		t.Fatalf("arbitrary index=%#v", indexes[0])
++	if indexes[0].Name != "palworld-template-index.json" || indexes[0].Label != "Palworld 1.0" {
++		t.Fatalf("keyword index=%#v", indexes[0])
++	}
++}
++
++func TestStarterGiftTemplateCatalogIgnoresJSONWithoutIndexKeyword(t *testing.T) {
++	serverDir, templateDir := starterGiftTestTemplateDir(t)
++	if err := os.WriteFile(filepath.Join(templateDir, "WORK__Anubis.json"), []byte(`{"PalID":"Anubis","Level":60}`), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	rich := `{"版本":"Palworld 1.0","模板":[{"分类":"工作","模板名":"WORK__Anubis","文件名":"WORK__Anubis.json","中文名":"阿努比斯","PalID":"Anubis"}]}`
++	if err := os.WriteFile(filepath.Join(templateDir, "palworld-1.0.json"), []byte(rich), 0o644); err != nil {
++		t.Fatal(err)
++	}
++
++	catalog, indexes := starterGiftTemplateCatalog(serverDir, []string{"WORK__Anubis.json", "palworld-1.0.json"})
++	if len(indexes) != 0 {
++		t.Fatalf("indexes=%#v", indexes)
++	}
++	if len(catalog) != 2 {
++		t.Fatalf("catalog=%#v", catalog)
 +	}
 +}
 diff --git a/backend/internal/startergift/service.go b/backend/internal/startergift/service.go
@@ -1621,10 +1666,9 @@ index 26022d7..13e6ea0 100644
          </div>}
        </section>
 diff --git a/frontend/src/components/gm/PalWorkspace.tsx b/frontend/src/components/gm/PalWorkspace.tsx
-index b36deecc..11111111 100644
 --- a/frontend/src/components/gm/PalWorkspace.tsx
 +++ b/frontend/src/components/gm/PalWorkspace.tsx
-@@ -1,7 +1,8 @@
+@@ -1,6 +1,7 @@
 -import React, { useRef, useState } from 'react';
 +import React, { useMemo, useRef, useState } from 'react';
  import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -1633,18 +1677,14 @@ index b36deecc..11111111 100644
 +import { starterGiftApi, type PalTemplateInfo } from '../../api/starterGift';
  import type { Pal, PalDefenderPalCatalogEntry, PalDefenderPalTemplate } from '../../types';
  import { PalIcon } from './PalIcon';
- 
-@@ -18,6 +19,8 @@
-   const [palLevel, setPalLevel] = useState('1');
+@@ -22,4 +23,6 @@ import { PalIcon } from './PalIcon';
    const [palCount, setPalCount] = useState('1');
    const [selectedTemplate, setSelectedTemplate] = useState('');
 +  const [templateSearch, setTemplateSearch] = useState('');
 +  const [templateIndex, setTemplateIndex] = useState('all');
    const [templateCount, setTemplateCount] = useState('1');
    const [selectedExport, setSelectedExport] = useState('');
-   const [editor, setEditor] = useState<TemplateEditor>(() => emptyTemplateEditor());
-@@ -35,12 +38,36 @@
-     queryFn: palDefenderGMApi.templates,
+@@ -57,4 +60,10 @@ import { PalIcon } from './PalIcon';
      enabled: available,
    });
 +  const indexedTemplateQuery = useQuery({
@@ -1655,8 +1695,7 @@ index b36deecc..11111111 100644
 +  });
    const exportedQuery = useQuery({
      queryKey: ['paldefender-gm', 'exported-templates', identifier],
-     queryFn: () => palDefenderGMApi.exportedPalTemplates(identifier),
-     enabled: Boolean(identifier),
+@@ -63,4 +72,22 @@ import { PalIcon } from './PalIcon';
    });
  
 +  const indexedTemplateByName = useMemo(() => new Map(
@@ -1677,11 +1716,9 @@ index b36deecc..11111111 100644
 +    }).slice(0, 120);
 +  }, [indexedTemplateByName, templateIndex, templateSearch, templatesQuery.data]);
 +
- // filler c
- // filler c
- // filler c
-@@ -50,6 +77,17 @@
+   const directGrant = async () => {
  
+@@ -83,4 +110,15 @@ import { PalIcon } from './PalIcon';
  			<label className="text-xs font-bold text-slate-600">发放数量<input aria-label="模板发放数量" type="number" min={1} max={20} value={templateCount} onChange={(event) => setTemplateCount(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-semibold text-slate-700 focus:border-violet-500 focus:outline-none" /></label>
            </div>
 +          <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_13rem]">
@@ -1697,4 +1734,3 @@ index b36deecc..11111111 100644
 +          </div>
            <div className="mt-4 flex flex-wrap gap-2">
              <button type="button" onClick={() => void giveTemplate()} disabled={disabled || !selectedTemplate} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40">{pending === 'give-template' ? <LoaderCircle size={14} className="animate-spin" /> : <Upload size={14} />}发放模板</button>
-             <button type="button" onClick={() => void loadManagedTemplate()} disabled={!selectedTemplate} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-bold text-slate-600 disabled:opacity-40"><FileJson size={14} />编辑模板</button>

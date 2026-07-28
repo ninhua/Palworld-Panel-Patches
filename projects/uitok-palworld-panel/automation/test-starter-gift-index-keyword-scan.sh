@@ -3,16 +3,16 @@ set -Eeuo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 source_dir="${repo_root}/projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source"
-patch="${source_dir}/0039-scan-only-index-keyword-json.patch"
+patch="${source_dir}/0038-add-starter-gift-debug-console-and-rich-template-indexes.patch"
 checksums="${source_dir}/SHA256SUMS"
 
 for command in git go gofmt python3 sha256sum mktemp; do
     command -v "${command}" >/dev/null 2>&1 || { echo "缺少测试命令：${command}" >&2; exit 1; }
 done
-[[ -s "${patch}" ]] || { echo "缺少 0039 补丁：${patch}" >&2; exit 1; }
+[[ -s "${patch}" ]] || { echo "缺少合并后的 0038 补丁：${patch}" >&2; exit 1; }
 actual_sha="$(sha256sum "${patch}" | awk '{print $1}')"
-expected_sha="$(awk '$2 == "0039-scan-only-index-keyword-json.patch" {print $1; exit}' "${checksums}")"
-[[ -n "${expected_sha}" && "${actual_sha}" == "${expected_sha}" ]] || { echo "0039 SHA-256 不匹配" >&2; exit 1; }
+expected_sha="$(awk '$2 == "0038-add-starter-gift-debug-console-and-rich-template-indexes.patch" {print $1; exit}' "${checksums}")"
+[[ -n "${expected_sha}" && "${actual_sha}" == "${expected_sha}" ]] || { echo "0038 SHA-256 不匹配" >&2; exit 1; }
 
 python3 - "${patch}" <<'PY'
 from pathlib import Path
@@ -20,8 +20,8 @@ import re, sys
 text=Path(sys.argv[1]).read_text(encoding='utf-8')
 changed=set(re.findall(r'^diff --git a/(\S+) b/\1$', text, re.M))
 expected={'backend/internal/api/starter_gift.go','backend/internal/api/starter_gift_template_test.go'}
-if changed != expected:
-    raise SystemExit(f'0039 changed-file allowlist mismatch: {sorted(changed)}')
+if not expected.issubset(changed):
+    raise SystemExit(f'0038 missing index-parser files: {sorted(expected - changed)}')
 for marker in [
     'strings.Contains(lower, "index")', 'strings.Contains(lower, "索引")',
     'TestStarterGiftTemplateCatalogReadsRichKeywordNamedIndex',
@@ -29,7 +29,7 @@ for marker in [
     'palworld-template-index.json',
 ]:
     if marker not in text:
-        raise SystemExit(f'0039 missing marker: {marker}')
+        raise SystemExit(f'0038 missing merged index marker: {marker}')
 PY
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/palpatch-index-keyword.XXXXXX")"
@@ -46,14 +46,13 @@ for prior in \
     0031-read-starter-gift-template-pal-id.patch \
     0032-read-starter-gift-template-indexes.patch \
     0033-fix-starter-gift-runtime-dispatch.patch \
-    0037-fix-starter-gift-paldefender-status-resolution.patch \
-    0038-add-starter-gift-debug-console-and-rich-template-indexes.patch; do
+    0037-fix-starter-gift-paldefender-status-resolution.patch; do
     git -C "${work}" apply "${includes[@]}" "${source_dir}/${prior}"
     git -C "${work}" add .
     git -C "${work}" commit --allow-empty -qm "${prior}"
 done
-git -C "${work}" apply --check "${patch}"
-git -C "${work}" apply "${patch}"
+git -C "${work}" apply --check "${includes[@]}" "${patch}"
+git -C "${work}" apply "${includes[@]}" "${patch}"
 gofmt -w "${work}/backend/internal/api/starter_gift.go" "${work}/backend/internal/api/starter_gift_template_test.go"
 git -C "${work}" diff --check
 

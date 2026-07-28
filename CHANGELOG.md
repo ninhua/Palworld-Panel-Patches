@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.12.34-hotfix5
+
+### Fixed
+
+- 修复 `0038-add-starter-gift-debug-console-and-rich-template-indexes.patch` 的 `PalWorkspace.tsx` section 基于裁剪夹具生成，包含不存在于上游源码的 `filler` 上下文，导致稳定迁移在官方 `v1.3.0` 工作区直接失败。
+- 使用官方 `v1.3.0` 组件真实上下文重建 `PalWorkspace.tsx` hunks，不再伪造 old/new blob 或依赖局部夹具行号。
+- 将未发布的 `0039-scan-only-index-keyword-json.patch` 合并回同一功能域的 `0038`，补丁链恢复为 38 个源码补丁；索引仍只读取文件名包含 `index` 或 `索引` 的 JSON。
+- `patch-catalog.json`、`source/SHA256SUMS` 和两项 starter-gift 回归均改为验证合并后的 `0038`。
+
+### Maintenance
+
+- 明确规定：同一功能域在尚未发布期间的连续修正必须 squash 到该功能最新补丁，不得仅为 hotfix 继续增加补丁编号。
+- 下一稳定补丁候选保持 `0.8.18`，因为此前迁移失败，没有产生 `0.8.18` Release。
+
+### Validation
+
+- 从前序 `0037` 累计状态应用合并后的 `0038`，验证后端、API、管理页与索引关键字逻辑。
+- 使用官方 `v1.3.0` `PalWorkspace.tsx` 的真实 imports、state、query 和模板区域上下文执行独立 `git apply --check`。
+- 验证 bootstrap source 仅有 `0001`–`0038`，且目录、catalog 与 SHA-256 清单完全一致。
+
 ## v0.12.34-hotfix4
 
 ### Changed
