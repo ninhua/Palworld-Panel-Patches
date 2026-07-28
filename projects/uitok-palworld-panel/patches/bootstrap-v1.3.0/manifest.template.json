@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "uitok-palworld-panel",
-  "patch_version": "0.8.17",
+  "patch_version": "0.8.18",
   "patch_type": "source-build",
   "upstream": {
     "repository": "uitok/palworld-panel",

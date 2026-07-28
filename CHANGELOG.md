@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.12.34-hotfix3
+
+### Added
+
+- 新增 `0038-add-starter-gift-debug-console-and-rich-template-indexes.patch`，把新玩家判定、人工重置、补发/重发和逐批发放事件完整展示在管理页。
+- 玩家判定页显示当前 WorldID 内的 seen、online、rearm、grant 证据和明确原因，可直接将任意玩家标记为“下次进入视为新玩家”，无需删除玩家或存档反复测试。
+- 发放任务支持“补发未完成内容”和“完整重发”，并记录 PalDefender 玩家解析、物品批次、模板批次、等待、失败与完成时间线。
+- Pal 模板索引改为扫描模板目录中的任意 JSON，支持中文丰富索引字段、用途分类、综合分级、标签、毕业用途、词条和夜间工作方式。
+- 新玩家礼包与玩家中心的模板选择器均显示索引分类和帕鲁图片；索引文件与模板文件共同存放在 PalDefender Templates 目录，不内置数据。
+
+### Validation
+
+- 新增 starter-gift debug console 回归，覆盖人工 next-login 标记、补发进度保留、完整重发重置、事件时间线和任意文件名丰富索引。
+- 下一稳定补丁版本提升为 `0.8.18`。
+
 ## v0.12.34-hotfix2
 
 ### Fixed

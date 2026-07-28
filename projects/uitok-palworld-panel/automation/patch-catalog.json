@@ -313,6 +313,15 @@
         "0033-fix-starter-gift-runtime-dispatch.patch"
       ],
       "validation_checkpoint": true
+    },
+    {
+      "file": "0038-add-starter-gift-debug-console-and-rich-template-indexes.patch",
+      "feature": "new-player-starter-gift",
+      "depends_on": [
+        "0032-read-starter-gift-template-indexes.patch",
+        "0037-fix-starter-gift-paldefender-status-resolution.patch"
+      ],
+      "validation_checkpoint": true
     }
   ]
 }
