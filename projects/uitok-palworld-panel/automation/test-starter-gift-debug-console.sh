@@ -78,10 +78,10 @@ git -C "${work}" apply --exclude=frontend/src/components/gm/PalWorkspace.tsx "${
 gofmt -w "${work}/backend/internal/startergift"/*.go "${work}/backend/internal/api/starter_gift"*.go
 git -C "${work}" diff --check
 
-# PalWorkspace must be tested with the exact v1.3.0 source line layout.
-# A compact fixture may keep only hunk context, but every context block must be
-# placed at its real upstream line number; otherwise inconsistent hunk offsets
-# can pass locally and fail in the cumulative migration workspace.
+# PalWorkspace must be tested against an independently declared official
+# v1.3.0 preimage. Never generate the fixture from the patch old-side lines:
+# doing that makes an incorrect context line validate itself and creates a false
+# positive. Official blob: b36deecc0ca8a0c0344ae244b3f49b6c8ecf1a44.
 python3 - "${patch}" "${work}/frontend/src/components/gm/PalWorkspace.tsx" <<'PYFIXTURE'
 from pathlib import Path
 import re, sys
@@ -93,46 +93,58 @@ header = "diff --git a/frontend/src/components/gm/PalWorkspace.tsx b/frontend/sr
 section = text[text.index(header):]
 expected_headers = [
     "@@ -1,6 +1,7 @@",
-    "@@ -28,4 +29,6 @@ import { PalIcon } from './PalIcon';",
-    "@@ -69,4 +72,10 @@ import { PalIcon } from './PalIcon';",
-    "@@ -75,4 +84,22 @@ import { PalIcon } from './PalIcon';",
+    "@@ -30,4 +31,6 @@ import { PalIcon } from './PalIcon';",
+    "@@ -71,4 +74,10 @@ import { PalIcon } from './PalIcon';",
+    "@@ -77,4 +86,22 @@ import { PalIcon } from './PalIcon';",
     "@@ -270,4 +297,15 @@ import { PalIcon } from './PalIcon';",
 ]
 actual_headers = [line for line in section.splitlines() if line.startswith("@@ ")]
 if actual_headers != expected_headers:
     raise SystemExit(
-        "PalWorkspace hunk layout is not the locked v1.3.0 layout:\n"
+        "PalWorkspace hunk layout is not the locked official v1.3.0 layout:\n"
         f"actual={actual_headers!r}\nexpected={expected_headers!r}"
     )
 
-# Git blob b36deecc0ca8a0c0344ae244b3f49b6c8ecf1a44 has 421 lines.
-# Populate the exact old-side context at its real line numbers; unrelated lines
-# are inert placeholders because this test is specifically a unified-diff
-# position/context regression, not a TypeScript fixture.
-lines = [f"// untouched upstream v1.3.0 line {number}" for number in range(1, 422)]
-section_lines = section.splitlines()
-index = 0
-while index < len(section_lines):
-    match = re.match(r"@@ -(\d+),(\d+) \+(\d+),(\d+) @@", section_lines[index])
-    if not match:
-        index += 1
-        continue
-    old_start, old_count = map(int, match.group(1, 2))
-    index += 1
-    old_lines = []
-    while index < len(section_lines) and not section_lines[index].startswith(("@@ ", "diff --git ")):
-        line = section_lines[index]
-        if line.startswith((" ", "-")):
-            old_lines.append(line[1:])
-        index += 1
-    if len(old_lines) != old_count:
-        raise SystemExit(f"PalWorkspace hunk {old_start} old-line count mismatch")
-    for offset, value in enumerate(old_lines):
-        position = old_start - 1 + offset
-        current = lines[position]
-        if not current.startswith("// untouched upstream v1.3.0 line ") and current != value:
-            raise SystemExit(f"PalWorkspace hunk overlap mismatch at line {position + 1}")
-        lines[position] = value
+# The official file has 423 lines. Only the exact old-side ranges touched by
+# 0038 are material to this focused regression; all other lines are inert and
+# retain their official positions. These values are independent from the patch.
+lines = [f"// untouched official v1.3.0 line {number}" for number in range(1, 424)]
+
+def put(start: int, values: list[str]) -> None:
+    lines[start - 1:start - 1 + len(values)] = values
+
+put(1, [
+    "import React, { useRef, useState } from 'react';",
+    "import { useQuery, useQueryClient } from '@tanstack/react-query';",
+    "import { AlertTriangle, Download, ExternalLink, FileJson, LoaderCircle, RefreshCw, Save, Search, Send, Sparkles, Sword, Trash2, Upload, X } from 'lucide-react';",
+    "import { palDefenderGMApi } from '../../api/paldefenderGM';",
+    "import type { Pal, PalDefenderPalCatalogEntry, PalDefenderPalTemplate } from '../../types';",
+    "import { PalIcon } from './PalIcon';",
+])
+put(30, [
+    "  const [palCount, setPalCount] = useState('1');",
+    "  const [selectedTemplate, setSelectedTemplate] = useState('');",
+    "  const [templateCount, setTemplateCount] = useState('1');",
+    "  const [selectedExport, setSelectedExport] = useState('');",
+])
+put(71, [
+    "    enabled: available,",
+    "  });",
+    "  const exportedQuery = useQuery({",
+    "    queryKey: ['paldefender-gm', 'exported-templates', identifier],",
+])
+put(77, [
+    "  });",
+    "",
+    "  const directGrant = async () => {",
+    "    const level = Number(palLevel);",
+])
+put(270, [
+    '\t\t\t<label className="text-xs font-bold text-slate-600">发放数量<input aria-label="模板发放数量" type="number" min={1} max={20} value={templateCount} onChange={(event) => setTemplateCount(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-semibold text-slate-700 focus:border-violet-500 focus:outline-none" /></label>',
+    '          </div>',
+    '          <div className="mt-4 flex flex-wrap gap-2">',
+    '            <button type="button" onClick={() => void giveTemplate()} disabled={disabled || !selectedTemplate} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40">{pending === \'give-template\' ? <LoaderCircle size={14} className="animate-spin" /> : <Upload size={14} />}发放模板</button>',
+])
 
 output.parent.mkdir(parents=True, exist_ok=True)
 output.write_text("\n".join(lines) + "\n", encoding="utf-8")

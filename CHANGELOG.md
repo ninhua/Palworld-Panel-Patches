@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.12.34-hotfix7
+
+### Fixed
+
+- 修复 `0038` 的 `PalWorkspace.tsx` 第四个 hunk 在 `const directGrant = async () => {` 后错误要求空白行；官方 `v1.3.0` 下一行实际为 `const level = Number(palLevel);`，因此累计迁移稳定失败于旧行 75 附近。
+- 直接重建同一 `0038` 的真实 hunk 位置：`1`、`30`、`71`、`77`、`270`；没有新增补丁编号，补丁链仍为 `0001`–`0038`。
+- 修复回归夹具的根本缺陷：旧测试从待验证补丁的 old-side context 反向生成 preimage，导致错误空行被原样复制并产生假阳性。新夹具独立声明官方 blob `b36deecc0ca8a0c0344ae244b3f49b6c8ecf1a44` 的精确相邻行，并使用官方 423 行布局。
+
+### Validation
+
+- 在独立官方 preimage 夹具上复现 hotfix6 的同一 `PalWorkspace.tsx:75` 失败，修正后 `git apply --check --verbose` 通过全部五个 hunk。
+- 明确验证 `directGrant` 开头后的下一行是 `const level = Number(palLevel);`，不允许测试自行插入空白行。
+- 新玩家判定、人工标记、补发/完整重发、事件时间线和仅扫描 `index`/`索引` JSON 的功能仍全部合并在 `0038`。
+
 ## v0.12.34-hotfix6
 
 ### Fixed
