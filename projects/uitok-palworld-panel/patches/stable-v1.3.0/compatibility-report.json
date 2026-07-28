@@ -1,8 +1,8 @@
 {
   "schema_version": 2,
   "target_version": "v1.3.0",
-  "generated_at": "2026-07-27T17:42:32Z",
-  "state": "released",
+  "generated_at": "2026-07-28T15:06:37Z",
+  "state": "releasable",
   "required_features": [
     "api-catalog",
     "base-custom-names",
@@ -1050,13 +1050,41 @@
       "log": "reports/0037-fix-starter-gift-paldefender-status-resolution.patch.log",
       "validated_at_checkpoint": "0037-fix-starter-gift-paldefender-status-resolution.patch",
       "included_in_merged": true
+    },
+    {
+      "order": 38,
+      "file": "0038-add-starter-gift-debug-console-and-rich-template-indexes.patch",
+      "sha256": "d9f4f3551b1f98ce6b7719f9be93834a0edd3435b03bb04c66077319170e035a",
+      "feature": "new-player-starter-gift",
+      "required": true,
+      "depends_on": [
+        "0032-read-starter-gift-template-indexes.patch",
+        "0037-fix-starter-gift-paldefender-status-resolution.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/starter_gift.go",
+        "backend/internal/api/starter_gift_template_test.go",
+        "backend/internal/startergift/service.go",
+        "backend/internal/startergift/service_test.go",
+        "frontend/src/api/starterGift.ts",
+        "frontend/src/components/gm/PalWorkspace.tsx",
+        "frontend/src/pages/StarterGift.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0038-add-starter-gift-debug-console-and-rich-template-indexes.patch.log",
+      "validated_at_checkpoint": "0038-add-starter-gift-debug-console-and-rich-template-indexes.patch",
+      "included_in_merged": true
     }
   ],
   "adaptations": [
     {
       "name": "retarget-stable-source",
       "status": "applied",
-      "details": "Retargeted patch metadata to v1.3.0 / 0.8.17"
+      "details": "Retargeted patch metadata to v1.3.0 / 0.8.18"
     },
     {
       "name": "frontend-axios-test-fixture-adapter",
@@ -1065,12 +1093,12 @@
     }
   ],
   "summary": {
-    "pending": 0,
-    "adapted": 1,
-    "compatible": 36,
+    "compatible": 37,
     "superseded": 0,
     "blocked": 0,
-    "incompatible": 0
+    "incompatible": 0,
+    "pending": 0,
+    "adapted": 1
   },
   "excluded_features": [],
   "effective_features": [
@@ -1094,8 +1122,8 @@
     "unattended-inventory-delta"
   ],
   "merged_patch": {
-    "file": "merged/stable-v1.3.0-patch-0.8.17.patch",
-    "sha256": "5a7a45a43b306260c514ff2fc6b224aa1f86ad1909106cd5a738c92960a0d71a",
+    "file": "merged/stable-v1.3.0-patch-0.8.18.patch",
+    "sha256": "4a20aa3cc1bc0d559e39a67eba22b2708b36c75285e4616a0addd578e33b1701",
     "base_commit": "3c8d698abf1d9c4e271e3e62dcc736960f27e8eb"
   },
   "verified": true,

@@ -12,10 +12,10 @@ $ git diff --check
 [exit=0]
 $ go test -run ^$ ./...
 ok  	palpanel/cmd/openapi-types	(cached) [no tests to run]
-ok  	palpanel/cmd/palpanel	0.033s [no tests to run]
+ok  	palpanel/cmd/palpanel	0.036s [no tests to run]
 ok  	palpanel/cmd/palpanel-launcher	(cached) [no tests to run]
 ok  	palpanel/internal/aitranslation	(cached) [no tests to run]
-ok  	palpanel/internal/api	0.035s [no tests to run]
+ok  	palpanel/internal/api	0.046s [no tests to run]
 ok  	palpanel/internal/appconfig	(cached) [no tests to run]
 ok  	palpanel/internal/astrbotclient	(cached) [no tests to run]
 ok  	palpanel/internal/auditdetail	(cached) [no tests to run]
@@ -50,5 +50,5 @@ $ npm run lint
 ::warning file=src/pages/Inventory.tsx,line=4,endLine=4,col=18,endColumn=23,title=eslint(no-unused-vars)::Identifier 'Boxes' is imported but never used.
 
 Found 1 warning and 0 errors.
-Finished in 28ms on 136 files with 103 rules using 4 threads.
+Finished in 34ms on 136 files with 103 rules using 4 threads.
 [exit=0]

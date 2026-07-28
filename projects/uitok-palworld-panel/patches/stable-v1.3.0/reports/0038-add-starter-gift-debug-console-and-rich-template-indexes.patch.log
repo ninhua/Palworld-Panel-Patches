@@ -1,4 +1,4 @@
-$ /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/apply-source-patch.sh /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track/source/0018-add-player-presence-history.patch
+$ /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/apply-source-patch.sh /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track/source/0038-add-starter-gift-debug-console-and-rich-template-indexes.patch
 [exit=0]
 $ git diff --check
 [exit=0]
@@ -12,12 +12,13 @@ $ git diff --check
 [exit=0]
 $ go test -run ^$ ./...
 ok  	palpanel/cmd/openapi-types	(cached) [no tests to run]
-ok  	palpanel/cmd/palpanel	(cached) [no tests to run]
+ok  	palpanel/cmd/palpanel	0.037s [no tests to run]
 ok  	palpanel/cmd/palpanel-launcher	(cached) [no tests to run]
 ok  	palpanel/internal/aitranslation	(cached) [no tests to run]
-ok  	palpanel/internal/api	0.039s [no tests to run]
+ok  	palpanel/internal/api	0.034s [no tests to run]
 ok  	palpanel/internal/appconfig	(cached) [no tests to run]
 ok  	palpanel/internal/astrbotclient	(cached) [no tests to run]
+ok  	palpanel/internal/auditdetail	(cached) [no tests to run]
 ok  	palpanel/internal/auth	(cached) [no tests to run]
 ok  	palpanel/internal/breeding	(cached) [no tests to run]
 ?   	palpanel/internal/buildinfo	[no test files]
@@ -34,11 +35,13 @@ ok  	palpanel/internal/palconfig	(cached) [no tests to run]
 ok  	palpanel/internal/paldefender	(cached) [no tests to run]
 ok  	palpanel/internal/pallocalize	(cached) [no tests to run]
 ok  	palpanel/internal/palrest	(cached) [no tests to run]
-ok  	palpanel/internal/playerpresence	0.005s [no tests to run]
+ok  	palpanel/internal/playerpresence	(cached) [no tests to run]
 ok  	palpanel/internal/saveindex	(cached) [no tests to run]
 ok  	palpanel/internal/scheduler	(cached) [no tests to run]
 ok  	palpanel/internal/server	(cached) [no tests to run]
+ok  	palpanel/internal/startergift	0.004s [no tests to run]
 ok  	palpanel/internal/steamcmd	(cached) [no tests to run]
+ok  	palpanel/internal/unattendedinventory	(cached) [no tests to run]
 ok  	palpanel/internal/webui	(cached) [no tests to run]
 [exit=0]
 $ npm run lint
@@ -47,5 +50,5 @@ $ npm run lint
 > oxlint
 
 Found 0 warnings and 0 errors.
-Finished in 33ms on 133 files with 103 rules using 4 threads.
+Finished in 33ms on 141 files with 103 rules using 4 threads.
 [exit=0]

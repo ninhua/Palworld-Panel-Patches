@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "project": "uitok-palworld-panel",
-  "patch_version": "0.8.17",
+  "patch_version": "0.8.18",
   "patch_type": "source-build",
   "upstream": {
     "repository": "uitok/palworld-panel",
@@ -43,5 +43,5 @@
     "pal-inventory-advanced-filters",
     "api-catalog"
   ],
-  "notes": "Self-contained v1.3.0 stable source track. Retains host-save migration, WorldID-scoped presence and starter gifts, unattended inventory positive-delta tracking, player summary regions, Pal inventory quality filters, a runtime API catalog, and PalDefender account resolution that does not misuse account Status as online presence."
+  "notes": "Self-contained v1.3.0 stable source track. Retains starter-gift decision debugging, manual rearm/reissue controls, rich Pal template indexes, and keyword-gated index loading that only parses JSON names containing index or 索引."
 }
