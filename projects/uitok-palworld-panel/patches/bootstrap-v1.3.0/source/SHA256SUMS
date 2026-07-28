@@ -35,4 +35,4 @@ dde2932c8271e2b342f838ec0552194c67ac7312c7eb29a53247c4cf8fbfba51  0029-fix-start
 4eca7b7a47fa27f14a45b902c7f095a8a03dcd8d0d6ebe5010af23ff26eee3e9  0035-fix-player-summary-optional-pal-id.patch
 e52073cf655f65ecda1efbf7153d601c7900b0a20ab930dc72192dab72f3fc0f  0036-add-runtime-api-catalog.patch
 4f5fc3f965036fd8c20745ae9f797b4f8b8ee9b5a834c71e0d68d7a46ba1cee4  0037-fix-starter-gift-paldefender-status-resolution.patch
-d9f4f3551b1f98ce6b7719f9be93834a0edd3435b03bb04c66077319170e035a  0038-add-starter-gift-debug-console-and-rich-template-indexes.patch
+3698d0292a1e81e7b9cd71a2b696d1cf1f9d136944732c129be6cf55259ec796  0038-add-starter-gift-debug-console-and-rich-template-indexes.patch

@@ -1,5 +1,5 @@
 diff --git a/backend/internal/api/starter_gift.go b/backend/internal/api/starter_gift.go
-index 0fd68fb..0ab9677 100644
+index 0fd68fbf79d50fd7614f4b15c12791a33c946cb4..0ab9677cc39bd5d08ee61dd93643225572ec6874 100644
 --- a/backend/internal/api/starter_gift.go
 +++ b/backend/internal/api/starter_gift.go
 @@ -1,6 +1,7 @@
@@ -316,7 +316,7 @@ index 0fd68fb..0ab9677 100644
  		response["template_error"] = templateErr.Error()
  	}
 diff --git a/backend/internal/api/starter_gift_template_test.go b/backend/internal/api/starter_gift_template_test.go
-index 6808651..4c2fce2 100644
+index 6808651aca1ed1368dc9104618a99408021c4cb7..4c2fce23ff826910e1fa677e4a5c7d8709580dbc 100644
 --- a/backend/internal/api/starter_gift_template_test.go
 +++ b/backend/internal/api/starter_gift_template_test.go
 @@ -53,14 +53,14 @@ func TestStarterGiftTemplateCatalogUsesChineseIndexAndMemberships(t *testing.T)
@@ -412,7 +412,7 @@ index 6808651..4c2fce2 100644
 +	}
 +}
 diff --git a/backend/internal/startergift/service.go b/backend/internal/startergift/service.go
-index 78d2119..38abc31 100644
+index 78d2119f99e831973743fe0c8b54069d851d2d06..38abc31f1885684d3bbf6f00889b4039aebce94e 100644
 --- a/backend/internal/startergift/service.go
 +++ b/backend/internal/startergift/service.go
 @@ -22,7 +22,8 @@ const (
@@ -1032,7 +1032,7 @@ index 78d2119..38abc31 100644
  
  func onlineAliasSet(players []playerpresence.OnlinePlayer) map[string]bool {
 diff --git a/backend/internal/startergift/service_test.go b/backend/internal/startergift/service_test.go
-index 26d38b0..9d72e18 100644
+index 26d38b01facdd17e405729ed9453523a943ecd7b..9d72e183db9774103511cd7baa593e68237934c3 100644
 --- a/backend/internal/startergift/service_test.go
 +++ b/backend/internal/startergift/service_test.go
 @@ -429,3 +429,142 @@ func TestNormalizeConfigRejectsUnsafeOrOversizedPlans(t *testing.T) {
@@ -1179,7 +1179,7 @@ index 26d38b0..9d72e18 100644
 +	}
 +}
 diff --git a/frontend/src/api/starterGift.ts b/frontend/src/api/starterGift.ts
-index 75fca3d..bb9e49a 100644
+index 75fca3dd56e3afbad6affac7f1527faed10d3875..bb9e49ab693126716026f17ed16b15fa07407ad4 100644
 --- a/frontend/src/api/starterGift.ts
 +++ b/frontend/src/api/starterGift.ts
 @@ -10,21 +10,55 @@ export interface StarterGiftConfig {
@@ -1421,8 +1421,114 @@ index 75fca3d..bb9e49a 100644
 +    () => apiClient.delete(`/security/paldefender/starter-gift/grants/${encodeURIComponent(id)}`), {}, { fallbackOnError: false },
    ),
  };
+diff --git a/frontend/src/components/gm/PalTemplateFilters.tsx b/frontend/src/components/gm/PalTemplateFilters.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..cbf5173250a585ae6a1b36f63ed7fced81d262ee
+--- /dev/null
++++ b/frontend/src/components/gm/PalTemplateFilters.tsx
+@@ -0,0 +1,100 @@
++import React, { useMemo } from 'react';
++import { RotateCcw } from 'lucide-react';
++import type { PalTemplateIndexInfo, PalTemplateInfo } from '../../api/starterGift';
++
++export interface PalTemplateFilterState {
++  index: string;
++  category: string;
++  overallGrade: string;
++  usageCategory: string;
++  classificationTag: string;
++  graduationUse: string;
++  status: string;
++}
++
++export const createEmptyPalTemplateFilters = (): PalTemplateFilterState => ({
++  index: 'all',
++  category: 'all',
++  overallGrade: 'all',
++  usageCategory: 'all',
++  classificationTag: 'all',
++  graduationUse: 'all',
++  status: 'all',
++});
++
++export const palTemplateFilterActiveCount = (filters: PalTemplateFilterState) =>
++  Object.values(filters).filter((value) => value !== 'all').length;
++
++export const matchesPalTemplateFilters = (template: PalTemplateInfo | undefined, filters: PalTemplateFilterState) => {
++  const category = template?.category?.trim() || '未分类';
++  if (filters.index !== 'all' && !template?.index_names.includes(filters.index)) return false;
++  if (filters.category !== 'all' && category !== filters.category) return false;
++  if (filters.overallGrade !== 'all' && template?.overall_grade !== filters.overallGrade) return false;
++  if (filters.usageCategory !== 'all' && template?.usage_category !== filters.usageCategory) return false;
++  if (filters.classificationTag !== 'all' && !template?.classification_tags.includes(filters.classificationTag)) return false;
++  if (filters.graduationUse !== 'all' && !template?.graduation_uses.includes(filters.graduationUse)) return false;
++  switch (filters.status) {
++    case 'graduation': return Boolean(template?.graduation_pal);
++    case 'current-graduation': return Boolean(template?.current_graduation_use);
++    case 'transitional': return Boolean(template?.transitional);
++    case 'ordinary': return Boolean(template && !template.graduation_pal && !template.transitional);
++    case 'unindexed': return !template || template.index_names.length === 0;
++    default: return true;
++  }
++};
++
++const uniqueSorted = (values: Array<string | undefined>) => Array.from(new Set(
++  values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)),
++)).sort((left, right) => left.localeCompare(right, 'zh-CN'));
++
++const SelectField: React.FC<{
++  label: string;
++  value: string;
++  onChange: (value: string) => void;
++  allLabel: string;
++  options: string[];
++}> = ({ label, value, onChange, allLabel, options }) => (
++  <label className="min-w-0 text-[10px] font-black text-slate-500">
++    <span className="mb-1 block truncate">{label}</span>
++    <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-[11px] font-semibold text-slate-700 focus:border-violet-400 focus:outline-none">
++      <option value="all">{allLabel}</option>
++      {options.map((option) => <option key={option} value={option}>{option}</option>)}
++    </select>
++  </label>
++);
++
++export const PalTemplateFilterBar: React.FC<{
++  templates: PalTemplateInfo[];
++  indexes: PalTemplateIndexInfo[];
++  value: PalTemplateFilterState;
++  onChange: (value: PalTemplateFilterState) => void;
++  className?: string;
++}> = ({ templates, indexes, value, onChange, className = '' }) => {
++  const options = useMemo(() => ({
++    categories: uniqueSorted(templates.map((template) => template.category?.trim() || '未分类')),
++    grades: uniqueSorted(templates.map((template) => template.overall_grade)),
++    usages: uniqueSorted(templates.map((template) => template.usage_category)),
++    tags: uniqueSorted(templates.flatMap((template) => template.classification_tags)),
++    graduationUses: uniqueSorted(templates.flatMap((template) => template.graduation_uses)),
++  }), [templates]);
++  const activeCount = palTemplateFilterActiveCount(value);
++  const update = (key: keyof PalTemplateFilterState, next: string) => onChange({ ...value, [key]: next });
++
++  return (
++    <section className={`rounded-2xl border border-violet-100 bg-violet-50/40 p-3 ${className}`} aria-label="帕鲁模板分类筛选">
++      <div className="flex flex-wrap items-center justify-between gap-2">
++        <div><strong className="text-xs font-black text-violet-900">索引分类筛选</strong><span className="ml-2 text-[10px] font-semibold text-violet-600">多项条件按“同时满足”组合</span></div>
++        <button type="button" disabled={activeCount === 0} onClick={() => onChange(createEmptyPalTemplateFilters())} className="inline-flex items-center gap-1.5 rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-[10px] font-black text-violet-700 disabled:opacity-40"><RotateCcw size={11} />重置{activeCount > 0 ? `（${activeCount}）` : ''}</button>
++      </div>
++      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
++        <label className="min-w-0 text-[10px] font-black text-slate-500"><span className="mb-1 block truncate">索引文件</span><select aria-label="索引文件" value={value.index} onChange={(event) => update('index', event.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-[11px] font-semibold text-slate-700 focus:border-violet-400 focus:outline-none"><option value="all">全部索引</option>{indexes.map((index) => <option key={index.name} value={index.name}>{index.label || index.name}（{index.count}）</option>)}</select></label>
++        <SelectField label="模板分类" value={value.category} onChange={(next) => update('category', next)} allLabel="全部分类" options={options.categories} />
++        <SelectField label="综合分级" value={value.overallGrade} onChange={(next) => update('overallGrade', next)} allLabel="全部分级" options={options.grades} />
++        <SelectField label="用途分类" value={value.usageCategory} onChange={(next) => update('usageCategory', next)} allLabel="全部用途" options={options.usages} />
++        <SelectField label="分类标签" value={value.classificationTag} onChange={(next) => update('classificationTag', next)} allLabel="全部标签" options={options.tags} />
++        <SelectField label="毕业用途" value={value.graduationUse} onChange={(next) => update('graduationUse', next)} allLabel="全部毕业用途" options={options.graduationUses} />
++        <label className="min-w-0 text-[10px] font-black text-slate-500"><span className="mb-1 block truncate">模板状态</span><select aria-label="模板状态" value={value.status} onChange={(event) => update('status', event.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-[11px] font-semibold text-slate-700 focus:border-violet-400 focus:outline-none"><option value="all">全部状态</option><option value="graduation">毕业帕鲁</option><option value="current-graduation">当前模板为毕业用途</option><option value="transitional">低阶与过渡</option><option value="ordinary">普通模板</option><option value="unindexed">未命中索引</option></select></label>
++      </div>
++    </section>
++  );
++};
 diff --git a/frontend/src/pages/StarterGift.tsx b/frontend/src/pages/StarterGift.tsx
-index 26022d7..13e6ea0 100644
+index 26022d77243b26b1f1d5367ecdf20ade8166cff5..d657aaf6bd06f814a74113e114e750031223fa15 100644
 --- a/frontend/src/pages/StarterGift.tsx
 +++ b/frontend/src/pages/StarterGift.tsx
 @@ -1,8 +1,8 @@
@@ -1437,7 +1543,7 @@ index 26022d7..13e6ea0 100644
  } from 'lucide-react';
  import { getErrorMessage } from '../api/client';
  import {
-@@ -10,6 +10,7 @@ import {
+@@ -10,9 +10,13 @@ import {
    type PalTemplateInfo,
    type StarterGiftCatalogItem,
    type StarterGiftConfig,
@@ -1445,7 +1551,13 @@ index 26022d7..13e6ea0 100644
    type StarterGiftSnapshot,
  } from '../api/starterGift';
  import { PalIcon } from '../components/gm/PalIcon';
-@@ -23,7 +24,7 @@ const emptyConfig: StarterGiftConfig = {
++import {
++  createEmptyPalTemplateFilters, matchesPalTemplateFilters, PalTemplateFilterBar, type PalTemplateFilterState,
++} from '../components/gm/PalTemplateFilters';
+ 
+ const emptyConfig: StarterGiftConfig = {
+   enabled: false,
+@@ -23,7 +27,7 @@ const emptyConfig: StarterGiftConfig = {
    batch_delay_ms: 500,
  };
  
@@ -1454,7 +1566,7 @@ index 26022d7..13e6ea0 100644
  type ItemCategory =
    | 'all'
    | 'sphere'
-@@ -93,7 +94,23 @@ const templateDisplayName = (template: PalTemplateInfo) =>
+@@ -93,7 +97,23 @@ const templateDisplayName = (template: PalTemplateInfo) =>
  const templateCategoryName = (template: PalTemplateInfo) => template.category?.trim() || '未分类';
  
  const templateSearchText = (template: PalTemplateInfo) =>
@@ -1479,9 +1591,13 @@ index 26022d7..13e6ea0 100644
  
  const ItemIcon: React.FC<{ item: StarterGiftCatalogItem; className?: string }> = ({ item, className = '' }) => {
    const source = item.icon ? `/assets/items/${encodeURIComponent(item.icon)}.webp` : '';
-@@ -126,22 +143,22 @@ export const StarterGift: React.FC = () => {
-   const [templateIndex, setTemplateIndex] = useState('all');
-   const [templateCategory, setTemplateCategory] = useState('all');
+@@ -123,25 +143,24 @@ export const StarterGift: React.FC = () => {
+   const [itemCategory, setItemCategory] = useState<ItemCategory>('all');
+   const [onlySelectedItems, setOnlySelectedItems] = useState(false);
+   const [templateSearch, setTemplateSearch] = useState('');
+-  const [templateIndex, setTemplateIndex] = useState('all');
+-  const [templateCategory, setTemplateCategory] = useState('all');
++  const [templateFilters, setTemplateFilters] = useState<PalTemplateFilterState>(() => createEmptyPalTemplateFilters());
    const [onlySelectedTemplates, setOnlySelectedTemplates] = useState(false);
 +  const [playerSearch, setPlayerSearch] = useState('');
 +  const [playerDecision, setPlayerDecision] = useState('all');
@@ -1509,15 +1625,31 @@ index 26022d7..13e6ea0 100644
      }
    };
  
-@@ -170,7 +187,7 @@ export const StarterGift: React.FC = () => {
+@@ -170,14 +189,12 @@ export const StarterGift: React.FC = () => {
    const templates = useMemo(() => (snapshot?.templates || []).filter((item) => item.name), [snapshot]);
    const templateIndexes = useMemo(() => snapshot?.template_indexes || [], [snapshot]);
    const templateIndexLabels = useMemo(() => new Map(templateIndexes.map((index) => [index.name, index.label || index.name])), [templateIndexes]);
 -  const templateCategories = useMemo(() => Array.from(new Set(templates.map(templateCategoryName))).sort((left, right) => left.localeCompare(right, 'zh-CN')), [templates]);
-+  const templateCategories = useMemo(() => Array.from(new Set<string>(templates.map(templateCategoryName))).sort((left, right) => left.localeCompare(right, 'zh-CN')), [templates]);
    const selectedTemplates = useMemo(() => new Set(config.pal_templates), [config.pal_templates]);
    const visibleTemplates = useMemo(() => {
      const query = templateSearch.trim().toLowerCase();
+     return templates
+       .filter((template) => {
+-        if (templateIndex !== 'all' && !template.index_names.includes(templateIndex)) return false;
+-        if (templateCategory !== 'all' && templateCategoryName(template) !== templateCategory) return false;
++        if (!matchesPalTemplateFilters(template, templateFilters)) return false;
+         if (onlySelectedTemplates && !selectedTemplates.has(template.name)) return false;
+         return !query || templateSearchText(template).includes(query);
+       })
+@@ -187,7 +204,7 @@ export const StarterGift: React.FC = () => {
+         const byPal = templateDisplayName(left).localeCompare(templateDisplayName(right), 'zh-CN');
+         return byPal || left.name.localeCompare(right.name, 'zh-CN');
+       });
+-  }, [templates, templateIndex, templateCategory, templateSearch, onlySelectedTemplates, selectedTemplates]);
++  }, [templates, templateFilters, templateSearch, onlySelectedTemplates, selectedTemplates]);
+ 
+   const grantCounts = useMemo(() => {
+     const grants = snapshot?.grants || [];
 @@ -200,6 +217,20 @@ export const StarterGift: React.FC = () => {
    }, [snapshot]);
    const selectedItemTotal = useMemo(() => config.items.reduce((sum, item) => sum + Math.max(0, Number(item.count) || 0), 0), [config.items]);
@@ -1627,20 +1759,53 @@ index 26022d7..13e6ea0 100644
          {activeTab === 'items' && <div className="mt-5 min-w-0">
            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
              <label className="relative block min-w-0 flex-1"><span className="sr-only">搜索物品</span><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} /><input className="pp-input pp-input--icon w-full" value={itemSearch} onChange={(event) => setItemSearch(event.target.value)} placeholder="搜索中文名称或 ItemID" /></label>
-@@ -402,6 +458,12 @@ export const StarterGift: React.FC = () => {
+@@ -365,17 +421,7 @@ export const StarterGift: React.FC = () => {
+         {activeTab === 'templates' && <div className="mt-5 min-w-0">
+           {snapshot?.template_error && <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800"><AlertTriangle className="mt-0.5 shrink-0" size={15} />模板读取失败：{snapshot.template_error}</div>}
+           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+-            <div className="grid min-w-0 flex-1 gap-2 md:grid-cols-[minmax(0,1fr)_13rem_11rem]">
+-              <label className="relative block min-w-0"><span className="sr-only">搜索模板</span><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} /><input className="pp-input pp-input--icon w-full" value={templateSearch} onChange={(event) => setTemplateSearch(event.target.value)} placeholder="搜索分类、中文名、英文名、PalID 或文件名" /></label>
+-              <select className="pp-input" aria-label="按模板索引筛选" value={templateIndex} onChange={(event) => setTemplateIndex(event.target.value)}>
+-                <option value="all">全部索引</option>
+-                {templateIndexes.map((index) => <option key={index.name} value={index.name}>{index.label}（{index.count}）</option>)}
+-              </select>
+-              <select className="pp-input" aria-label="按模板分类筛选" value={templateCategory} onChange={(event) => setTemplateCategory(event.target.value)}>
+-                <option value="all">全部分类</option>
+-                {templateCategories.map((category) => <option key={category} value={category}>{category}</option>)}
+-              </select>
+-            </div>
++            <label className="relative block min-w-0 flex-1"><span className="sr-only">搜索模板</span><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} /><input className="pp-input pp-input--icon w-full" value={templateSearch} onChange={(event) => setTemplateSearch(event.target.value)} placeholder="搜索分类、中文名、英文名、PalID、词条或文件名" /></label>
+             <div className="flex flex-wrap gap-2">
+               <button type="button" className={`pp-button ${onlySelectedTemplates ? 'accent' : ''}`} onClick={() => setOnlySelectedTemplates((value) => !value)}>{onlySelectedTemplates ? <CheckSquare size={14} /> : <Square size={14} />}只看已选</button>
+               <button type="button" className="pp-button" disabled={visibleTemplates.length === 0} onClick={() => setVisibleTemplatesSelected(true)}><CheckSquare size={14} />全选当前（{visibleTemplates.length}）</button>
+@@ -383,8 +429,9 @@ export const StarterGift: React.FC = () => {
+               <button type="button" className="pp-button" disabled={config.pal_templates.length === 0} onClick={() => setConfig({ ...config, pal_templates: [] })}><Trash2 size={14} />清空</button>
+             </div>
+           </div>
++          <PalTemplateFilterBar className="mt-3" templates={templates} indexes={templateIndexes} value={templateFilters} onChange={setTemplateFilters} />
+           <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500">
+-            {templateIndexes.length > 0 ? <><span>已加载 {templateIndexes.length} 个模板索引</span><span className="text-slate-300">·</span><span>名称与分类优先读取索引；PalID 始终读取模板 JSON</span></> : <span>未检测到索引文件，模板名称按文件名显示。</span>}
++            {templateIndexes.length > 0 ? <><span>已加载 {templateIndexes.length} 个模板索引</span><span className="text-slate-300">·</span><span>可按模板分类、综合分级、用途分类、分类标签、毕业用途与状态组合筛选</span></> : <span>未检测到索引文件，只有“未命中索引”状态与文本搜索可用。</span>}
+           </div>
+           <div className="mt-4 grid max-h-[42rem] gap-2 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50/50 p-2 md:grid-cols-2 2xl:grid-cols-3" role="listbox" aria-label="帕鲁模板" aria-multiselectable="true">
+             {visibleTemplates.map((template) => {
+@@ -402,6 +449,15 @@ export const StarterGift: React.FC = () => {
                      {template.index_names.length === 0 && <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">未命中索引</span>}
                      {template.level != null && template.level > 0 && <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">Lv.{template.level}</span>}
                      {template.nickname && <span className="inline-flex max-w-36 truncate rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">{template.nickname}</span>}
 +                    {template.overall_grade && <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">{template.overall_grade}</span>}
 +                    {template.usage_category && <span className="inline-flex max-w-44 truncate rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">{template.usage_category}</span>}
 +                    {template.classification_tags.slice(0, 2).map((tag) => <span key={tag} className="inline-flex max-w-44 truncate rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{tag}</span>)}
++                    {template.graduation_uses.slice(0, 2).map((use) => <span key={use} className="inline-flex rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-700">毕业:{use}</span>)}
 +                    {template.graduation_pal && <span className="inline-flex rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-bold text-orange-800">毕业帕鲁</span>}
++                    {template.current_graduation_use && <span className="inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">当前毕业用途</span>}
++                    {template.night_work_mode && <span className="inline-flex rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">夜间:{template.night_work_mode}</span>}
 +                    {template.transitional && <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">低阶/过渡</span>}
 +                    {template.passive_names.length > 0 && <span className="inline-flex max-w-52 truncate rounded-full bg-fuchsia-100 px-2 py-0.5 text-[10px] font-bold text-fuchsia-700" title={template.passive_names.join('、')}>{template.passive_names.join('、')}</span>}
                      {template.parse_error && <span className="inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700" title={template.parse_error}>模板解析失败</span>}
                    </span>
                  </span>
-@@ -412,14 +474,20 @@ export const StarterGift: React.FC = () => {
+@@ -412,14 +468,20 @@ export const StarterGift: React.FC = () => {
          </div>}
  
          {activeTab === 'grants' && <div className="mt-5 min-w-0">
@@ -1668,7 +1833,7 @@ index 26022d7..13e6ea0 100644
 diff --git a/frontend/src/components/gm/PalWorkspace.tsx b/frontend/src/components/gm/PalWorkspace.tsx
 --- a/frontend/src/components/gm/PalWorkspace.tsx
 +++ b/frontend/src/components/gm/PalWorkspace.tsx
-@@ -1,6 +1,7 @@
+@@ -1,9 +1,11 @@
 -import React, { useRef, useState } from 'react';
 +import React, { useMemo, useRef, useState } from 'react';
  import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -1677,14 +1842,18 @@ diff --git a/frontend/src/components/gm/PalWorkspace.tsx b/frontend/src/componen
 +import { starterGiftApi, type PalTemplateInfo } from '../../api/starterGift';
  import type { Pal, PalDefenderPalCatalogEntry, PalDefenderPalTemplate } from '../../types';
  import { PalIcon } from './PalIcon';
-@@ -30,4 +31,6 @@ import { PalIcon } from './PalIcon';
++import { createEmptyPalTemplateFilters, matchesPalTemplateFilters, PalTemplateFilterBar, type PalTemplateFilterState } from './PalTemplateFilters';
+ 
+ type ActionRunner = (key: string, action: () => Promise<unknown>, success: string) => Promise<boolean>;
+ 
+@@ -30,4 +32,6 @@ import { PalIcon } from './PalIcon';
    const [palCount, setPalCount] = useState('1');
    const [selectedTemplate, setSelectedTemplate] = useState('');
 +  const [templateSearch, setTemplateSearch] = useState('');
-+  const [templateIndex, setTemplateIndex] = useState('all');
++  const [templateFilters, setTemplateFilters] = useState<PalTemplateFilterState>(() => createEmptyPalTemplateFilters());
    const [templateCount, setTemplateCount] = useState('1');
    const [selectedExport, setSelectedExport] = useState('');
-@@ -71,4 +74,10 @@ import { PalIcon } from './PalIcon';
+@@ -71,4 +75,10 @@ import { PalIcon } from './PalIcon';
      enabled: available,
    });
 +  const indexedTemplateQuery = useQuery({
@@ -1695,7 +1864,7 @@ diff --git a/frontend/src/components/gm/PalWorkspace.tsx b/frontend/src/componen
 +  });
    const exportedQuery = useQuery({
      queryKey: ['paldefender-gm', 'exported-templates', identifier],
-@@ -77,4 +86,22 @@ import { PalIcon } from './PalIcon';
+@@ -77,4 +87,22 @@ import { PalIcon } from './PalIcon';
    });
  
 +  const indexedTemplateByName = useMemo(() => new Map(
@@ -1710,27 +1879,27 @@ diff --git a/frontend/src/components/gm/PalWorkspace.tsx b/frontend/src/componen
 +      const info = indexedTemplateByName.get(template.name.toLowerCase()) as PalTemplateInfo | undefined;
 +      return { template, info };
 +    }).filter(({ template, info }) => {
-+      if (templateIndex !== 'all' && !info?.index_names.includes(templateIndex)) return false;
-+      const text = `${template.name} ${info?.pal_id || ''} ${info?.pal_name || ''} ${info?.english_name || ''} ${info?.category || ''} ${info?.usage_category || ''} ${info?.overall_grade || ''} ${(info?.classification_tags ?? []).join(' ')}`.toLowerCase();
++      if (!matchesPalTemplateFilters(info, templateFilters)) return false;
++      const text = `${template.name} ${info?.pal_id || ''} ${info?.pal_name || ''} ${info?.english_name || ''} ${info?.category || ''} ${info?.usage_category || ''} ${info?.overall_grade || ''} ${(info?.classification_tags ?? []).join(' ')} ${(info?.graduation_uses ?? []).join(' ')} ${(info?.passive_names ?? []).join(' ')} ${info?.night_work_mode || ''}`.toLowerCase();
 +      return !needle || text.includes(needle);
 +    }).slice(0, 120);
-+  }, [indexedTemplateByName, templateIndex, templateSearch, templatesQuery.data]);
++  }, [indexedTemplateByName, templateFilters, templateSearch, templatesQuery.data]);
 +
    const directGrant = async () => {
      const level = Number(palLevel);
-@@ -270,4 +297,15 @@ import { PalIcon } from './PalIcon';
+@@ -270,4 +298,15 @@ import { PalIcon } from './PalIcon';
  			<label className="text-xs font-bold text-slate-600">发放数量<input aria-label="模板发放数量" type="number" min={1} max={20} value={templateCount} onChange={(event) => setTemplateCount(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-semibold text-slate-700 focus:border-violet-500 focus:outline-none" /></label>
            </div>
-+          <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_13rem]">
-+            <label className="relative block"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input aria-label="搜索已保存帕鲁模板" value={templateSearch} onChange={(event) => setTemplateSearch(event.target.value)} placeholder="搜索中文名、PalID、用途或分类" className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-xs font-semibold text-slate-700" /></label>
-+            <select aria-label="按帕鲁模板索引筛选" value={templateIndex} onChange={(event) => setTemplateIndex(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700"><option value="all">全部索引</option>{(indexedTemplateQuery.data?.template_indexes ?? []).map((index) => <option key={index.name} value={index.name}>{index.label}（{index.count}）</option>)}</select>
++          <div className="mt-3 space-y-3">
++            <label className="relative block"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input aria-label="搜索已保存帕鲁模板" value={templateSearch} onChange={(event) => setTemplateSearch(event.target.value)} placeholder="搜索中文名、PalID、词条、用途或分类" className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-xs font-semibold text-slate-700" /></label>
++            <PalTemplateFilterBar templates={indexedTemplateQuery.data?.templates ?? []} indexes={indexedTemplateQuery.data?.template_indexes ?? []} value={templateFilters} onChange={setTemplateFilters} />
 +          </div>
-+          <div className="mt-3 grid max-h-56 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
++          <div className="mt-3 grid max-h-72 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
 +            {visibleManagedTemplates.map(({ template, info }) => <button type="button" key={template.name} onClick={() => setSelectedTemplate(template.name)} aria-pressed={selectedTemplate === template.name} className={`flex min-w-0 items-center gap-2 rounded-xl border p-2 text-left ${selectedTemplate === template.name ? 'border-violet-300 bg-violet-50' : 'border-slate-100 bg-slate-50/70'}`}>
 +              <PalIcon characterID={info?.pal_id || ''} name={info?.pal_name || template.name} className="h-10 w-10 rounded-lg" />
-+              <span className="min-w-0 flex-1"><span className="block truncate text-[11px] font-bold text-slate-700">{info?.category ? `${info.category} · ` : ''}{info?.pal_name || template.name}</span><span className="mt-1 block truncate font-mono text-[9px] text-slate-400">{info?.pal_id || template.name}</span><span className="mt-1 flex flex-wrap gap-1">{info?.overall_grade && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-800">{info.overall_grade}</span>}{info?.usage_category && <span className="max-w-32 truncate rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">{info.usage_category}</span>}{info?.index_names.slice(0, 1).map((name) => <span key={name} className="max-w-32 truncate rounded-full bg-sky-100 px-1.5 py-0.5 text-[9px] font-bold text-sky-700">{templateIndexLabels.get(name) || name}</span>)}</span></span>
++              <span className="min-w-0 flex-1"><span className="block truncate text-[11px] font-bold text-slate-700">{info?.category ? `${info.category} · ` : ''}{info?.pal_name || template.name}</span><span className="mt-1 block truncate font-mono text-[9px] text-slate-400">{info?.pal_id || template.name}</span><span className="mt-1 flex flex-wrap gap-1">{info?.overall_grade && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-800">{info.overall_grade}</span>}{info?.usage_category && <span className="max-w-32 truncate rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">{info.usage_category}</span>}{info?.classification_tags.slice(0, 1).map((tag) => <span key={tag} className="max-w-32 truncate rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-600">{tag}</span>)}{info?.graduation_uses.slice(0, 1).map((use) => <span key={use} className="rounded-full bg-orange-100 px-1.5 py-0.5 text-[9px] font-bold text-orange-800">毕业:{use}</span>)}{info?.graduation_pal && <span className="rounded-full bg-orange-100 px-1.5 py-0.5 text-[9px] font-bold text-orange-800">毕业帕鲁</span>}{info?.transitional && <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[9px] font-bold text-slate-600">低阶/过渡</span>}{info?.index_names.slice(0, 1).map((name) => <span key={name} className="max-w-32 truncate rounded-full bg-sky-100 px-1.5 py-0.5 text-[9px] font-bold text-sky-700">{templateIndexLabels.get(name) || name}</span>)}</span></span>
 +            </button>)}
-+            {visibleManagedTemplates.length === 0 && <p className="col-span-full rounded-xl bg-slate-50 px-3 py-6 text-center text-[11px] font-semibold text-slate-400">没有匹配的模板；索引 JSON 与模板 JSON 应一起放在 Templates 目录。</p>}
++            {visibleManagedTemplates.length === 0 && <p className="col-span-full rounded-xl bg-slate-50 px-3 py-6 text-center text-[11px] font-semibold text-slate-400">没有匹配的模板；可重置分类筛选，或确认索引 JSON 与模板 JSON 位于 Templates 目录。</p>}
 +          </div>
            <div className="mt-4 flex flex-wrap gap-2">
              <button type="button" onClick={() => void giveTemplate()} disabled={disabled || !selectedTemplate} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40">{pending === 'give-template' ? <LoaderCircle size={14} className="animate-spin" /> : <Upload size={14} />}发放模板</button>

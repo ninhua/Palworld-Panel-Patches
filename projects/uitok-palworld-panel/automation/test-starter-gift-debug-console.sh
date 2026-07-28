@@ -25,6 +25,7 @@ expected = {
     "backend/internal/startergift/service.go",
     "backend/internal/startergift/service_test.go",
     "frontend/src/api/starterGift.ts",
+    "frontend/src/components/gm/PalTemplateFilters.tsx",
     "frontend/src/components/gm/PalWorkspace.tsx",
     "frontend/src/pages/StarterGift.tsx",
 }
@@ -36,6 +37,10 @@ required = [
     "玩家判定", "下次进入视为新玩家", "补发未完成", "完整重发", "发放进程与判定日志",
     "starterGiftTemplateIndexCandidate", '"用途分类"', '"综合分级"', '"分类标签"', '"毕业用途"', '"词条中文"',
     "template-index-catalog", "PalIcon characterID={info?.pal_id",
+    "PalTemplateFilterBar", "matchesPalTemplateFilters", "createEmptyPalTemplateFilters",
+    "索引文件", "模板分类", "模板状态", "current-graduation", "unindexed",
+    "filters.overallGrade", "filters.usageCategory", "filters.classificationTag", "filters.graduationUse",
+    "template?.graduation_pal", "template?.current_graduation_use", "template?.transitional",
     "TestManualNextLoginMarkCanBeRetestedWithoutDeletingPlayer", "TestGrantTimelineRecordsResolutionBatchesAndCompletion",
     "TestStarterGiftTemplateCatalogReadsRichKeywordNamedIndex",
     "TestStarterGiftTemplateCatalogIgnoresJSONWithoutIndexKeyword",
@@ -92,11 +97,11 @@ text = patch_path.read_text(encoding="utf-8")
 header = "diff --git a/frontend/src/components/gm/PalWorkspace.tsx b/frontend/src/components/gm/PalWorkspace.tsx"
 section = text[text.index(header):]
 expected_headers = [
-    "@@ -1,6 +1,7 @@",
-    "@@ -30,4 +31,6 @@ import { PalIcon } from './PalIcon';",
-    "@@ -71,4 +74,10 @@ import { PalIcon } from './PalIcon';",
-    "@@ -77,4 +86,22 @@ import { PalIcon } from './PalIcon';",
-    "@@ -270,4 +297,15 @@ import { PalIcon } from './PalIcon';",
+    "@@ -1,9 +1,11 @@",
+    "@@ -30,4 +32,6 @@ import { PalIcon } from './PalIcon';",
+    "@@ -71,4 +75,10 @@ import { PalIcon } from './PalIcon';",
+    "@@ -77,4 +87,22 @@ import { PalIcon } from './PalIcon';",
+    "@@ -270,4 +298,15 @@ import { PalIcon } from './PalIcon';",
 ]
 actual_headers = [line for line in section.splitlines() if line.startswith("@@ ")]
 if actual_headers != expected_headers:
@@ -105,7 +110,7 @@ if actual_headers != expected_headers:
         f"actual={actual_headers!r}\nexpected={expected_headers!r}"
     )
 
-# The official file has 423 lines. Only the exact old-side ranges touched by
+# The locked regression fixture has 423 positioned lines. Only the exact old-side ranges touched by
 # 0038 are material to this focused regression; all other lines are inert and
 # retain their official positions. These values are independent from the patch.
 lines = [f"// untouched official v1.3.0 line {number}" for number in range(1, 424)]
@@ -120,6 +125,9 @@ put(1, [
     "import { palDefenderGMApi } from '../../api/paldefenderGM';",
     "import type { Pal, PalDefenderPalCatalogEntry, PalDefenderPalTemplate } from '../../types';",
     "import { PalIcon } from './PalIcon';",
+    "",
+    "type ActionRunner = (key: string, action: () => Promise<unknown>, success: string) => Promise<boolean>;",
+    "",
 ])
 put(30, [
     "  const [palCount, setPalCount] = useState('1');",
@@ -155,6 +163,9 @@ git -C "${work}" apply --check --verbose --include=frontend/src/components/gm/Pa
 git -C "${work}" apply --include=frontend/src/components/gm/PalWorkspace.tsx "${patch}"
 grep -Fq 'template-index-catalog' "${work}/frontend/src/components/gm/PalWorkspace.tsx"
 grep -Fq 'PalIcon characterID={info?.pal_id' "${work}/frontend/src/components/gm/PalWorkspace.tsx"
+grep -Fq 'PalTemplateFilterBar' "${work}/frontend/src/components/gm/PalWorkspace.tsx"
+grep -Fq 'matchesPalTemplateFilters' "${work}/frontend/src/components/gm/PalWorkspace.tsx"
+grep -Fq '模板状态' "${work}/frontend/src/components/gm/PalTemplateFilters.tsx"
 
 # Compile and execute the patched starter-gift service with bounded package-contract stubs.
 fixture="${work}/compile"
