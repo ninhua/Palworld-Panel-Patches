@@ -1,71 +1,52 @@
-# Upgrade v0.12.34-hotfix4 → v0.12.34-hotfix5
+# Upgrade v0.12.34-hotfix5 → v0.12.34-hotfix6
 
-本次更新修复稳定补丁迁移失败，并把未发布的同功能修正合并回 `0038`。由于需要删除旧 `0039` 文件，不能只依赖 ZIP 覆盖；请使用更新包内的应用脚本。
+本次更新只修复未发布 `0038` 中 `PalWorkspace.tsx` 的 unified-diff 行布局，不新增 `0039` 或其他功能补丁。
 
 ## 根因
 
-失败位置：
+旧 hotfix5 虽然去除了 `filler` 文本本身，但 diff 仍由删除大量中间源码的拼接文件生成。因此五个 hunk header 使用了不连续的伪造行号：
 
 ```text
-frontend/src/components/gm/PalWorkspace.tsx:35
+1, 22, 57, 63, 83
 ```
 
-旧 `0038` 的该文件 section 是基于裁剪测试夹具生成的，hunk 中包含官方源码不存在的：
+官方 `uitok/palworld-panel v1.3.0` 文件中的真实起始行是：
 
 ```text
-// filler a
-// filler b
-// filler c
+1, 28, 69, 75, 270
 ```
 
-因此局部测试可以通过，但在官方 `uitok/palworld-panel v1.3.0` 累计工作区上无法应用。
+前几个 hunk 产生的 offset 会影响后续搜索，最终在真实查询区域失败。
 
-## 补丁合并
+## 修正
 
-最终补丁链只保留：
+- 直接替换 `0038-add-starter-gift-debug-console-and-rich-template-indexes.patch`，没有新增补丁编号。
+- `PalWorkspace.tsx` section 锁定以下 hunk：
 
 ```text
-0038-add-starter-gift-debug-console-and-rich-template-indexes.patch
+@@ -1,6 +1,7 @@
+@@ -28,4 +29,6 @@
+@@ -69,4 +72,10 @@
+@@ -75,4 +84,22 @@
+@@ -270,4 +297,15 @@
 ```
 
-以下补丁已删除，其功能已合并进 `0038`：
-
-```text
-0039-scan-only-index-keyword-json.patch
-```
-
-合并后的 `0038` 同时包含：
-
-- 新玩家判定可视化、人工 next-login 标记、补发和完整重发；
-- 发放阶段、百分比和事件时间线；
-- 丰富 Pal 模板索引与帕鲁图片；
-- 仅解析文件名包含 `index` 或 `索引` 的索引 JSON。
+- 回归测试使用官方 Git blob `b36deecc0ca8a0c0344ae244b3f49b6c8ecf1a44` 的 421 行布局，不再使用紧凑拼接夹具。
 
 ## 应用
 
-在当前仓库根目录执行：
+在当前 `v0.12.34-hotfix5` 仓库根目录直接覆盖：
 
 ```bash
-tmpdir="$(mktemp -d)"
-unzip -o Palworld-Panel-Patches-overlay-v0.12.34-hotfix4-to-v0.12.34-hotfix5.zip -d "${tmpdir}"
-bash "${tmpdir}/apply-overlay.sh" .
-rm -rf "${tmpdir}"
+unzip -o Palworld-Panel-Patches-overlay-v0.12.34-hotfix5-to-v0.12.34-hotfix6.zip
+bash common/scripts/validate-repository.sh
 ```
-
-应用脚本会先校验增量包，再删除旧 `0039`、覆盖变更文件，并核对目标版本与源码补丁 SHA-256。
 
 ## 版本
 
 ```text
-仓库版本：0.12.34-hotfix5
+仓库版本：0.12.34-hotfix6
 当前已发布 stable patch：0.8.17
 下一 stable patch：0.8.18
 预期 Release：uitok-stable-v1.3.0-p0.8.18
-```
-
-## 覆盖后验证
-
-```bash
-bash common/scripts/validate-release-metadata.sh
-bash common/scripts/validate-repository.sh
 ```

@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.12.34-hotfix6
+
+### Fixed
+
+- 修复合并后的 `0038` 仍使用不连续拼接文件生成 `PalWorkspace.tsx` hunk，导致 hunk header 分别落在伪造的第 22、57、63、83 行；稳定迁移在真实第 75 行附近应用查询区 hunk 时失败。
+- `0038` 不新增补丁编号，仅重建同一 `PalWorkspace.tsx` section 的锁定 `v1.3.0` 行布局：`1`、`28`、`69`、`75`、`270`。
+- 重写 starter-gift 调试回归：不再使用 `filler a/b/c` 紧凑夹具，而是按官方 Git blob `b36deecc0ca8a0c0344ae244b3f49b6c8ecf1a44` 的 421 行布局放置 old-side context，并精确锁定五个 hunk header。
+
+### Validation
+
+- 在精确行布局夹具上执行 `git apply --check --verbose`，五个 `PalWorkspace.tsx` hunk 均无 offset 应用。
+- 新玩家判定、补发/完整重发、发放事件时间线和仅扫描 `index`/`索引` JSON 的功能仍全部位于合并后的 `0038`。
+- 补丁链保持 `0001`–`0038`，下一稳定补丁候选保持 `0.8.18`。
+
 ## v0.12.34-hotfix5
 
 ### Fixed

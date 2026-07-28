@@ -78,73 +78,68 @@ git -C "${work}" apply --exclude=frontend/src/components/gm/PalWorkspace.tsx "${
 gofmt -w "${work}/backend/internal/startergift"/*.go "${work}/backend/internal/api/starter_gift"*.go
 git -C "${work}" diff --check
 
-# The upstream PalWorkspace is not part of the earlier starter-gift patch chain.
-# Use exact surrounding source contexts to verify that the visual index hunk is
-# independently applicable to the v1.3.0 component.
-mkdir -p "${work}/frontend/src/components/gm"
-cat >"${work}/frontend/src/components/gm/PalWorkspace.tsx" <<'TSX'
-import React, { useRef, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Download, ExternalLink, FileJson, LoaderCircle, RefreshCw, Save, Search, Send, Sparkles, Sword, Trash2, Upload, X } from 'lucide-react';
-import { palDefenderGMApi } from '../../api/paldefenderGM';
-import type { Pal, PalDefenderPalCatalogEntry, PalDefenderPalTemplate } from '../../types';
-import { PalIcon } from './PalIcon';
+# PalWorkspace must be tested with the exact v1.3.0 source line layout.
+# A compact fixture may keep only hunk context, but every context block must be
+# placed at its real upstream line number; otherwise inconsistent hunk offsets
+# can pass locally and fail in the cumulative migration workspace.
+python3 - "${patch}" "${work}/frontend/src/components/gm/PalWorkspace.tsx" <<'PYFIXTURE'
+from pathlib import Path
+import re, sys
 
-type ActionRunner = (key: string, action: () => Promise<unknown>, success: string) => Promise<boolean>;
+patch_path = Path(sys.argv[1])
+output = Path(sys.argv[2])
+text = patch_path.read_text(encoding="utf-8")
+header = "diff --git a/frontend/src/components/gm/PalWorkspace.tsx b/frontend/src/components/gm/PalWorkspace.tsx"
+section = text[text.index(header):]
+expected_headers = [
+    "@@ -1,6 +1,7 @@",
+    "@@ -28,4 +29,6 @@ import { PalIcon } from './PalIcon';",
+    "@@ -69,4 +72,10 @@ import { PalIcon } from './PalIcon';",
+    "@@ -75,4 +84,22 @@ import { PalIcon } from './PalIcon';",
+    "@@ -270,4 +297,15 @@ import { PalIcon } from './PalIcon';",
+]
+actual_headers = [line for line in section.splitlines() if line.startswith("@@ ")]
+if actual_headers != expected_headers:
+    raise SystemExit(
+        "PalWorkspace hunk layout is not the locked v1.3.0 layout:\n"
+        f"actual={actual_headers!r}\nexpected={expected_headers!r}"
+    )
 
-// filler a
-// filler a
-// filler a
-// filler a
-// filler a
-// filler a
+# Git blob b36deecc0ca8a0c0344ae244b3f49b6c8ecf1a44 has 421 lines.
+# Populate the exact old-side context at its real line numbers; unrelated lines
+# are inert placeholders because this test is specifically a unified-diff
+# position/context regression, not a TypeScript fixture.
+lines = [f"// untouched upstream v1.3.0 line {number}" for number in range(1, 422)]
+section_lines = section.splitlines()
+index = 0
+while index < len(section_lines):
+    match = re.match(r"@@ -(\d+),(\d+) \+(\d+),(\d+) @@", section_lines[index])
+    if not match:
+        index += 1
+        continue
+    old_start, old_count = map(int, match.group(1, 2))
+    index += 1
+    old_lines = []
+    while index < len(section_lines) and not section_lines[index].startswith(("@@ ", "diff --git ")):
+        line = section_lines[index]
+        if line.startswith((" ", "-")):
+            old_lines.append(line[1:])
+        index += 1
+    if len(old_lines) != old_count:
+        raise SystemExit(f"PalWorkspace hunk {old_start} old-line count mismatch")
+    for offset, value in enumerate(old_lines):
+        position = old_start - 1 + offset
+        current = lines[position]
+        if not current.startswith("// untouched upstream v1.3.0 line ") and current != value:
+            raise SystemExit(f"PalWorkspace hunk overlap mismatch at line {position + 1}")
+        lines[position] = value
 
-  const [palID, setPalID] = useState('');
-  const [palLevel, setPalLevel] = useState('1');
-  const [palCount, setPalCount] = useState('1');
-  const [selectedTemplate, setSelectedTemplate] = useState('');
-  const [templateCount, setTemplateCount] = useState('1');
-  const [selectedExport, setSelectedExport] = useState('');
-  const [editor, setEditor] = useState<TemplateEditor>(() => emptyTemplateEditor());
-  const [templateBase, setTemplateBase] = useState<PalDefenderPalTemplate | null>(null);
-
-// filler b
-// filler b
-// filler b
-// filler b
-// filler b
-// filler b
-
-  const templatesQuery = useQuery({
-    queryKey: ['paldefender-gm', 'templates'],
-    queryFn: palDefenderGMApi.templates,
-    enabled: available,
-  });
-  const exportedQuery = useQuery({
-    queryKey: ['paldefender-gm', 'exported-templates', identifier],
-    queryFn: () => palDefenderGMApi.exportedPalTemplates(identifier),
-    enabled: Boolean(identifier),
-  });
-
-  const directGrant = async () => {
-
-// filler c
-// filler c
-// filler c
-// filler c
-// filler c
-// filler c
-
-			<label className="text-xs font-bold text-slate-600">发放数量<input aria-label="模板发放数量" type="number" min={1} max={20} value={templateCount} onChange={(event) => setTemplateCount(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-semibold text-slate-700 focus:border-violet-500 focus:outline-none" /></label>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button type="button" onClick={() => void giveTemplate()} disabled={disabled || !selectedTemplate} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40">{pending === 'give-template' ? <LoaderCircle size={14} className="animate-spin" /> : <Upload size={14} />}发放模板</button>
-            <button type="button" onClick={() => void loadManagedTemplate()} disabled={!selectedTemplate} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-bold text-slate-600 disabled:opacity-40"><FileJson size={14} />编辑模板</button>
-            <button type="button" onClick={() => void exportPals()} disabled={!canWrite || busy || !identifier || !online} title={online ? '通过 PalDefender 导出玩家当前帕鲁' : 'PalDefender /exportpals 需要玩家在线并完成角色加载'} className="inline-flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs font-bold text-sky-700 disabled:opacity-40">{pending === 'export-pals' ? <LoaderCircle size={14} className="animate-spin" /> : <Download size={14} />}导出玩家帕鲁</button>
-TSX
+output.parent.mkdir(parents=True, exist_ok=True)
+output.write_text("\n".join(lines) + "\n", encoding="utf-8")
+PYFIXTURE
 git -C "${work}" add frontend/src/components/gm/PalWorkspace.tsx
-git -C "${work}" commit -qm pal-workspace-fixture
-git -C "${work}" apply --check --include=frontend/src/components/gm/PalWorkspace.tsx "${patch}"
+git -C "${work}" commit -qm pal-workspace-v1.3.0-layout-fixture
+git -C "${work}" apply --check --verbose --include=frontend/src/components/gm/PalWorkspace.tsx "${patch}"
 git -C "${work}" apply --include=frontend/src/components/gm/PalWorkspace.tsx "${patch}"
 grep -Fq 'template-index-catalog' "${work}/frontend/src/components/gm/PalWorkspace.tsx"
 grep -Fq 'PalIcon characterID={info?.pal_id' "${work}/frontend/src/components/gm/PalWorkspace.tsx"
