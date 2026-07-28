@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.12.34-hotfix4
+
+### Changed
+
+- 新增 `0039-scan-only-index-keyword-json.patch`，模板索引加载不再逐个解析 Templates 目录中的全部 JSON。
+- 仅当 `.json` 文件名包含英文 `index`（大小写不敏感）或中文 `索引` 时才作为索引候选读取。
+- 普通 `BATTLE__*.json`、`WORK__*.json`、`MOUNT__*.json` 模板只保留文件名枚举，不再执行索引 JSON 反序列化，降低数百模板场景的刷新开销。
+- 推荐索引文件名：`pal-template-index.json` 或 `帕鲁模板索引.json`。
+
+### Validation
+
+- 验证关键字索引可以读取丰富分类字段。
+- 验证内容结构正确但文件名不含 `index` / `索引` 的 JSON 不会被当作索引解析。
+- 下一稳定补丁候选保持 `0.8.18`。
+
 ## v0.12.34-hotfix3
 
 ### Added

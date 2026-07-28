@@ -1,34 +1,41 @@
-# Upgrade v0.12.34-hotfix2 → v0.12.34-hotfix3
+# Upgrade v0.12.34-hotfix3 → v0.12.34-hotfix4
 
-本次覆盖包新增新玩家礼包调试控制台和数据驱动的 Pal 模板索引展示。直接在仓库根目录覆盖即可，不会修改已发布的 `stable-v1.3.0` 历史工作区。
+本次覆盖包收紧 Pal 模板索引扫描策略，避免 Templates 目录中数百个普通模板 JSON 被逐个读取和反序列化。直接在仓库根目录覆盖即可。
 
 ## 新增补丁
 
 ```text
-projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source/0038-add-starter-gift-debug-console-and-rich-template-indexes.patch
+projects/uitok-palworld-panel/patches/bootstrap-v1.3.0/source/0039-scan-only-index-keyword-json.patch
 ```
 
-## 新玩家判定与调试
+## 索引文件命名
 
-- “玩家判定”页逐人显示 `seen / online / rearm / grant` 证据和判定原因。
-- 可标记“下次进入视为新玩家”；在线玩家需先离线，再进入时触发。
-- 已有失败或中断任务可“补发未完成”，已完成任务或需要重复验证时可“完整重发”。
-- 发放记录显示百分比、当前阶段、PalDefender 实际 UserId 和逐批事件日志。
-
-## Pal 模板索引
-
-索引 JSON 与模板 JSON 一起放入：
+索引 JSON 与模板 JSON 仍共同放在：
 
 ```text
 Pal/Binaries/Win64/PalDefender/Pals/Templates
 ```
 
-索引文件名可使用任意 ASCII 或中文名称，不需要包含 `index`、`索引` 等关键字。普通模板 JSON 会被自动忽略。支持用户提供格式中的 `模板` 数组及分类、用途、毕业标记、词条等字段。
+只有文件名包含以下任一关键字的 `.json` 会被读取为索引候选：
+
+```text
+index   # 大小写不敏感
+索引
+```
+
+推荐命名：
+
+```text
+pal-template-index.json
+帕鲁模板索引.json
+```
+
+普通模板，例如 `BATTLE__Anubis.json`、`WORK__Anubis.json` 和 `MOUNT__JetDragon.json`，不会被打开进行索引解析。目录文件名枚举仍会执行，用于列出模板，但其成本远低于读取并解析全部 JSON。
 
 ## 版本
 
 ```text
-仓库版本：0.12.34-hotfix3
+仓库版本：0.12.34-hotfix4
 当前已发布 stable patch：0.8.17
 下一 stable patch：0.8.18
 预期 Release：uitok-stable-v1.3.0-p0.8.18

@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.34-hotfix3`
+仓库版本：`v0.12.34-hotfix4`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -19,6 +19,9 @@ bootstrap 源轨道：patches/bootstrap-v1.3.0
 当前已发布稳定补丁：0.8.17
 下一稳定补丁候选：0.8.18 / 未发布前 verified=false
 ```
+
+> [!NOTE]
+> PalDefender 模板目录中的索引加载只解析文件名包含 `index` 或 `索引` 的 `.json`。推荐命名为 `pal-template-index.json` 或 `帕鲁模板索引.json`；普通模板 JSON 只用于模板本身，不参与索引解析。
 
 `bootstrap-v1.3.0` 是不可变的自包含发布源轨道，拥有自己的 `source/`、`build/`、manifest 和许可文件；所有补丁应用、测试和构建均以官方 `v1.3.0` tag 为基线。`candidate-v1.3.0` 仅用于保存迁移失败或无变更工作区，可以不存在、被覆盖或由 Draft PR 更新，不再作为下一次发布的输入。只有完整 stable Workflow 通过后，Release manifest 才会写入 `mode=exact`、`target_version=v1.3.0` 和 `verified=true`。
 
