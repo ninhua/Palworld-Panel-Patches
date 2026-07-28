@@ -412,7 +412,7 @@ index 6808651aca1ed1368dc9104618a99408021c4cb7..4c2fce23ff826910e1fa677e4a5c7d87
 +	}
 +}
 diff --git a/backend/internal/startergift/service.go b/backend/internal/startergift/service.go
-index 78d2119f99e831973743fe0c8b54069d851d2d06..38abc31f1885684d3bbf6f00889b4039aebce94e 100644
+index 78d2119f99e831973743fe0c8b54069d851d2d06..d3baab748a6da6cd0d72a96b458153bdd799e5f5 100644
 --- a/backend/internal/startergift/service.go
 +++ b/backend/internal/startergift/service.go
 @@ -22,7 +22,8 @@ const (
@@ -642,7 +642,7 @@ index 78d2119f99e831973743fe0c8b54069d851d2d06..38abc31f1885684d3bbf6f00889b4039
  }
  
  // BaselineKnownPlayers marks players already present in the server save index
-@@ -249,28 +378,69 @@ func SaveConfig(ctx context.Context, store *db.Store, scope playerpresence.Scope
+@@ -249,28 +378,75 @@ func SaveConfig(ctx context.Context, store *db.Store, scope playerpresence.Scope
  }
  
  func Retry(ctx context.Context, store *db.Store, scope playerpresence.Scope, playerID string) error {
@@ -714,6 +714,12 @@ index 78d2119f99e831973743fe0c8b54069d851d2d06..38abc31f1885684d3bbf6f00889b4039
 +		for _, alias := range aliases {
 +			state.Rearm[alias] = true
 +		}
++	case "cancel_next_login", "cancel_mark_new", "cancel_rearm":
++		if found {
++			aliases = uniqueStrings(append(aliases, grantAliases(grant)...))
++		}
++		markSeen(&state, aliases)
++		clearMarked(state.Rearm, aliases)
 +	default:
 +		return fmt.Errorf("unsupported starter gift action %q", action)
  	}
@@ -724,7 +730,7 @@ index 78d2119f99e831973743fe0c8b54069d851d2d06..38abc31f1885684d3bbf6f00889b4039
  	return saveState(ctx, store, scope, state)
  }
  
-@@ -331,7 +501,7 @@ func Observe(ctx context.Context, store *db.Store, scope playerpresence.Scope, n
+@@ -331,7 +507,7 @@ func Observe(ctx context.Context, store *db.Store, scope playerpresence.Scope, n
  			if config.Enabled {
  				key := canonicalPlayerKey(player)
  				if key != "" {
@@ -733,7 +739,7 @@ index 78d2119f99e831973743fe0c8b54069d851d2d06..38abc31f1885684d3bbf6f00889b4039
  				}
  			}
  			markSeen(&state, aliases)
-@@ -360,9 +530,15 @@ func Observe(ctx context.Context, store *db.Store, scope playerpresence.Scope, n
+@@ -360,9 +536,15 @@ func Observe(ctx context.Context, store *db.Store, scope playerpresence.Scope, n
  		markSeen(&state, aliases)
  
  		shouldGrant := false
@@ -749,7 +755,7 @@ index 78d2119f99e831973743fe0c8b54069d851d2d06..38abc31f1885684d3bbf6f00889b4039
  				clearMarked(state.Rearm, aliases)
  			}
  		} else if !wasSeen {
-@@ -379,7 +555,7 @@ func Observe(ctx context.Context, store *db.Store, scope playerpresence.Scope, n
+@@ -379,7 +561,7 @@ func Observe(ctx context.Context, store *db.Store, scope playerpresence.Scope, n
  		if existing := findGrantKey(state, aliases); existing != "" {
  			continue
  		}
@@ -758,7 +764,7 @@ index 78d2119f99e831973743fe0c8b54069d851d2d06..38abc31f1885684d3bbf6f00889b4039
  	}
  	state.Online = currentOnline
  	if err := saveState(ctx, store, scope, state); err != nil {
-@@ -464,7 +640,9 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
+@@ -464,7 +646,9 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
  		}
  		if grant.Status == "failed" && retryablePlayerReadinessError(grant.LastError) {
  			grant.Status = "pending"
@@ -768,7 +774,7 @@ index 78d2119f99e831973743fe0c8b54069d851d2d06..38abc31f1885684d3bbf6f00889b4039
  			state.Grants[key] = grant
  			if err := saveState(ctx, store, scope, state); err != nil {
  				stateMu.Unlock()
-@@ -474,7 +652,9 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
+@@ -474,7 +658,9 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
  		if !config.Enabled {
  			if grant.Status == "running" {
  				grant.Status = "pending"
@@ -778,7 +784,7 @@ index 78d2119f99e831973743fe0c8b54069d851d2d06..38abc31f1885684d3bbf6f00889b4039
  				state.Grants[key] = grant
  				_ = saveState(ctx, store, scope, state)
  			}
-@@ -487,6 +667,15 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
+@@ -487,6 +673,15 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
  		}
  		if playerID == "" {
  			aliases := grantAliases(grant)
@@ -794,7 +800,7 @@ index 78d2119f99e831973743fe0c8b54069d851d2d06..38abc31f1885684d3bbf6f00889b4039
  			stateMu.Unlock()
  			resolved, resolveErr := dispatcher.ResolvePlayer(ctx, aliases)
  			if resolveErr != nil {
-@@ -502,6 +691,27 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
+@@ -502,6 +697,27 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
  				_ = keepGrantPending(ctx, store, scope, key, err)
  				return err
  			}
@@ -822,7 +828,7 @@ index 78d2119f99e831973743fe0c8b54069d851d2d06..38abc31f1885684d3bbf6f00889b4039
  			continue
  		}
  		if !attemptStarted {
-@@ -510,7 +720,33 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
+@@ -510,7 +726,33 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
  		}
  		grant.Status = "running"
  		grant.LastError = ""
@@ -856,7 +862,7 @@ index 78d2119f99e831973743fe0c8b54069d851d2d06..38abc31f1885684d3bbf6f00889b4039
  		state.Grants[key] = grant
  		if err := saveState(ctx, store, scope, state); err != nil {
  			stateMu.Unlock()
-@@ -519,17 +755,15 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
+@@ -519,17 +761,15 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
  		stateMu.Unlock()
  
  		var sendErr error
@@ -880,7 +886,7 @@ index 78d2119f99e831973743fe0c8b54069d851d2d06..38abc31f1885684d3bbf6f00889b4039
  			}
  		}
  
-@@ -547,17 +781,28 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
+@@ -547,17 +787,28 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
  		current.NextItem = grant.NextItem
  		current.NextTemplate = grant.NextTemplate
  		current.Attempts = grant.Attempts
@@ -910,7 +916,7 @@ index 78d2119f99e831973743fe0c8b54069d851d2d06..38abc31f1885684d3bbf6f00889b4039
  		}
  		state.Grants[key] = current
  		saveErr := saveState(ctx, store, scope, state)
-@@ -588,8 +833,10 @@ func keepGrantPending(ctx context.Context, store *db.Store, scope playerpresence
+@@ -588,8 +839,10 @@ func keepGrantPending(ctx context.Context, store *db.Store, scope playerpresence
  		return nil
  	}
  	grant.Status = "pending"
@@ -921,7 +927,7 @@ index 78d2119f99e831973743fe0c8b54069d851d2d06..38abc31f1885684d3bbf6f00889b4039
  	state.Grants[key] = grant
  	return saveState(ctx, store, scope, state)
  }
-@@ -760,6 +1007,27 @@ func loadStateKey(ctx context.Context, store *db.Store, key, scopeID string) (St
+@@ -760,6 +1013,27 @@ func loadStateKey(ctx context.Context, store *db.Store, key, scopeID string) (St
  	if state.Grants == nil {
  		state.Grants = map[string]grantRecord{}
  	}
@@ -949,7 +955,7 @@ index 78d2119f99e831973743fe0c8b54069d851d2d06..38abc31f1885684d3bbf6f00889b4039
  	state.Version = Version
  	state.ScopeID = scopeID
  	return state, true, nil
-@@ -776,28 +1044,66 @@ func saveState(ctx context.Context, store *db.Store, scope playerpresence.Scope,
+@@ -776,28 +1050,66 @@ func saveState(ctx context.Context, store *db.Store, scope playerpresence.Scope,
  }
  
  func newGrant(player playerpresence.OnlinePlayer, config Config, nowText string) grantRecord {
@@ -1032,10 +1038,10 @@ index 78d2119f99e831973743fe0c8b54069d851d2d06..38abc31f1885684d3bbf6f00889b4039
  
  func onlineAliasSet(players []playerpresence.OnlinePlayer) map[string]bool {
 diff --git a/backend/internal/startergift/service_test.go b/backend/internal/startergift/service_test.go
-index 26d38b01facdd17e405729ed9453523a943ecd7b..9d72e183db9774103511cd7baa593e68237934c3 100644
+index 26d38b01facdd17e405729ed9453523a943ecd7b..fd94c3702ba9422297fbe358eb3375ded13e4891 100644
 --- a/backend/internal/startergift/service_test.go
 +++ b/backend/internal/startergift/service_test.go
-@@ -429,3 +429,142 @@ func TestNormalizeConfigRejectsUnsafeOrOversizedPlans(t *testing.T) {
+@@ -429,3 +429,179 @@ func TestNormalizeConfigRejectsUnsafeOrOversizedPlans(t *testing.T) {
  		t.Fatal("expected oversized item plan")
  	}
  }
@@ -1110,6 +1116,43 @@ index 26d38b01facdd17e405729ed9453523a943ecd7b..9d72e183db9774103511cd7baa593e68
 +	}
 +}
 +
++func TestManualNextLoginMarkCanBeCancelledBeforeReentry(t *testing.T) {
++	store := openTestStore(t)
++	scope := testScope("world-cancel-manual-next-login")
++	saveTestConfig(t, store, scope)
++	ctx := context.Background()
++	now := time.Date(2026, 7, 28, 1, 30, 0, 0, time.UTC)
++	player := playerpresence.OnlinePlayer{PlayerUID: "uid-cancel", SteamID: "350", Nickname: "Cancel"}
++	if err := BaselineKnownPlayers(ctx, store, scope, []playerpresence.OnlinePlayer{player}); err != nil {
++		t.Fatal(err)
++	}
++	if err := Observe(ctx, store, scope, now.Add(-15*time.Second), []playerpresence.OnlinePlayer{player}, nil); err != nil {
++		t.Fatal(err)
++	}
++	if err := ApplyAction(ctx, store, scope, player, "next_login"); err != nil {
++		t.Fatal(err)
++	}
++	if err := ApplyAction(ctx, store, scope, player, "cancel_next_login"); err != nil {
++		t.Fatal(err)
++	}
++	decisions, err := InspectPlayers(ctx, store, scope, []playerpresence.OnlinePlayer{player})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(decisions) != 1 || decisions[0].Rearmed || decisions[0].Decision != "known_existing" || decisions[0].IsNew {
++		t.Fatalf("cancelled decision=%#v", decisions)
++	}
++	if err := Observe(ctx, store, scope, now, nil, nil); err != nil {
++		t.Fatal(err)
++	}
++	if err := Observe(ctx, store, scope, now.Add(15*time.Second), []playerpresence.OnlinePlayer{player}, nil); err != nil {
++		t.Fatal(err)
++	}
++	if len(mustSnapshot(t, store, scope).Grants) != 0 {
++		t.Fatal("cancelled next-login mark must not create a grant after reentry")
++	}
++}
++
 +func TestSupplementPreservesProgressAndReissueResetsPlan(t *testing.T) {
 +	store := openTestStore(t)
 +	scope := testScope("world-actions")
@@ -1179,7 +1222,7 @@ index 26d38b01facdd17e405729ed9453523a943ecd7b..9d72e183db9774103511cd7baa593e68
 +	}
 +}
 diff --git a/frontend/src/api/starterGift.ts b/frontend/src/api/starterGift.ts
-index 75fca3dd56e3afbad6affac7f1527faed10d3875..bb9e49ab693126716026f17ed16b15fa07407ad4 100644
+index 75fca3dd56e3afbad6affac7f1527faed10d3875..bc31ca19abf8b18a7a2b2e87156f98b3615e567b 100644
 --- a/frontend/src/api/starterGift.ts
 +++ b/frontend/src/api/starterGift.ts
 @@ -10,21 +10,55 @@ export interface StarterGiftConfig {
@@ -1269,7 +1312,7 @@ index 75fca3dd56e3afbad6affac7f1527faed10d3875..bb9e49ab693126716026f17ed16b15fa
 +  save_index_state?: string;
  }
  
-+export type StarterGiftPlayerAction = 'retry' | 'supplement' | 'reissue' | 'next_login';
++export type StarterGiftPlayerAction = 'retry' | 'supplement' | 'reissue' | 'next_login' | 'cancel_next_login';
 +
  const emptyConfig: StarterGiftConfig = {
    enabled: false,
@@ -1528,7 +1571,7 @@ index 0000000000000000000000000000000000000000..cbf5173250a585ae6a1b36f63ed7fced
 +  );
 +};
 diff --git a/frontend/src/pages/StarterGift.tsx b/frontend/src/pages/StarterGift.tsx
-index 26022d77243b26b1f1d5367ecdf20ade8166cff5..d657aaf6bd06f814a74113e114e750031223fa15 100644
+index 26022d77243b26b1f1d5367ecdf20ade8166cff5..ba3299948f0d11bb087ea5e016fc96e1c208fe4d 100644
 --- a/frontend/src/pages/StarterGift.tsx
 +++ b/frontend/src/pages/StarterGift.tsx
 @@ -1,8 +1,8 @@
@@ -1671,7 +1714,7 @@ index 26022d77243b26b1f1d5367ecdf20ade8166cff5..d657aaf6bd06f814a74113e114e75003
  
    const toggleItem = (catalogItem: StarterGiftCatalogItem) => {
      setConfig((current) => current.items.some((item) => item.item_id === catalogItem.id)
-@@ -252,19 +283,24 @@ export const StarterGift: React.FC = () => {
+@@ -252,19 +283,26 @@ export const StarterGift: React.FC = () => {
      }
    };
  
@@ -1682,10 +1725,12 @@ index 26022d77243b26b1f1d5367ecdf20ade8166cff5..d657aaf6bd06f814a74113e114e75003
 +    const messages: Record<StarterGiftPlayerAction, string> = {
 +      retry: '已重新排队，将从未完成批次继续。', supplement: '已排队补发未完成内容，不会重复已成功批次。',
 +      reissue: '已创建完整重发任务，将从第一批重新发放。', next_login: '已标记为新玩家；当前在线时需先离线，再次进入后自动发放。',
++      cancel_next_login: '已取消“下次进入重新发放”标记；后续上线不会因此创建新任务。',
 +    };
 +    const confirms: Partial<Record<StarterGiftPlayerAction, string>> = {
 +      reissue: '完整重发会从第一批重新发放，可能产生重复物品或帕鲁。确认继续？',
 +      next_login: '将清除该玩家现有礼包任务并标记为“下次进入视为新玩家”。确认继续？',
++      cancel_next_login: '确认取消该玩家的“下次进入重新发放”标记？',
 +    };
 +    if (confirms[action] && !window.confirm(confirms[action])) return;
 +    setBusy(true); setNotice('');
@@ -1707,7 +1752,7 @@ index 26022d77243b26b1f1d5367ecdf20ade8166cff5..d657aaf6bd06f814a74113e114e75003
    };
  
    const forget = async (playerID: string) => {
-@@ -284,6 +320,7 @@ export const StarterGift: React.FC = () => {
+@@ -284,6 +322,7 @@ export const StarterGift: React.FC = () => {
    };
  
    const tabs: Array<{ id: GiftTab; label: string; count: number; icon: React.ReactNode }> = [
@@ -1715,7 +1760,7 @@ index 26022d77243b26b1f1d5367ecdf20ade8166cff5..d657aaf6bd06f814a74113e114e75003
      { id: 'items', label: '礼包物品', count: config.items.length, icon: <PackageCheck size={15} /> },
      { id: 'templates', label: '帕鲁模板', count: config.pal_templates.length, icon: <Sparkles size={15} /> },
      { id: 'grants', label: '发放记录', count: grantCounts.total, icon: <ClipboardList size={15} /> },
-@@ -297,7 +334,7 @@ export const StarterGift: React.FC = () => {
+@@ -297,7 +336,7 @@ export const StarterGift: React.FC = () => {
            <h1>新玩家礼包</h1>
            <p>为当前存档世界中首次进入的玩家配置开局物品与帕鲁模板。</p>
          </div>
@@ -1724,7 +1769,7 @@ index 26022d77243b26b1f1d5367ecdf20ade8166cff5..d657aaf6bd06f814a74113e114e75003
        </div>
  
        {notice && <div role={noticeKind === 'error' ? 'alert' : 'status'} className={`flex items-start gap-2 rounded-xl border px-4 py-3 text-xs font-semibold ${noticeKind === 'error' ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>{noticeKind === 'error' ? <AlertTriangle className="mt-0.5 shrink-0" size={15} /> : <CheckCircle2 className="mt-0.5 shrink-0" size={15} />}<span>{notice}</span></div>}
-@@ -306,7 +343,7 @@ export const StarterGift: React.FC = () => {
+@@ -306,7 +345,7 @@ export const StarterGift: React.FC = () => {
          <SummaryCard label="当前世界" value={snapshot?.scope.world_id || '尚未解析'} detail="配置和发放记录按 WorldID 隔离" icon={<ShieldCheck size={18} />} />
          <SummaryCard label="自动发放" value={config.enabled ? '已启用' : '已停用'} detail={dirty ? '有未保存修改' : '配置已同步'} icon={<Gift size={18} />} />
          <SummaryCard label="礼包内容" value={`${config.items.length} 种 / ${selectedItemTotal} 件`} detail={`${config.pal_templates.length} 个帕鲁模板`} icon={<PackageCheck size={18} />} />
@@ -1733,7 +1778,7 @@ index 26022d77243b26b1f1d5367ecdf20ade8166cff5..d657aaf6bd06f814a74113e114e75003
        </section>
  
        <section className="pp-card">
-@@ -327,6 +364,25 @@ export const StarterGift: React.FC = () => {
+@@ -327,6 +366,25 @@ export const StarterGift: React.FC = () => {
            {tabs.map((tab) => <button type="button" role="tab" aria-selected={activeTab === tab.id} key={tab.id} onClick={() => setActiveTab(tab.id)} className={`inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2.5 text-xs font-black ${activeTab === tab.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>{tab.icon}{tab.label}<span className={`rounded-full px-2 py-0.5 text-[10px] ${activeTab === tab.id ? 'bg-violet-100 text-violet-700' : 'bg-slate-200 text-slate-500'}`}>{tab.count}</span></button>)}
          </div>
  
@@ -1749,7 +1794,7 @@ index 26022d77243b26b1f1d5367ecdf20ade8166cff5..d657aaf6bd06f814a74113e114e75003
 +              <div className="flex flex-col gap-3 xl:flex-row xl:items-start">
 +                <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><strong className="truncate text-sm font-black text-slate-800">{player.nickname || player.player_id}</strong><span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-black ${player.online ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>{player.online ? <Wifi size={11} /> : <WifiOff size={11} />}{player.online ? '在线' : '离线'}</span><span className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${decisionClass(player.decision)}`}>{decisionLabel(player.decision)}</span>{player.rearmed && <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-black text-violet-700">rearm</span>}</div>
 +                <p className="mt-2 text-xs font-semibold leading-5 text-slate-700">{player.reason}</p><div className="mt-2 flex flex-wrap gap-1.5">{player.evidence.map((evidence) => <span key={evidence} className="rounded-lg bg-slate-100 px-2 py-1 font-mono text-[9px] text-slate-600">{evidence}</span>)}</div><p className="mt-2 truncate font-mono text-[10px] text-slate-400">PlayerID {player.player_id}{player.player_uid ? ` · UID ${player.player_uid}` : ''}{player.steam_id ? ` · Steam ${player.steam_id}` : ''}</p></div>
-+                <div className="flex shrink-0 flex-wrap gap-2 xl:max-w-sm xl:justify-end"><button type="button" className="pp-button" disabled={busy} onClick={() => void runPlayerAction(player.player_id, 'next_login')}><Flag size={14} />下次进入视为新玩家</button>{player.grant_status && player.grant_status !== 'success' && <button type="button" className="pp-button" disabled={busy} onClick={() => void runPlayerAction(player.player_id, 'supplement')}><PackageCheck size={14} />补发未完成</button>}<button type="button" className="pp-button" disabled={busy || !config.enabled} title={config.enabled ? '从头创建完整发放任务' : '请先启用并保存自动发放配置'} onClick={() => void runPlayerAction(player.player_id, 'reissue')}><PlayCircle size={14} />立即完整重发</button></div>
++                <div className="flex shrink-0 flex-wrap gap-2 xl:max-w-sm xl:justify-end">{player.rearmed ? <button type="button" className="pp-button" disabled={busy} onClick={() => void runPlayerAction(player.player_id, 'cancel_next_login')}><RotateCcw size={14} />取消下次进入重发</button> : <button type="button" className="pp-button" disabled={busy} onClick={() => void runPlayerAction(player.player_id, 'next_login')}><Flag size={14} />下次进入视为新玩家</button>}{player.grant_status && player.grant_status !== 'success' && <button type="button" className="pp-button" disabled={busy} onClick={() => void runPlayerAction(player.player_id, 'supplement')}><PackageCheck size={14} />补发未完成</button>}<button type="button" className="pp-button" disabled={busy || !config.enabled} title={config.enabled ? '从头创建完整发放任务' : '请先启用并保存自动发放配置'} onClick={() => void runPlayerAction(player.player_id, 'reissue')}><PlayCircle size={14} />立即完整重发</button></div>
 +              </div>
 +            </article>)}
 +            {visiblePlayers.length === 0 && <div className="flex min-h-56 flex-col items-center justify-center gap-2 p-8 text-center text-slate-400"><UserCheck size={30} /><strong className="text-sm text-slate-600">没有匹配玩家</strong><span className="text-xs">存档索引状态：{snapshot?.save_index_state || '未知'}</span></div>}
@@ -1759,7 +1804,7 @@ index 26022d77243b26b1f1d5367ecdf20ade8166cff5..d657aaf6bd06f814a74113e114e75003
          {activeTab === 'items' && <div className="mt-5 min-w-0">
            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
              <label className="relative block min-w-0 flex-1"><span className="sr-only">搜索物品</span><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} /><input className="pp-input pp-input--icon w-full" value={itemSearch} onChange={(event) => setItemSearch(event.target.value)} placeholder="搜索中文名称或 ItemID" /></label>
-@@ -365,17 +421,7 @@ export const StarterGift: React.FC = () => {
+@@ -365,17 +423,7 @@ export const StarterGift: React.FC = () => {
          {activeTab === 'templates' && <div className="mt-5 min-w-0">
            {snapshot?.template_error && <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800"><AlertTriangle className="mt-0.5 shrink-0" size={15} />模板读取失败：{snapshot.template_error}</div>}
            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
@@ -1778,7 +1823,7 @@ index 26022d77243b26b1f1d5367ecdf20ade8166cff5..d657aaf6bd06f814a74113e114e75003
              <div className="flex flex-wrap gap-2">
                <button type="button" className={`pp-button ${onlySelectedTemplates ? 'accent' : ''}`} onClick={() => setOnlySelectedTemplates((value) => !value)}>{onlySelectedTemplates ? <CheckSquare size={14} /> : <Square size={14} />}只看已选</button>
                <button type="button" className="pp-button" disabled={visibleTemplates.length === 0} onClick={() => setVisibleTemplatesSelected(true)}><CheckSquare size={14} />全选当前（{visibleTemplates.length}）</button>
-@@ -383,8 +429,9 @@ export const StarterGift: React.FC = () => {
+@@ -383,8 +431,9 @@ export const StarterGift: React.FC = () => {
                <button type="button" className="pp-button" disabled={config.pal_templates.length === 0} onClick={() => setConfig({ ...config, pal_templates: [] })}><Trash2 size={14} />清空</button>
              </div>
            </div>
@@ -1789,7 +1834,7 @@ index 26022d77243b26b1f1d5367ecdf20ade8166cff5..d657aaf6bd06f814a74113e114e75003
            </div>
            <div className="mt-4 grid max-h-[42rem] gap-2 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50/50 p-2 md:grid-cols-2 2xl:grid-cols-3" role="listbox" aria-label="帕鲁模板" aria-multiselectable="true">
              {visibleTemplates.map((template) => {
-@@ -402,6 +449,15 @@ export const StarterGift: React.FC = () => {
+@@ -402,6 +451,15 @@ export const StarterGift: React.FC = () => {
                      {template.index_names.length === 0 && <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">未命中索引</span>}
                      {template.level != null && template.level > 0 && <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">Lv.{template.level}</span>}
                      {template.nickname && <span className="inline-flex max-w-36 truncate rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">{template.nickname}</span>}
@@ -1805,7 +1850,7 @@ index 26022d77243b26b1f1d5367ecdf20ade8166cff5..d657aaf6bd06f814a74113e114e75003
                      {template.parse_error && <span className="inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700" title={template.parse_error}>模板解析失败</span>}
                    </span>
                  </span>
-@@ -412,14 +468,20 @@ export const StarterGift: React.FC = () => {
+@@ -412,14 +470,20 @@ export const StarterGift: React.FC = () => {
          </div>}
  
          {activeTab === 'grants' && <div className="mt-5 min-w-0">

@@ -1,6 +1,6 @@
 # Palworld Panel Patches
 
-仓库版本：`v0.12.34-hotfix8`
+仓库版本：`v0.12.34-hotfix9`
 
 用于维护 `uitok/palworld-panel` 的可重复源码补丁、构建测试和 Release 资产。
 一键部署脚本由独立流程维护，本仓库只提供明确的补丁接入契约。
@@ -24,6 +24,8 @@ bootstrap 源轨道：patches/bootstrap-v1.3.0
 > PalDefender 模板目录中的索引加载只解析文件名包含 `index` 或 `索引` 的 `.json`。推荐命名为 `pal-template-index.json` 或 `帕鲁模板索引.json`；普通模板 JSON 只用于模板本身，不参与索引解析。
 
 索引模板选择器支持组合筛选：索引文件、模板分类、综合分级、用途分类、分类标签、毕业用途和模板状态。新玩家礼包页与玩家中心的模板发放区共用同一套筛选逻辑。
+
+新玩家礼包的“下次进入视为新玩家”标记可以在玩家判定页直接取消；取消后保留已见玩家基线，后续离线再上线不会因该标记创建重发任务。
 
 `bootstrap-v1.3.0` 是不可变的自包含发布源轨道，拥有自己的 `source/`、`build/`、manifest 和许可文件；所有补丁应用、测试和构建均以官方 `v1.3.0` tag 为基线。`candidate-v1.3.0` 仅用于保存迁移失败或无变更工作区，可以不存在、被覆盖或由 Draft PR 更新，不再作为下一次发布的输入。只有完整 stable Workflow 通过后，Release manifest 才会写入 `mode=exact`、`target_version=v1.3.0` 和 `verified=true`。
 

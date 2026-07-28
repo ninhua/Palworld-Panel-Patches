@@ -32,16 +32,16 @@ expected = {
 if changed != expected:
     raise SystemExit(f"0038 changed-file allowlist mismatch: {sorted(changed)}")
 required = [
-    "type PlayerDecision struct", "InspectPlayers", "ApplyAction", 'case "next_login"', 'case "reissue"',
+    "type PlayerDecision struct", "InspectPlayers", "ApplyAction", 'case "next_login"', 'case "cancel_next_login"', 'case "reissue"',
     'json:"events,omitempty"', 'json:"progress_percent"', '"resolving_player"', '"waiting_player"',
-    "玩家判定", "下次进入视为新玩家", "补发未完成", "完整重发", "发放进程与判定日志",
+    "玩家判定", "下次进入视为新玩家", "取消下次进入重发", "补发未完成", "完整重发", "发放进程与判定日志",
     "starterGiftTemplateIndexCandidate", '"用途分类"', '"综合分级"', '"分类标签"', '"毕业用途"', '"词条中文"',
     "template-index-catalog", "PalIcon characterID={info?.pal_id",
     "PalTemplateFilterBar", "matchesPalTemplateFilters", "createEmptyPalTemplateFilters",
     "索引文件", "模板分类", "模板状态", "current-graduation", "unindexed",
     "filters.overallGrade", "filters.usageCategory", "filters.classificationTag", "filters.graduationUse",
     "template?.graduation_pal", "template?.current_graduation_use", "template?.transitional",
-    "TestManualNextLoginMarkCanBeRetestedWithoutDeletingPlayer", "TestGrantTimelineRecordsResolutionBatchesAndCompletion",
+    "TestManualNextLoginMarkCanBeRetestedWithoutDeletingPlayer", "TestManualNextLoginMarkCanBeCancelledBeforeReentry", "TestGrantTimelineRecordsResolutionBatchesAndCompletion",
     "TestStarterGiftTemplateCatalogReadsRichKeywordNamedIndex",
     "TestStarterGiftTemplateCatalogIgnoresJSONWithoutIndexKeyword",
     'strings.Contains(lower, "index")', 'strings.Contains(lower, "索引")',

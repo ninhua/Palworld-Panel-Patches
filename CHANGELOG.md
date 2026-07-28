@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.12.34-hotfix9
+
+### Added
+
+- 玩家判定页对已设置 `rearm` 的玩家显示“取消下次进入重发”，可以撤销“下次进入视为新玩家”标记。
+- 新增 `cancel_next_login` 管理动作；取消后保留玩家的已见基线，不删除现有礼包任务，也不会在下一次离线→上线时因该标记创建任务。
+
+### Maintenance
+
+- 功能继续合并进未发布的 `0038-add-starter-gift-debug-console-and-rich-template-indexes.patch`，没有新增补丁编号；补丁链保持 `0001`–`0038`。
+- 后端动作类型、前端动作联合类型、确认提示与玩家状态按钮保持同一契约。
+
+### Validation
+
+- 新增回归：玩家被标记为下次进入重发后执行取消，判定恢复为已知老玩家，随后完成一次离线→上线仍不会产生礼包任务。
+- `0038` 累计应用、Go 服务测试、独立 PalWorkspace preimage、索引解析、SHA-256 和仓库门禁通过。
+
 ## v0.12.34-hotfix8
 
 ### Added
