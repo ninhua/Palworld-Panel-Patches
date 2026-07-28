@@ -1,0 +1,1116 @@
+{
+  "schema_version": 2,
+  "target_version": "v1.3.0",
+  "generated_at": "2026-07-28T14:39:23Z",
+  "state": "blocked",
+  "required_features": [
+    "api-catalog",
+    "base-custom-names",
+    "global-inventory-browser",
+    "host-save-migrator",
+    "new-player-starter-gift",
+    "pal-inventory-advanced-filters",
+    "patch-info-api",
+    "player-presence-history",
+    "player-summary",
+    "unattended-inventory-delta"
+  ],
+  "preserved_features": [
+    "api-catalog",
+    "audit-log-response-display",
+    "base-custom-names",
+    "base-feed-box-summary",
+    "base-storage-browser",
+    "base-worker-browser",
+    "global-inventory-browser",
+    "guild-detail-browser",
+    "host-save-migrator",
+    "insecure-endpoint-support",
+    "new-player-starter-gift",
+    "pal-inventory-advanced-filters",
+    "panel-patch-hot-update",
+    "patch-info-api",
+    "player-notes",
+    "player-presence-history",
+    "player-summary",
+    "unattended-inventory-delta"
+  ],
+  "optional_features": [],
+  "patches": [
+    {
+      "order": 1,
+      "file": "0001-add-patch-info-api.patch",
+      "sha256": "b833181d2532c8b639bdff5731a8efea6d60de4a235e34ac0473b98cadbfca46",
+      "feature": "patch-info-api",
+      "required": true,
+      "depends_on": [],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/patch_info_test.go",
+        "backend/internal/api/router_contract_test.go",
+        "backend/internal/api/routes.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/generated/contracts.ts"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0001-add-patch-info-api.patch.log",
+      "validated_at_checkpoint": "0001-add-patch-info-api.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 2,
+      "file": "0002-add-base-custom-names.patch",
+      "sha256": "4b7386af40482bfaab3644a8293f1dd60cd8b7ad06493d894ad6c495ac1daf89",
+      "feature": "base-custom-names",
+      "required": true,
+      "depends_on": [
+        "0001-add-patch-info-api.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/base_custom_names.go",
+        "backend/internal/api/base_custom_names_test.go",
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/patch_info_test.go",
+        "backend/internal/api/routes.go",
+        "backend/internal/api/save_index.go",
+        "backend/internal/api/save_index_localization_test.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/bases.test.ts",
+        "frontend/src/api/bases.ts",
+        "frontend/src/api/generated/contracts.ts",
+        "frontend/src/pages/Bases.tsx",
+        "frontend/src/types/index.ts"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0002-add-base-custom-names.patch.log",
+      "validated_at_checkpoint": "0002-add-base-custom-names.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 3,
+      "file": "0003-add-base-storage-browser.patch",
+      "sha256": "8ca7db28caef22fd9aa623ab82735d50ccc6d69e8a4986719f791c78236cebbb",
+      "feature": "base-storage-browser",
+      "required": true,
+      "depends_on": [
+        "0001-add-patch-info-api.patch",
+        "0002-add-base-custom-names.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/patch_info_test.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/bases.test.ts",
+        "frontend/src/api/bases.ts",
+        "frontend/src/api/generated/contracts.ts",
+        "frontend/src/pages/Bases.tsx",
+        "frontend/src/types/index.ts"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0003-add-base-storage-browser.patch.log",
+      "validated_at_checkpoint": "0003-add-base-storage-browser.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 4,
+      "file": "0004-fix-base-storage-container-resolution.patch",
+      "sha256": "967c39a288084433664f22b7cf68c02cd3052c78d3a42be965d5ea57c47ef75f",
+      "feature": "base-storage-browser",
+      "required": true,
+      "depends_on": [
+        "0003-add-base-storage-browser.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/base_storage_test.go",
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/save_index.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/generated/contracts.ts"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0004-fix-base-storage-container-resolution.patch.log",
+      "validated_at_checkpoint": "0004-fix-base-storage-container-resolution.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 5,
+      "file": "0005-enhance-base-storage-display.patch",
+      "sha256": "10070b79885c8b0cf6c6aed7f2549703a5b923048702a3ff13ddb1dd5674cd64",
+      "feature": "base-storage-browser",
+      "required": true,
+      "depends_on": [
+        "0003-add-base-storage-browser.patch",
+        "0004-fix-base-storage-container-resolution.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/base_storage_test.go",
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/save_index.go",
+        "backend/internal/api/save_index_localization_test.go",
+        "backend/internal/pallocalize/localize.go",
+        "backend/internal/pallocalize/localize_test.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/bases.test.ts",
+        "frontend/src/api/bases.ts",
+        "frontend/src/api/generated/contracts.ts",
+        "frontend/src/pages/Bases.tsx",
+        "frontend/src/types/index.ts"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "adapted",
+      "reason": null,
+      "log": "reports/0005-enhance-base-storage-display.patch.log",
+      "validated_at_checkpoint": "0005-enhance-base-storage-display.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 6,
+      "file": "0006-add-player-notes.patch",
+      "sha256": "57dc1d07e0ea93eae5eb85e6d2c871f27f609e384565772b9cd0b8dd8c6038be",
+      "feature": "player-notes",
+      "required": true,
+      "depends_on": [
+        "0001-add-patch-info-api.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/patch_info_test.go",
+        "backend/internal/api/player_annotations.go",
+        "backend/internal/api/player_annotations_test.go",
+        "backend/internal/api/router_contract_test.go",
+        "backend/internal/api/routes.go",
+        "backend/internal/api/save_index.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/generated/contracts.ts",
+        "frontend/src/api/players.test.ts",
+        "frontend/src/api/players.ts",
+        "frontend/src/pages/Players.tsx",
+        "frontend/src/types/index.ts"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0006-add-player-notes.patch.log",
+      "validated_at_checkpoint": "0006-add-player-notes.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 7,
+      "file": "0007-add-guild-detail-browser.patch",
+      "sha256": "1bf00b8505586014f196211884b417d2c1b8a7f00fd5c3106e02e3ca59431d48",
+      "feature": "guild-detail-browser",
+      "required": true,
+      "depends_on": [
+        "0002-add-base-custom-names.patch",
+        "0006-add-player-notes.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/guild_detail.go",
+        "backend/internal/api/guild_detail_test.go",
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/patch_info_test.go",
+        "backend/internal/api/save_index.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/generated/contracts.ts",
+        "frontend/src/api/guilds.test.ts",
+        "frontend/src/api/guilds.ts",
+        "frontend/src/pages/Guilds.tsx",
+        "frontend/src/types/index.ts"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0007-add-guild-detail-browser.patch.log",
+      "validated_at_checkpoint": "0007-add-guild-detail-browser.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 8,
+      "file": "0008-add-base-worker-browser.patch",
+      "sha256": "651549e385b2e2d5d7b11a03103f320b6bbd07085c2898652cf8fa16b8f83732",
+      "feature": "base-worker-browser",
+      "required": true,
+      "depends_on": [
+        "0002-add-base-custom-names.patch"
+      ],
+      "validation_checkpoint": false,
+      "touched_files": [
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/patch_info_test.go",
+        "backend/internal/api/router_contract_test.go",
+        "backend/internal/api/routes.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/bases.test.ts",
+        "frontend/src/api/bases.ts",
+        "frontend/src/api/generated/contracts.ts",
+        "frontend/src/pages/Bases.tsx",
+        "frontend/src/types/index.ts"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0008-add-base-worker-browser.patch.log",
+      "validated_at_checkpoint": "0010-fix-missing-base-worker-handler.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 9,
+      "file": "0009-add-base-feed-box-summary.patch",
+      "sha256": "73660fb2c8024b066a77f5206e131fe16b0f15c54c008bfd730379240c97731e",
+      "feature": "base-feed-box-summary",
+      "required": true,
+      "depends_on": [
+        "0003-add-base-storage-browser.patch",
+        "0004-fix-base-storage-container-resolution.patch"
+      ],
+      "validation_checkpoint": false,
+      "touched_files": [
+        "backend/internal/api/base_feed_boxes.go",
+        "backend/internal/api/base_feed_boxes_test.go",
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/patch_info_test.go",
+        "backend/internal/api/router_contract_test.go",
+        "backend/internal/api/routes.go",
+        "backend/internal/api/save_index.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/bases.test.ts",
+        "frontend/src/api/bases.ts",
+        "frontend/src/api/generated/contracts.ts",
+        "frontend/src/pages/Bases.tsx",
+        "frontend/src/types/index.ts"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0009-add-base-feed-box-summary.patch.log",
+      "validated_at_checkpoint": "0010-fix-missing-base-worker-handler.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 10,
+      "file": "0010-fix-missing-base-worker-handler.patch",
+      "sha256": "a7249681d29fb2aebbde231f441a6c5d905a4419a41e75bef4be7fa3b15f0cbb",
+      "feature": "base-worker-browser",
+      "required": true,
+      "depends_on": [
+        "0008-add-base-worker-browser.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/base_workers.go",
+        "backend/internal/api/base_workers_test.go"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0010-fix-missing-base-worker-handler.patch.log",
+      "validated_at_checkpoint": "0010-fix-missing-base-worker-handler.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 11,
+      "file": "0011-allow-http-service-endpoints.patch",
+      "sha256": "1b8dde723c9488c7f8a3e29d0ba680c752dbdbc44c77533486c32d9c5349897d",
+      "feature": "insecure-endpoint-support",
+      "required": true,
+      "depends_on": [
+        "0001-add-patch-info-api.patch"
+      ],
+      "validation_checkpoint": false,
+      "touched_files": [
+        "README.md",
+        "astrbot_plugin_palpanel/_conf_schema.json",
+        "astrbot_plugin_palpanel/main.py",
+        "astrbot_plugin_palpanel/security.py",
+        "astrbot_plugin_palpanel/tests/test_security.py",
+        "backend/README.md",
+        "backend/internal/aitranslation/service.go",
+        "backend/internal/aitranslation/service_test.go",
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/patch_info_test.go",
+        "backend/internal/appconfig/config.go",
+        "backend/internal/appconfig/config_test.go",
+        "backend/internal/astrbotclient/client.go",
+        "backend/internal/astrbotclient/client_test.go",
+        "backend/internal/mods/downloader.go",
+        "backend/internal/mods/downloader_test.go",
+        "backend/internal/mods/importer.go",
+        "backend/internal/mods/importer_test.go",
+        "backend/internal/server/webdav.go",
+        "backend/internal/server/webdav_test.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/generated/contracts.ts",
+        "frontend/src/i18n/index.tsx",
+        "frontend/src/pages/Backups.tsx",
+        "frontend/src/pages/Mods.test.tsx",
+        "frontend/src/pages/Mods.tsx",
+        "frontend/src/pages/Settings.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0011-allow-http-service-endpoints.patch.log",
+      "validated_at_checkpoint": "0012-restore-ai-translation-net-import.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 12,
+      "file": "0012-restore-ai-translation-net-import.patch",
+      "sha256": "d6c74c5fbb0552bb974c50e663198d47b978ea7ae1d4c1b0ddc5cf99cec067f8",
+      "feature": "insecure-endpoint-support",
+      "required": true,
+      "depends_on": [
+        "0011-allow-http-service-endpoints.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/aitranslation/service.go"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0012-restore-ai-translation-net-import.patch.log",
+      "validated_at_checkpoint": "0012-restore-ai-translation-net-import.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 13,
+      "file": "0013-fix-player-annotation-online-resolution.patch",
+      "sha256": "ebc7c6c90ead24d2244f57667e2e4d4197e52b235b10f224f72c4c18435df98b",
+      "feature": "player-notes",
+      "required": true,
+      "depends_on": [
+        "0006-add-player-notes.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/player_annotations.go",
+        "backend/internal/api/player_annotations_test.go"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0013-fix-player-annotation-online-resolution.patch.log",
+      "validated_at_checkpoint": "0013-fix-player-annotation-online-resolution.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 14,
+      "file": "0014-add-panel-patch-hot-update.patch",
+      "sha256": "f84ea6c3ee9b3d914a5175ee0e7b58a3ab62a47c6fdd2a74d1635c5f75f91ec5",
+      "feature": "panel-patch-hot-update",
+      "required": true,
+      "depends_on": [
+        "0001-add-patch-info-api.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/patch_info_test.go",
+        "backend/internal/api/patch_update.go",
+        "backend/internal/api/routes.go",
+        "backend/internal/server/manager.go",
+        "backend/internal/server/patch_update.go",
+        "backend/internal/server/patch_update_exec_linux.go",
+        "backend/internal/server/patch_update_exec_other.go",
+        "backend/internal/server/patch_update_test.go",
+        "frontend/src/api/tasks.ts",
+        "frontend/src/pages/Setup.tsx",
+        "frontend/src/pages/TaskQueue.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0014-add-panel-patch-hot-update.patch.log",
+      "validated_at_checkpoint": "0014-add-panel-patch-hot-update.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 15,
+      "file": "0015-add-audit-log-response-display.patch",
+      "sha256": "d72099bc6ec2cc6618d303ba393382fad61b6442ecf5fa8ba16617a1fc3ef173",
+      "feature": "audit-log-response-display",
+      "required": true,
+      "depends_on": [
+        "0001-add-patch-info-api.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/patch_info_test.go",
+        "frontend/src/pages/AuditLogs.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0015-add-audit-log-response-display.patch.log",
+      "validated_at_checkpoint": "0015-add-audit-log-response-display.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 16,
+      "file": "0016-fix-panel-patch-update-openapi-contract.patch",
+      "sha256": "1db378b2faf472c059e6d29d84d8a5bcf74867560170175d5f4d59617b53fc1a",
+      "feature": "panel-patch-hot-update",
+      "required": true,
+      "depends_on": [
+        "0014-add-panel-patch-hot-update.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/router_contract_test.go",
+        "docs/openapi.yaml"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0016-fix-panel-patch-update-openapi-contract.patch.log",
+      "validated_at_checkpoint": "0016-fix-panel-patch-update-openapi-contract.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 17,
+      "file": "0017-add-audit-log-response-detail-dialog.patch",
+      "sha256": "47ba3d3219592157572c955169526cdab399451af0f7b0469946f2f7d551651f",
+      "feature": "audit-log-response-display",
+      "required": true,
+      "depends_on": [
+        "0015-add-audit-log-response-display.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "frontend/src/pages/AuditLogs.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0017-add-audit-log-response-detail-dialog.patch.log",
+      "validated_at_checkpoint": "0017-add-audit-log-response-detail-dialog.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 18,
+      "file": "0018-add-player-presence-history.patch",
+      "sha256": "fd9c5a54710785b6555f2fb2897aa3e958d5c18076fe2fe47cade1667ad1646a",
+      "feature": "player-presence-history",
+      "required": true,
+      "depends_on": [
+        "0001-add-patch-info-api.patch",
+        "0006-add-player-notes.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/patch_info_test.go",
+        "backend/internal/api/player_presence.go",
+        "backend/internal/api/player_presence_test.go",
+        "backend/internal/api/save_index.go",
+        "backend/internal/monitor/manager.go",
+        "backend/internal/monitor/player_presence.go",
+        "backend/internal/monitor/player_presence_test.go",
+        "backend/internal/playerpresence/state.go",
+        "backend/internal/playerpresence/state_test.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/players.test.ts",
+        "frontend/src/api/players.ts",
+        "frontend/src/pages/Players.tsx",
+        "frontend/src/types/index.ts"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0018-add-player-presence-history.patch.log",
+      "validated_at_checkpoint": "0018-add-player-presence-history.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 19,
+      "file": "0019-avoid-github-api-rate-limit.patch",
+      "sha256": "7f71a6128a1cff6f037cba766cabe8d893ed539da97d887057a7ea9c9bc59658",
+      "feature": "panel-patch-hot-update",
+      "required": true,
+      "depends_on": [
+        "0014-add-panel-patch-hot-update.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/server/patch_update.go",
+        "backend/internal/server/patch_update_test.go"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0019-avoid-github-api-rate-limit.patch.log",
+      "validated_at_checkpoint": "0019-avoid-github-api-rate-limit.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 20,
+      "file": "0020-fix-audit-response-dialog-portal.patch",
+      "sha256": "c250616d19bdb39cc39c67b5c9e5609720033e279d25374d8190bf658f14bad2",
+      "feature": "audit-log-response-display",
+      "required": true,
+      "depends_on": [
+        "0017-add-audit-log-response-detail-dialog.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "frontend/src/pages/AuditLogs.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0020-fix-audit-response-dialog-portal.patch.log",
+      "validated_at_checkpoint": "0020-fix-audit-response-dialog-portal.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 21,
+      "file": "0021-capture-audit-response-details.patch",
+      "sha256": "418e2ca31d7ab0a4257c099166649cf16c1e741d3688da5fd821bf66457c967f",
+      "feature": "audit-log-response-display",
+      "required": true,
+      "depends_on": [
+        "0020-fix-audit-response-dialog-portal.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/audit_response.go",
+        "backend/internal/api/audit_response_test.go",
+        "backend/internal/api/response.go",
+        "backend/internal/api/routes.go",
+        "backend/internal/auditdetail/detail.go",
+        "backend/internal/auditdetail/detail_test.go"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0021-capture-audit-response-details.patch.log",
+      "validated_at_checkpoint": "0021-capture-audit-response-details.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 22,
+      "file": "0022-add-host-save-migrator.patch",
+      "sha256": "aee8e8e084e1b8dd4920aa571981e1ce501f15fee618de41dc66679b839fe58f",
+      "feature": "host-save-migrator",
+      "required": true,
+      "depends_on": [
+        "0001-add-patch-info-api.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/host_save_migration.go",
+        "backend/internal/api/host_save_migration_test.go",
+        "backend/internal/api/patch_info.go",
+        "backend/internal/api/patch_info_test.go",
+        "backend/internal/api/routes.go",
+        "backend/internal/api/save_sources.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/saveSources.ts",
+        "frontend/src/pages/SaveSources.tsx",
+        "third_party/uesave/uesave/Cargo.toml",
+        "tools/palworld-uid-remap/Cargo.toml",
+        "tools/palworld-uid-remap/src/host.rs",
+        "tools/palworld-uid-remap/src/lib.rs",
+        "tools/palworld-uid-remap/src/main.rs"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0022-add-host-save-migrator.patch.log",
+      "validated_at_checkpoint": "0022-add-host-save-migrator.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 23,
+      "file": "0023-add-global-inventory-browser.patch",
+      "sha256": "2978a3d2a9c772c36039f2a7b70a2b61567623e52917b976e7e1fde4b1272e6c",
+      "feature": "global-inventory-browser",
+      "required": true,
+      "depends_on": [
+        "0001-add-patch-info-api.patch",
+        "0002-add-base-custom-names.patch",
+        "0005-enhance-base-storage-display.patch",
+        "0022-add-host-save-migrator.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/global_inventory.go",
+        "backend/internal/api/global_inventory_test.go",
+        "backend/internal/api/routes.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/inventory.test.ts",
+        "frontend/src/api/inventory.ts",
+        "frontend/src/i18n/index.tsx",
+        "frontend/src/pages/Inventory.tsx",
+        "frontend/src/routes.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0023-add-global-inventory-browser.patch.log",
+      "validated_at_checkpoint": "0023-add-global-inventory-browser.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 24,
+      "file": "0024-add-new-player-starter-gifts.patch",
+      "sha256": "ba2308aa003d6c97e4c4e453b7a05c3420a371b8bbdbd8b1a08a1f22ed64b085",
+      "feature": "new-player-starter-gift",
+      "required": true,
+      "depends_on": [
+        "0001-add-patch-info-api.patch",
+        "0018-add-player-presence-history.patch",
+        "0021-capture-audit-response-details.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/routes.go",
+        "backend/internal/api/starter_gift.go",
+        "backend/internal/monitor/player_presence.go",
+        "backend/internal/startergift/service.go",
+        "backend/internal/startergift/service_test.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/starterGift.ts",
+        "frontend/src/i18n/index.tsx",
+        "frontend/src/pages/StarterGift.tsx",
+        "frontend/src/routes.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0024-add-new-player-starter-gifts.patch.log",
+      "validated_at_checkpoint": "0024-add-new-player-starter-gifts.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 25,
+      "file": "0025-fix-starter-gift-ui-and-save-scope.patch",
+      "sha256": "047c20454e5018fd7c6df1042d4e552c0aa7155f6d0964619018511c9f2a51f0",
+      "feature": "new-player-starter-gift",
+      "required": true,
+      "depends_on": [
+        "0018-add-player-presence-history.patch",
+        "0024-add-new-player-starter-gifts.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/player_presence.go",
+        "backend/internal/api/player_presence_test.go",
+        "backend/internal/api/starter_gift.go",
+        "backend/internal/monitor/player_presence.go",
+        "backend/internal/monitor/player_presence_test.go",
+        "backend/internal/playerpresence/scope.go",
+        "backend/internal/playerpresence/scope_test.go",
+        "backend/internal/playerpresence/state.go",
+        "backend/internal/startergift/service.go",
+        "backend/internal/startergift/service_test.go",
+        "frontend/src/api/starterGift.ts",
+        "frontend/src/pages/PlayerCenter.tsx",
+        "frontend/src/pages/StarterGift.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0025-fix-starter-gift-ui-and-save-scope.patch.log",
+      "validated_at_checkpoint": "0025-fix-starter-gift-ui-and-save-scope.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 26,
+      "file": "0026-redesign-starter-gift-ui.patch",
+      "sha256": "a8fcd812cf136ff8c4b8584a0ec949a6563e9a7dcd3a0a50d53695b2736a9578",
+      "feature": "new-player-starter-gift",
+      "required": true,
+      "depends_on": [
+        "0025-fix-starter-gift-ui-and-save-scope.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "frontend/src/components/layout/Sidebar.tsx",
+        "frontend/src/pages/StarterGift.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0026-redesign-starter-gift-ui.patch.log",
+      "validated_at_checkpoint": "0026-redesign-starter-gift-ui.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 27,
+      "file": "0027-add-unattended-inventory-delta.patch",
+      "sha256": "3b9dfe5a4a6527156b7530dc65857afe9e39e31f4bdd97e61b1bb8491acd8075",
+      "feature": "unattended-inventory-delta",
+      "required": true,
+      "depends_on": [
+        "0018-add-player-presence-history.patch",
+        "0023-add-global-inventory-browser.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/global_inventory.go",
+        "backend/internal/api/unattended_inventory.go",
+        "backend/internal/monitor/player_presence.go",
+        "backend/internal/unattendedinventory/saveindex.go",
+        "backend/internal/unattendedinventory/saveindex_test.go",
+        "backend/internal/unattendedinventory/state.go",
+        "backend/internal/unattendedinventory/state_test.go",
+        "frontend/src/api/inventory.test.ts",
+        "frontend/src/api/inventory.ts",
+        "frontend/src/pages/Inventory.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0027-add-unattended-inventory-delta.patch.log",
+      "validated_at_checkpoint": "0027-add-unattended-inventory-delta.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 28,
+      "file": "0028-fix-global-inventory-sidebar-entry.patch",
+      "sha256": "e4547494989615ad50382fc54f40f06c860e9fe02e3fd87bfcd37d86b3d22a8f",
+      "feature": "global-inventory-browser",
+      "required": true,
+      "depends_on": [
+        "0023-add-global-inventory-browser.patch",
+        "0026-redesign-starter-gift-ui.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "frontend/src/components/layout/Sidebar.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0028-fix-global-inventory-sidebar-entry.patch.log",
+      "validated_at_checkpoint": "0028-fix-global-inventory-sidebar-entry.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 29,
+      "file": "0029-fix-starter-gift-selection-scroll.patch",
+      "sha256": "dde2932c8271e2b342f838ec0552194c67ac7312c7eb29a53247c4cf8fbfba51",
+      "feature": "new-player-starter-gift",
+      "required": true,
+      "depends_on": [
+        "0026-redesign-starter-gift-ui.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "frontend/src/pages/StarterGift.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0029-fix-starter-gift-selection-scroll.patch.log",
+      "validated_at_checkpoint": "0029-fix-starter-gift-selection-scroll.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 30,
+      "file": "0030-add-player-summary-and-landmarks.patch",
+      "sha256": "37d61dfae56639e2206b75e4fd4d299593d2a65f35c01e90e38f6db7ae3f52cd",
+      "feature": "player-summary",
+      "required": true,
+      "depends_on": [
+        "0018-add-player-presence-history.patch",
+        "0023-add-global-inventory-browser.patch",
+        "0024-add-new-player-starter-gifts.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/player_summary_feature.go",
+        "backend/internal/api/player_summary_feature_test.go",
+        "frontend/src/components/ui/SaveDataTabs.tsx",
+        "frontend/src/lib/playerRegion.test.ts",
+        "frontend/src/lib/playerRegion.ts",
+        "frontend/src/pages/PlayerSummary.tsx",
+        "frontend/src/routes.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0030-add-player-summary-and-landmarks.patch.log",
+      "validated_at_checkpoint": "0030-add-player-summary-and-landmarks.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 31,
+      "file": "0031-read-starter-gift-template-pal-id.patch",
+      "sha256": "71cff8cabaed9493b31fa8ed1957dc234d0c14b02bc3d6b33973bb72a00bead4",
+      "feature": "new-player-starter-gift",
+      "required": true,
+      "depends_on": [
+        "0026-redesign-starter-gift-ui.patch",
+        "0029-fix-starter-gift-selection-scroll.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/starter_gift.go",
+        "backend/internal/api/starter_gift_template_test.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/starterGift.ts",
+        "frontend/src/pages/StarterGift.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0031-read-starter-gift-template-pal-id.patch.log",
+      "validated_at_checkpoint": "0031-read-starter-gift-template-pal-id.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 32,
+      "file": "0032-read-starter-gift-template-indexes.patch",
+      "sha256": "43fcdfa066ed8d3741220babaca0b6676aeb679f6ddc29593bb574ea64a19232",
+      "feature": "new-player-starter-gift",
+      "required": true,
+      "depends_on": [
+        "0031-read-starter-gift-template-pal-id.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/starter_gift.go",
+        "backend/internal/api/starter_gift_template_test.go",
+        "docs/openapi.yaml",
+        "frontend/src/api/starterGift.ts",
+        "frontend/src/pages/StarterGift.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0032-read-starter-gift-template-indexes.patch.log",
+      "validated_at_checkpoint": "0032-read-starter-gift-template-indexes.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 33,
+      "file": "0033-fix-starter-gift-runtime-dispatch.patch",
+      "sha256": "80ff243eec2768d8ff9a1b5d51aaaf4332b103c3bf1858c909b55797a9aa0701",
+      "feature": "new-player-starter-gift",
+      "required": true,
+      "depends_on": [
+        "0025-fix-starter-gift-ui-and-save-scope.patch",
+        "0032-read-starter-gift-template-indexes.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/starter_gift.go",
+        "backend/internal/startergift/service.go",
+        "backend/internal/startergift/service_test.go"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0033-fix-starter-gift-runtime-dispatch.patch.log",
+      "validated_at_checkpoint": "0033-fix-starter-gift-runtime-dispatch.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 34,
+      "file": "0034-add-pal-inventory-advanced-filters.patch",
+      "sha256": "1cc402fbbf121e51aec79e9e8acfe609f50974660e949e59d4cf2724e2b5699f",
+      "feature": "pal-inventory-advanced-filters",
+      "required": true,
+      "depends_on": [],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/pal_inventory_filters_feature.go",
+        "backend/internal/api/pal_inventory_filters_test.go",
+        "backend/internal/api/save_index.go",
+        "frontend/src/api/pals.ts",
+        "frontend/src/pages/Pals.tsx",
+        "frontend/src/types/index.ts"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0034-add-pal-inventory-advanced-filters.patch.log",
+      "validated_at_checkpoint": "0034-add-pal-inventory-advanced-filters.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 35,
+      "file": "0035-fix-player-summary-optional-pal-id.patch",
+      "sha256": "4eca7b7a47fa27f14a45b902c7f095a8a03dcd8d0d6ebe5010af23ff26eee3e9",
+      "feature": "player-summary",
+      "required": true,
+      "depends_on": [
+        "0030-add-player-summary-and-landmarks.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "frontend/src/pages/PlayerSummary.tsx"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0035-fix-player-summary-optional-pal-id.patch.log",
+      "validated_at_checkpoint": "0035-fix-player-summary-optional-pal-id.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 36,
+      "file": "0036-add-runtime-api-catalog.patch",
+      "sha256": "e52073cf655f65ecda1efbf7153d601c7900b0a20ab930dc72192dab72f3fc0f",
+      "feature": "api-catalog",
+      "required": true,
+      "depends_on": [
+        "0001-add-patch-info-api.patch",
+        "0033-fix-starter-gift-runtime-dispatch.patch",
+        "0034-add-pal-inventory-advanced-filters.patch",
+        "0035-fix-player-summary-optional-pal-id.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/api_catalog.go",
+        "backend/internal/api/api_catalog_test.go",
+        "backend/internal/api/routes.go",
+        "docs/openapi.yaml"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0036-add-runtime-api-catalog.patch.log",
+      "validated_at_checkpoint": "0036-add-runtime-api-catalog.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 37,
+      "file": "0037-fix-starter-gift-paldefender-status-resolution.patch",
+      "sha256": "4f5fc3f965036fd8c20745ae9f797b4f8b8ee9b5a834c71e0d68d7a46ba1cee4",
+      "feature": "new-player-starter-gift",
+      "required": true,
+      "depends_on": [
+        "0033-fix-starter-gift-runtime-dispatch.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/startergift/service.go",
+        "backend/internal/startergift/service_test.go"
+      ],
+      "apply_status": "passed",
+      "compile_status": "passed",
+      "final_status": "compatible",
+      "reason": null,
+      "log": "reports/0037-fix-starter-gift-paldefender-status-resolution.patch.log",
+      "validated_at_checkpoint": "0037-fix-starter-gift-paldefender-status-resolution.patch",
+      "included_in_merged": true
+    },
+    {
+      "order": 38,
+      "file": "0038-add-starter-gift-debug-console-and-rich-template-indexes.patch",
+      "sha256": "61c8e21e593a17c6fda5717526cfa9c0b51b123d5b94612dab4ff1c86ea1aeab",
+      "feature": "new-player-starter-gift",
+      "required": true,
+      "depends_on": [
+        "0032-read-starter-gift-template-indexes.patch",
+        "0037-fix-starter-gift-paldefender-status-resolution.patch"
+      ],
+      "validation_checkpoint": true,
+      "touched_files": [
+        "backend/internal/api/starter_gift.go",
+        "backend/internal/api/starter_gift_template_test.go",
+        "backend/internal/startergift/service.go",
+        "backend/internal/startergift/service_test.go",
+        "frontend/src/api/starterGift.ts",
+        "frontend/src/components/gm/PalWorkspace.tsx",
+        "frontend/src/pages/StarterGift.tsx"
+      ],
+      "apply_status": "failed",
+      "compile_status": "not-run",
+      "final_status": "incompatible",
+      "reason": "命令失败（exit=1）：/home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/apply-source-patch.sh /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track/source/0038-add-starter-gift-debug-console-and-rich-template-indexes.patch\nerror: patch failed: frontend/src/components/gm/PalWorkspace.tsx:75\nerror: frontend/src/components/gm/PalWorkspace.tsx: patch does not apply\n错误：补丁无法直接应用，且未匹配任何已登记的精确重定位规则。\n",
+      "log": "reports/0038-add-starter-gift-debug-console-and-rich-template-indexes.patch.log",
+      "included_in_merged": false
+    }
+  ],
+  "adaptations": [],
+  "summary": {
+    "blocked": 0,
+    "incompatible": 1,
+    "pending": 0,
+    "adapted": 1,
+    "compatible": 36,
+    "superseded": 0
+  },
+  "excluded_features": [],
+  "effective_features": [
+    "api-catalog",
+    "audit-log-response-display",
+    "base-custom-names",
+    "base-feed-box-summary",
+    "base-storage-browser",
+    "base-worker-browser",
+    "global-inventory-browser",
+    "guild-detail-browser",
+    "host-save-migrator",
+    "insecure-endpoint-support",
+    "new-player-starter-gift",
+    "pal-inventory-advanced-filters",
+    "panel-patch-hot-update",
+    "patch-info-api",
+    "player-notes",
+    "player-presence-history",
+    "player-summary",
+    "unattended-inventory-delta"
+  ],
+  "blocked_reason": {
+    "patch": "0038-add-starter-gift-debug-console-and-rich-template-indexes.patch",
+    "reason": "命令失败（exit=1）：/home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/apply-source-patch.sh /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track/source/0038-add-starter-gift-debug-console-and-rich-template-indexes.patch\nerror: patch failed: frontend/src/components/gm/PalWorkspace.tsx:75\nerror: frontend/src/components/gm/PalWorkspace.tsx: patch does not apply\n错误：补丁无法直接应用，且未匹配任何已登记的精确重定位规则。\n"
+  }
+}

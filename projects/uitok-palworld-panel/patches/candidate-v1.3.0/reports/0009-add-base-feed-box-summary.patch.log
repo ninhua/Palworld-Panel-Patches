@@ -1,0 +1,4 @@
+$ /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/apply-source-patch.sh /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track/source/0009-add-base-feed-box-summary.patch
+[exit=0]
+$ git diff --check
+[exit=0]

@@ -1,0 +1,22 @@
+$ /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/apply-source-patch.sh /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track/source/0028-fix-global-inventory-sidebar-entry.patch
+[exit=0]
+$ git diff --check
+[exit=0]
+$ /opt/hostedtoolcache/Python/3.12.13/x64/bin/python3 /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/adapt-frontend-api-tests.py /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active
+已适配 Axios mock：frontend/src/api/bases.test.ts（5 处）
+已适配 Axios mock：frontend/src/api/networkProxy.test.ts（1 处）
+已适配 Axios mock：frontend/src/api/saveSources.test.ts（3 处）
+前端 API 测试 Axios mock 适配完成，共 9 处。
+[exit=0]
+$ git diff --check
+[exit=0]
+$ npm run lint
+
+> frontend@0.0.0 lint
+> oxlint
+
+::warning file=src/pages/StarterGift.tsx,line=147,endLine=147,col=9,endColumn=17,title=eslint(no-unused-vars)::Variable 'itemByID' is declared but never used. Unused variables should start with a '_'.
+
+Found 1 warning and 0 errors.
+Finished in 32ms on 138 files with 103 rules using 4 threads.
+[exit=0]

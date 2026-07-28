@@ -1,0 +1,1736 @@
+diff --git a/backend/internal/api/starter_gift.go b/backend/internal/api/starter_gift.go
+index 0fd68fb..0ab9677 100644
+--- a/backend/internal/api/starter_gift.go
++++ b/backend/internal/api/starter_gift.go
+@@ -1,6 +1,7 @@
+ package api
+ 
+ import (
++	"context"
+ 	"encoding/json"
+ 	"fmt"
+ 	"io"
+@@ -29,17 +30,26 @@ const (
+ )
+ 
+ type starterGiftTemplateInfo struct {
+-	Name        string   `json:"name"`
+-	PalID       string   `json:"pal_id,omitempty"`
+-	PalName     string   `json:"pal_name,omitempty"`
+-	EnglishName string   `json:"english_name,omitempty"`
+-	Category    string   `json:"category,omitempty"`
+-	IndexNames  []string `json:"index_names,omitempty"`
+-	Nickname    string   `json:"nickname,omitempty"`
+-	Level       int      `json:"level,omitempty"`
+-	ModifiedAt  string   `json:"modified_at,omitempty"`
+-	Size        int64    `json:"size,omitempty"`
+-	ParseError  string   `json:"parse_error,omitempty"`
++	Name                 string   `json:"name"`
++	PalID                string   `json:"pal_id,omitempty"`
++	PalName              string   `json:"pal_name,omitempty"`
++	EnglishName          string   `json:"english_name,omitempty"`
++	Category             string   `json:"category,omitempty"`
++	UsageCategory        string   `json:"usage_category,omitempty"`
++	OverallGrade         string   `json:"overall_grade,omitempty"`
++	IndexNames           []string `json:"index_names,omitempty"`
++	ClassificationTags   []string `json:"classification_tags,omitempty"`
++	GraduationPal        bool     `json:"graduation_pal,omitempty"`
++	GraduationUses       []string `json:"graduation_uses,omitempty"`
++	CurrentGraduationUse bool     `json:"current_graduation_use,omitempty"`
++	Transitional         bool     `json:"transitional,omitempty"`
++	PassiveNames         []string `json:"passive_names,omitempty"`
++	NightWorkMode        string   `json:"night_work_mode,omitempty"`
++	Nickname             string   `json:"nickname,omitempty"`
++	Level                int      `json:"level,omitempty"`
++	ModifiedAt           string   `json:"modified_at,omitempty"`
++	Size                 int64    `json:"size,omitempty"`
++	ParseError           string   `json:"parse_error,omitempty"`
+ }
+ 
+ type starterGiftTemplateIndexInfo struct {
+@@ -55,26 +65,53 @@ type starterGiftTemplateDocument struct {
+ }
+ 
+ type starterGiftTemplateIndexEntryDocument struct {
+-	CategoryCN     string `json:"分类"`
+-	Category       string `json:"category"`
+-	TemplateNameCN string `json:"模板名"`
+-	TemplateName   string `json:"template_name"`
+-	FileNameCN     string `json:"文件名"`
+-	FileName       string `json:"file_name"`
+-	ChineseNameCN  string `json:"中文名"`
+-	ChineseName    string `json:"pal_name"`
+-	PalID          string `json:"PalID"`
+-	EnglishNameCN  string `json:"英文名"`
+-	EnglishName    string `json:"english_name"`
++	CategoryCN             string   `json:"分类"`
++	Category               string   `json:"category"`
++	TemplateNameCN         string   `json:"模板名"`
++	TemplateName           string   `json:"template_name"`
++	FileNameCN             string   `json:"文件名"`
++	FileName               string   `json:"file_name"`
++	ChineseNameCN          string   `json:"中文名"`
++	ChineseName            string   `json:"pal_name"`
++	PalID                  string   `json:"PalID"`
++	EnglishNameCN          string   `json:"英文名"`
++	EnglishName            string   `json:"english_name"`
++	UsageCategoryCN        string   `json:"用途分类"`
++	UsageCategory          string   `json:"usage_category"`
++	OverallGradeCN         string   `json:"综合分级"`
++	OverallGrade           string   `json:"overall_grade"`
++	ClassificationTagsCN   []string `json:"分类标签"`
++	ClassificationTags     []string `json:"classification_tags"`
++	GraduationPalCN        bool     `json:"毕业帕鲁"`
++	GraduationPal          bool     `json:"graduation_pal"`
++	GraduationUsesCN       []string `json:"毕业用途"`
++	GraduationUses         []string `json:"graduation_uses"`
++	CurrentGraduationUseCN bool     `json:"当前模板是否毕业用途"`
++	CurrentGraduationUse   bool     `json:"current_graduation_use"`
++	TransitionalCN         bool     `json:"低阶与过渡"`
++	Transitional           bool     `json:"transitional"`
++	PassiveNamesCN         []string `json:"词条中文"`
++	PassiveNames           []string `json:"passive_names"`
++	NightWorkModeCN        string   `json:"夜间工作方式"`
++	NightWorkMode          string   `json:"night_work_mode"`
+ }
+ 
+ type starterGiftTemplateIndexEntry struct {
+-	Category     string
+-	TemplateName string
+-	FileName     string
+-	ChineseName  string
+-	PalID        string
+-	EnglishName  string
++	Category             string
++	TemplateName         string
++	FileName             string
++	ChineseName          string
++	PalID                string
++	EnglishName          string
++	UsageCategory        string
++	OverallGrade         string
++	ClassificationTags   []string
++	GraduationPal        bool
++	GraduationUses       []string
++	CurrentGraduationUse bool
++	Transitional         bool
++	PassiveNames         []string
++	NightWorkMode        string
+ }
+ 
+ type starterGiftTemplateIndexMatch struct {
+@@ -148,20 +185,15 @@ func starterGiftTemplateIndexCandidate(name string) bool {
+ 	if !strings.EqualFold(filepath.Ext(name), ".json") {
+ 		return false
+ 	}
+-	lower := strings.ToLower(name)
+-	for _, marker := range []string{"index", "catalog", "list", "索引", "清单", "常用", "毕业"} {
+-		if strings.Contains(lower, marker) {
+-			return true
+-		}
+-	}
+-	return false
++	lower := strings.ToLower(strings.TrimSuffix(name, filepath.Ext(name)))
++	return strings.Contains(lower, "index") || strings.Contains(lower, "索引")
+ }
+ 
+ func parseStarterGiftTemplateIndex(raw []byte) (string, []starterGiftTemplateIndexEntry) {
+ 	var root map[string]json.RawMessage
+ 	if err := json.Unmarshal(raw, &root); err == nil && root != nil {
+-		label := firstStarterGiftIndexString(root, "名称", "标题", "label", "name")
+-		for _, key := range []string{"模板", "清单", "列表", "templates", "items"} {
++		label := firstStarterGiftIndexString(root, "名称", "标题", "版本", "label", "name")
++		for _, key := range []string{"模板", "模板索引", "清单", "列表", "templates", "items"} {
+ 			payload, found := root[key]
+ 			if !found {
+ 				continue
+@@ -192,12 +224,21 @@ func decodeStarterGiftTemplateIndexEntries(raw []byte) []starterGiftTemplateInde
+ 	entries := make([]starterGiftTemplateIndexEntry, 0, len(documents))
+ 	for _, document := range documents {
+ 		entry := starterGiftTemplateIndexEntry{
+-			Category:     starterGiftFirstNonEmpty(document.CategoryCN, document.Category),
+-			TemplateName: starterGiftFirstNonEmpty(document.TemplateNameCN, document.TemplateName),
+-			FileName:     starterGiftFirstNonEmpty(document.FileNameCN, document.FileName),
+-			ChineseName:  starterGiftFirstNonEmpty(document.ChineseNameCN, document.ChineseName),
+-			PalID:        strings.TrimSpace(document.PalID),
+-			EnglishName:  starterGiftFirstNonEmpty(document.EnglishNameCN, document.EnglishName),
++			Category:             starterGiftFirstNonEmpty(document.CategoryCN, document.Category),
++			TemplateName:         starterGiftFirstNonEmpty(document.TemplateNameCN, document.TemplateName),
++			FileName:             starterGiftFirstNonEmpty(document.FileNameCN, document.FileName),
++			ChineseName:          starterGiftFirstNonEmpty(document.ChineseNameCN, document.ChineseName),
++			PalID:                strings.TrimSpace(document.PalID),
++			EnglishName:          starterGiftFirstNonEmpty(document.EnglishNameCN, document.EnglishName),
++			UsageCategory:        starterGiftFirstNonEmpty(document.UsageCategoryCN, document.UsageCategory),
++			OverallGrade:         starterGiftFirstNonEmpty(document.OverallGradeCN, document.OverallGrade),
++			ClassificationTags:   starterGiftUniqueStrings(append(document.ClassificationTagsCN, document.ClassificationTags...)),
++			GraduationPal:        document.GraduationPalCN || document.GraduationPal,
++			GraduationUses:       starterGiftUniqueStrings(append(document.GraduationUsesCN, document.GraduationUses...)),
++			CurrentGraduationUse: document.CurrentGraduationUseCN || document.CurrentGraduationUse,
++			Transitional:         document.TransitionalCN || document.Transitional,
++			PassiveNames:         starterGiftUniqueStrings(append(document.PassiveNamesCN, document.PassiveNames...)),
++			NightWorkMode:        starterGiftFirstNonEmpty(document.NightWorkModeCN, document.NightWorkMode),
+ 		}
+ 		if entry.FileName == "" && entry.TemplateName == "" {
+ 			continue
+@@ -216,6 +257,20 @@ func starterGiftFirstNonEmpty(values ...string) string {
+ 	return ""
+ }
+ 
++func starterGiftUniqueStrings(values []string) []string {
++	seen := map[string]bool{}
++	result := make([]string, 0, len(values))
++	for _, value := range values {
++		value = strings.TrimSpace(value)
++		if value == "" || seen[value] {
++			continue
++		}
++		seen[value] = true
++		result = append(result, value)
++	}
++	return result
++}
++
+ func starterGiftTemplateLookupKey(value string) string {
+ 	keys := starterGiftTemplateLookupKeys(value)
+ 	if len(keys) == 0 {
+@@ -282,6 +337,21 @@ func readStarterGiftTemplateInfo(serverDir, name string, indexes starterGiftTemp
+ 			if result.Category == "" {
+ 				result.Category = match.Entry.Category
+ 			}
++			if result.UsageCategory == "" {
++				result.UsageCategory = match.Entry.UsageCategory
++			}
++			if result.OverallGrade == "" {
++				result.OverallGrade = match.Entry.OverallGrade
++			}
++			result.ClassificationTags = starterGiftUniqueStrings(append(result.ClassificationTags, match.Entry.ClassificationTags...))
++			result.GraduationPal = result.GraduationPal || match.Entry.GraduationPal
++			result.GraduationUses = starterGiftUniqueStrings(append(result.GraduationUses, match.Entry.GraduationUses...))
++			result.CurrentGraduationUse = result.CurrentGraduationUse || match.Entry.CurrentGraduationUse
++			result.Transitional = result.Transitional || match.Entry.Transitional
++			result.PassiveNames = starterGiftUniqueStrings(append(result.PassiveNames, match.Entry.PassiveNames...))
++			if result.NightWorkMode == "" {
++				result.NightWorkMode = match.Entry.NightWorkMode
++			}
+ 		}
+ 	}
+ 	return result
+@@ -345,7 +415,7 @@ func (s Server) starterGiftConfig(c *gin.Context) {
+ 		fail(c, http.StatusInternalServerError, "starter_gift_read_failed", err.Error())
+ 		return
+ 	}
+-	ok(c, s.starterGiftResponse(snapshot))
++	ok(c, s.starterGiftResponse(c.Request.Context(), snapshot))
+ }
+ 
+ func (s Server) putStarterGiftConfig(c *gin.Context) {
+@@ -396,7 +466,7 @@ func (s Server) putStarterGiftConfig(c *gin.Context) {
+ 		fail(c, http.StatusBadRequest, "invalid_starter_gift_config", err.Error())
+ 		return
+ 	}
+-	ok(c, s.starterGiftResponse(snapshot))
++	ok(c, s.starterGiftResponse(c.Request.Context(), snapshot))
+ }
+ 
+ func (s Server) canonicalizeStarterGiftTemplates(c *gin.Context, config *startergift.Config) bool {
+@@ -444,11 +514,41 @@ func (s Server) retryStarterGift(c *gin.Context) {
+ 		fail(c, http.StatusConflict, "starter_gift_world_unavailable", err.Error())
+ 		return
+ 	}
+-	if err := startergift.Retry(c.Request.Context(), s.store, scope, c.Param("id")); err != nil {
+-		fail(c, http.StatusNotFound, "starter_gift_not_found", err.Error())
++	var input struct {
++		Action string `json:"action"`
++	}
++	if c.Request.ContentLength > 0 {
++		if err := c.ShouldBindJSON(&input); err != nil {
++			fail(c, http.StatusBadRequest, "invalid_json", err.Error())
++			return
++		}
++	}
++	if strings.TrimSpace(input.Action) == "" {
++		input.Action = c.DefaultQuery("action", "retry")
++	}
++	player := playerpresence.OnlinePlayer{SteamID: c.Param("id")}
++	if index, _, indexErr := s.serverSaveIndex.Current(c.Request.Context()); indexErr == nil {
++		requested := starterGiftPlayerIdentity(c.Param("id"))
++		for _, indexed := range index.Players {
++			if requested == starterGiftPlayerIdentity(indexed.SteamID) || requested == starterGiftPlayerIdentity(indexed.PlayerUID) {
++				player = playerpresence.OnlinePlayer{PlayerUID: indexed.PlayerUID, SteamID: indexed.SteamID, Nickname: indexed.Nickname}
++				break
++			}
++		}
++	}
++	if err := startergift.ApplyAction(c.Request.Context(), s.store, scope, player, input.Action); err != nil {
++		fail(c, http.StatusBadRequest, "starter_gift_action_failed", err.Error())
+ 		return
+ 	}
+-	ok(c, gin.H{"queued": true, "message": "The grant will resume on the next online-player observation."})
++	ok(c, gin.H{"queued": true, "action": input.Action, "message": "Starter gift state updated; online tasks run on the next player observation."})
++}
++
++func starterGiftPlayerIdentity(value string) string {
++	value = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(value), "-", ""))
++	if value == "" || value == "none" || value == "null" || strings.Trim(value, "0") == "" {
++		return ""
++	}
++	return value
+ }
+ 
+ func (s Server) forgetStarterGift(c *gin.Context) {
+@@ -464,7 +564,7 @@ func (s Server) forgetStarterGift(c *gin.Context) {
+ 	ok(c, gin.H{"rearmed": true, "message": "The player will be eligible after leaving and entering again."})
+ }
+ 
+-func (s Server) starterGiftResponse(snapshot startergift.Snapshot) gin.H {
++func (s Server) starterGiftResponse(ctx context.Context, snapshot startergift.Snapshot) gin.H {
+ 	templates, templateErr := s.defender.ListPalTemplates()
+ 	templateNames := make([]string, 0, len(templates))
+ 	for _, template := range templates {
+@@ -475,10 +575,27 @@ func (s Server) starterGiftResponse(snapshot startergift.Snapshot) gin.H {
+ 		"scope":            snapshot.Scope,
+ 		"config":           snapshot.Config,
+ 		"grants":           snapshot.Grants,
++		"worker_running":   snapshot.WorkerRunning,
+ 		"templates":        templateCatalog,
+ 		"template_indexes": templateIndexes,
+ 		"item_catalog":     pallocalize.SearchItems("", 5000),
+ 	}
++	if index, status, indexErr := s.serverSaveIndex.Current(ctx); indexErr == nil {
++		known := make([]playerpresence.OnlinePlayer, 0, len(index.Players))
++		for _, player := range index.Players {
++			known = append(known, playerpresence.OnlinePlayer{PlayerUID: player.PlayerUID, SteamID: player.SteamID, Nickname: player.Nickname})
++		}
++		decisions, decisionErr := startergift.InspectPlayers(ctx, s.store, snapshot.Scope, known)
++		if decisionErr == nil {
++			response["players"] = decisions
++		} else {
++			response["players_error"] = decisionErr.Error()
++		}
++		response["save_index_state"] = status.State
++	} else {
++		response["players"] = []startergift.PlayerDecision{}
++		response["players_error"] = indexErr.Error()
++	}
+ 	if templateErr != nil {
+ 		response["template_error"] = templateErr.Error()
+ 	}
+diff --git a/backend/internal/api/starter_gift_template_test.go b/backend/internal/api/starter_gift_template_test.go
+index 6808651..4c2fce2 100644
+--- a/backend/internal/api/starter_gift_template_test.go
++++ b/backend/internal/api/starter_gift_template_test.go
+@@ -53,14 +53,14 @@ func TestStarterGiftTemplateCatalogUsesChineseIndexAndMemberships(t *testing.T)
+ 		t.Fatal(err)
+ 	}
+ 	graduate := `{"清单":[{"文件名":"BATTLE__Anubis.json","中文名":"阿努比斯","分类":"战斗"}]}`
+-	if err := os.WriteFile(filepath.Join(templateDir, "常用毕业帕鲁清单.json"), []byte(graduate), 0o644); err != nil {
++	if err := os.WriteFile(filepath.Join(templateDir, "常用毕业帕鲁索引.json"), []byte(graduate), 0o644); err != nil {
+ 		t.Fatal(err)
+ 	}
+ 
+ 	catalog, indexes := starterGiftTemplateCatalog(serverDir, []string{
+ 		"BATTLE__Anubis.json",
+ 		"模板中英文对照索引.json",
+-		"常用毕业帕鲁清单.json",
++		"常用毕业帕鲁索引.json",
+ 	})
+ 	if len(catalog) != 1 {
+ 		t.Fatalf("catalog = %#v, want one template and no index files", catalog)
+@@ -69,11 +69,11 @@ func TestStarterGiftTemplateCatalogUsesChineseIndexAndMemberships(t *testing.T)
+ 	if info.PalID != "Anubis" || info.PalName != "阿努比斯" || info.EnglishName != "Anubis" || info.Category != "战斗" {
+ 		t.Fatalf("indexed template metadata = %#v", info)
+ 	}
+-	wantMemberships := []string{"常用毕业帕鲁清单.json", "模板中英文对照索引.json"}
++	wantMemberships := []string{"常用毕业帕鲁索引.json", "模板中英文对照索引.json"}
+ 	if !reflect.DeepEqual(info.IndexNames, wantMemberships) {
+ 		t.Fatalf("index memberships = %#v, want %#v", info.IndexNames, wantMemberships)
+ 	}
+-	if len(indexes) != 2 || indexes[0].Name != "常用毕业帕鲁清单.json" || indexes[1].Name != "模板中英文对照索引.json" {
++	if len(indexes) != 2 || indexes[0].Name != "常用毕业帕鲁索引.json" || indexes[1].Name != "模板中英文对照索引.json" {
+ 		t.Fatalf("index catalog = %#v", indexes)
+ 	}
+ }
+@@ -103,3 +103,60 @@ func TestStarterGiftTemplateFileNameRejectsTraversal(t *testing.T) {
+ 		t.Fatalf("starterGiftTemplateFileName(Anubis) = %q, %v", got, err)
+ 	}
+ }
++
++func TestStarterGiftTemplateCatalogReadsRichKeywordNamedIndex(t *testing.T) {
++	serverDir, templateDir := starterGiftTestTemplateDir(t)
++	if err := os.WriteFile(filepath.Join(templateDir, "WORK__Anubis.json"), []byte(`{"PalID":"Anubis","Level":60}`), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	rich := `{
++		"说明":"索引文件名必须包含 index 或 索引关键字",
++		"版本":"Palworld 1.0",
++		"模板":[{
++			"分类":"工作","模板名":"WORK__Anubis","文件名":"WORK__Anubis.json","中文名":"阿努比斯","英文名":"Anubis","PalID":"Anubis",
++			"用途分类":"手工作业＋采矿＋搬运","综合分级":"常用毕业","分类标签":["工作:手工作业","毕业:工作"],
++			"毕业帕鲁":true,"毕业用途":["战斗","工作"],"当前模板是否毕业用途":true,"低阶与过渡":false,
++			"夜间工作方式":"吸血鬼","词条中文":["恶魔之手","卓绝技艺","工匠精神","吸血鬼"]
++		}]
++	}`
++	if err := os.WriteFile(filepath.Join(templateDir, "palworld-template-index.json"), []byte(rich), 0o644); err != nil {
++		t.Fatal(err)
++	}
++
++	catalog, indexes := starterGiftTemplateCatalog(serverDir, []string{"WORK__Anubis.json", "palworld-template-index.json"})
++	if len(catalog) != 1 || len(indexes) != 1 {
++		t.Fatalf("catalog=%#v indexes=%#v", catalog, indexes)
++	}
++	info := catalog[0]
++	if info.PalName != "阿努比斯" || info.UsageCategory != "手工作业＋采矿＋搬运" || info.OverallGrade != "常用毕业" {
++		t.Fatalf("rich metadata=%#v", info)
++	}
++	if !info.GraduationPal || !info.CurrentGraduationUse || info.Transitional || info.NightWorkMode != "吸血鬼" {
++		t.Fatalf("rich flags=%#v", info)
++	}
++	if !reflect.DeepEqual(info.GraduationUses, []string{"战斗", "工作"}) || !reflect.DeepEqual(info.PassiveNames, []string{"恶魔之手", "卓绝技艺", "工匠精神", "吸血鬼"}) {
++		t.Fatalf("rich arrays=%#v", info)
++	}
++	if indexes[0].Name != "palworld-template-index.json" || indexes[0].Label != "Palworld 1.0" {
++		t.Fatalf("keyword index=%#v", indexes[0])
++	}
++}
++
++func TestStarterGiftTemplateCatalogIgnoresJSONWithoutIndexKeyword(t *testing.T) {
++	serverDir, templateDir := starterGiftTestTemplateDir(t)
++	if err := os.WriteFile(filepath.Join(templateDir, "WORK__Anubis.json"), []byte(`{"PalID":"Anubis","Level":60}`), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	rich := `{"版本":"Palworld 1.0","模板":[{"分类":"工作","模板名":"WORK__Anubis","文件名":"WORK__Anubis.json","中文名":"阿努比斯","PalID":"Anubis"}]}`
++	if err := os.WriteFile(filepath.Join(templateDir, "palworld-1.0.json"), []byte(rich), 0o644); err != nil {
++		t.Fatal(err)
++	}
++
++	catalog, indexes := starterGiftTemplateCatalog(serverDir, []string{"WORK__Anubis.json", "palworld-1.0.json"})
++	if len(indexes) != 0 {
++		t.Fatalf("indexes=%#v", indexes)
++	}
++	if len(catalog) != 2 {
++		t.Fatalf("catalog=%#v", catalog)
++	}
++}
+diff --git a/backend/internal/startergift/service.go b/backend/internal/startergift/service.go
+index 78d2119..38abc31 100644
+--- a/backend/internal/startergift/service.go
++++ b/backend/internal/startergift/service.go
+@@ -22,7 +22,8 @@ const (
+ 	StateKey           = "starter_gift:state"
+ 	ScopedConfigPrefix = "starter_gift:config:v2:"
+ 	ScopedStatePrefix  = "starter_gift:state:v2:"
+-	Version            = 1
++	Version            = 2
++	MaxGrantEvents     = 80
+ 
+ 	MaxItems        = 500
+ 	MaxPalTemplates = 500
+@@ -53,38 +54,80 @@ type Config struct {
+ 	BatchDelayMS      int         `json:"batch_delay_ms"`
+ }
+ 
++type GrantEvent struct {
++	At           string `json:"at"`
++	Phase        string `json:"phase"`
++	Level        string `json:"level"`
++	Message      string `json:"message"`
++	ItemFrom     int    `json:"item_from,omitempty"`
++	ItemTo       int    `json:"item_to,omitempty"`
++	TemplateFrom int    `json:"template_from,omitempty"`
++	TemplateTo   int    `json:"template_to,omitempty"`
++}
++
+ type grantRecord struct {
+-	PlayerID      string      `json:"player_id"`
+-	PlayerUID     string      `json:"player_uid,omitempty"`
+-	SteamID       string      `json:"steam_id,omitempty"`
+-	Nickname      string      `json:"nickname,omitempty"`
+-	Status        string      `json:"status"`
+-	NextItem      int         `json:"next_item"`
+-	NextTemplate  int         `json:"next_template"`
+-	Attempts      int         `json:"attempts"`
+-	FirstSeenAt   string      `json:"first_seen_at"`
+-	UpdatedAt     string      `json:"updated_at"`
+-	CompletedAt   string      `json:"completed_at,omitempty"`
+-	LastError     string      `json:"last_error,omitempty"`
+-	PlanItems     []ItemGrant `json:"plan_items,omitempty"`
+-	PlanTemplates []string    `json:"plan_templates,omitempty"`
++	PlayerID         string       `json:"player_id"`
++	PlayerUID        string       `json:"player_uid,omitempty"`
++	SteamID          string       `json:"steam_id,omitempty"`
++	Nickname         string       `json:"nickname,omitempty"`
++	Status           string       `json:"status"`
++	Phase            string       `json:"phase,omitempty"`
++	DetectionSource  string       `json:"detection_source,omitempty"`
++	DetectionReason  string       `json:"detection_reason,omitempty"`
++	Manual           bool         `json:"manual,omitempty"`
++	ResolvedPlayerID string       `json:"resolved_player_id,omitempty"`
++	NextItem         int          `json:"next_item"`
++	NextTemplate     int          `json:"next_template"`
++	Attempts         int          `json:"attempts"`
++	FirstSeenAt      string       `json:"first_seen_at"`
++	UpdatedAt        string       `json:"updated_at"`
++	CompletedAt      string       `json:"completed_at,omitempty"`
++	LastError        string       `json:"last_error,omitempty"`
++	PlanItems        []ItemGrant  `json:"plan_items,omitempty"`
++	PlanTemplates    []string     `json:"plan_templates,omitempty"`
++	Events           []GrantEvent `json:"events,omitempty"`
+ }
+ 
+ type Grant struct {
+-	PlayerID      string `json:"player_id"`
+-	PlayerUID     string `json:"player_uid,omitempty"`
+-	SteamID       string `json:"steam_id,omitempty"`
+-	Nickname      string `json:"nickname,omitempty"`
+-	Status        string `json:"status"`
+-	NextItem      int    `json:"next_item"`
+-	NextTemplate  int    `json:"next_template"`
+-	ItemTotal     int    `json:"item_total"`
+-	TemplateTotal int    `json:"template_total"`
+-	Attempts      int    `json:"attempts"`
+-	FirstSeenAt   string `json:"first_seen_at"`
+-	UpdatedAt     string `json:"updated_at"`
+-	CompletedAt   string `json:"completed_at,omitempty"`
+-	LastError     string `json:"last_error,omitempty"`
++	PlayerID         string       `json:"player_id"`
++	PlayerUID        string       `json:"player_uid,omitempty"`
++	SteamID          string       `json:"steam_id,omitempty"`
++	Nickname         string       `json:"nickname,omitempty"`
++	Status           string       `json:"status"`
++	Phase            string       `json:"phase,omitempty"`
++	DetectionSource  string       `json:"detection_source,omitempty"`
++	DetectionReason  string       `json:"detection_reason,omitempty"`
++	Manual           bool         `json:"manual,omitempty"`
++	ResolvedPlayerID string       `json:"resolved_player_id,omitempty"`
++	NextItem         int          `json:"next_item"`
++	NextTemplate     int          `json:"next_template"`
++	ItemTotal        int          `json:"item_total"`
++	TemplateTotal    int          `json:"template_total"`
++	ProgressPercent  int          `json:"progress_percent"`
++	Attempts         int          `json:"attempts"`
++	FirstSeenAt      string       `json:"first_seen_at"`
++	UpdatedAt        string       `json:"updated_at"`
++	CompletedAt      string       `json:"completed_at,omitempty"`
++	LastError        string       `json:"last_error,omitempty"`
++	Events           []GrantEvent `json:"events,omitempty"`
++}
++
++type PlayerDecision struct {
++	PlayerID     string   `json:"player_id"`
++	PlayerUID    string   `json:"player_uid,omitempty"`
++	SteamID      string   `json:"steam_id,omitempty"`
++	Nickname     string   `json:"nickname,omitempty"`
++	Online       bool     `json:"online"`
++	Seen         bool     `json:"seen"`
++	Rearmed      bool     `json:"rearmed"`
++	IsNew        bool     `json:"is_new"`
++	Eligible     bool     `json:"eligible"`
++	Decision     string   `json:"decision"`
++	Reason       string   `json:"reason"`
++	GrantStatus  string   `json:"grant_status,omitempty"`
++	GrantPhase   string   `json:"grant_phase,omitempty"`
++	Evidence     []string `json:"evidence"`
++	LastUpdateAt string   `json:"last_update_at,omitempty"`
+ }
+ 
+ type State struct {
+@@ -98,9 +141,10 @@ type State struct {
+ }
+ 
+ type Snapshot struct {
+-	Scope  playerpresence.Scope `json:"scope"`
+-	Config Config               `json:"config"`
+-	Grants []Grant              `json:"grants"`
++	Scope         playerpresence.Scope `json:"scope"`
++	Config        Config               `json:"config"`
++	Grants        []Grant              `json:"grants"`
++	WorkerRunning bool                 `json:"worker_running"`
+ }
+ 
+ type Dispatcher interface {
+@@ -196,7 +240,92 @@ func LoadSnapshot(ctx context.Context, store *db.Store, scope playerpresence.Sco
+ 		}
+ 		return grants[i].PlayerID < grants[j].PlayerID
+ 	})
+-	return Snapshot{Scope: scope, Config: config, Grants: grants}, nil
++	workerMu.Lock()
++	running := workerRunning[scope.StorageKey()]
++	workerMu.Unlock()
++	return Snapshot{Scope: scope, Config: config, Grants: grants, WorkerRunning: running}, nil
++}
++
++func InspectPlayers(ctx context.Context, store *db.Store, scope playerpresence.Scope, players []playerpresence.OnlinePlayer) ([]PlayerDecision, error) {
++	stateMu.Lock()
++	defer stateMu.Unlock()
++	state, err := loadState(ctx, store, scope)
++	if err != nil {
++		return nil, err
++	}
++	result := make([]PlayerDecision, 0, len(players)+len(state.Grants))
++	covered := map[string]bool{}
++	appendPlayer := func(player playerpresence.OnlinePlayer) {
++		aliases := playerAliases(player)
++		key := canonicalPlayerKey(player)
++		if key == "" {
++			return
++		}
++		covered[key] = true
++		grantKey := findGrantKey(state, aliases)
++		grant, hasGrant := state.Grants[grantKey]
++		seen := anyMarked(state.Seen, aliases)
++		online := anyMarked(state.Online, aliases)
++		rearmed := anyMarked(state.Rearm, aliases)
++		decision := PlayerDecision{
++			PlayerID: firstNonEmpty(player.SteamID, player.PlayerUID), PlayerUID: strings.TrimSpace(player.PlayerUID),
++			SteamID: strings.TrimSpace(player.SteamID), Nickname: strings.TrimSpace(player.Nickname), Online: online,
++			Seen: seen, Rearmed: rearmed, Evidence: []string{
++				fmt.Sprintf("seen=%t", seen), fmt.Sprintf("online=%t", online), fmt.Sprintf("rearmed=%t", rearmed), fmt.Sprintf("grant=%t", hasGrant),
++			},
++		}
++		switch {
++		case hasGrant:
++			decision.IsNew = true
++			decision.Eligible = grant.Status != "success"
++			decision.Decision = "starter_gift_created"
++			decision.Reason = firstNonEmpty(grant.DetectionReason, "已创建初始礼包任务。")
++			decision.GrantStatus = grant.Status
++			decision.GrantPhase = grant.Phase
++			decision.LastUpdateAt = grant.UpdatedAt
++			decision.Evidence = append(decision.Evidence, "grant_key="+grantKey, "detection_source="+firstNonEmpty(grant.DetectionSource, "legacy"))
++		case rearmed:
++			decision.IsNew = true
++			decision.Eligible = !online
++			decision.Decision = "marked_new_next_login"
++			if online {
++				decision.Reason = "已人工标记为新玩家，但当前仍在线；必须先离线，再次进入后才会建立发放任务。"
++			} else {
++				decision.Reason = "已人工标记为新玩家，等待下一次进入服务器。"
++			}
++		case !seen:
++			decision.IsNew = true
++			decision.Eligible = true
++			decision.Decision = "unseen_candidate"
++			decision.Reason = "该玩家身份不在当前 WorldID 的已见基线中；在线采样时应判定为新玩家。"
++		default:
++			decision.IsNew = false
++			decision.Eligible = false
++			decision.Decision = "known_existing"
++			decision.Reason = "该玩家身份已经存在于当前 WorldID 的已见基线中，且没有人工重置标记。"
++		}
++		result = append(result, decision)
++	}
++	for _, player := range players {
++		appendPlayer(player)
++	}
++	for key, grant := range state.Grants {
++		canonical := firstNonEmpty(identity(grant.SteamID), identity(grant.PlayerUID), key)
++		if covered[canonical] {
++			continue
++		}
++		appendPlayer(playerpresence.OnlinePlayer{PlayerUID: grant.PlayerUID, SteamID: grant.SteamID, Nickname: grant.Nickname})
++	}
++	sort.Slice(result, func(i, j int) bool {
++		if result[i].Online != result[j].Online {
++			return result[i].Online
++		}
++		if result[i].IsNew != result[j].IsNew {
++			return result[i].IsNew
++		}
++		return firstNonEmpty(result[i].Nickname, result[i].PlayerID) < firstNonEmpty(result[j].Nickname, result[j].PlayerID)
++	})
++	return result, nil
+ }
+ 
+ // BaselineKnownPlayers marks players already present in the server save index
+@@ -249,28 +378,69 @@ func SaveConfig(ctx context.Context, store *db.Store, scope playerpresence.Scope
+ }
+ 
+ func Retry(ctx context.Context, store *db.Store, scope playerpresence.Scope, playerID string) error {
+-	keyInput := identity(playerID)
+-	if keyInput == "" {
++	return ApplyAction(ctx, store, scope, playerpresence.OnlinePlayer{SteamID: playerID}, "retry")
++}
++
++func ApplyAction(ctx context.Context, store *db.Store, scope playerpresence.Scope, player playerpresence.OnlinePlayer, action string) error {
++	action = strings.ToLower(strings.TrimSpace(action))
++	if action == "" {
++		action = "retry"
++	}
++	aliases := playerAliases(player)
++	if len(aliases) == 0 {
+ 		return errors.New("player id is required")
+ 	}
+ 	stateMu.Lock()
+ 	defer stateMu.Unlock()
++	config, err := loadConfig(ctx, store, scope)
++	if err != nil {
++		return err
++	}
+ 	state, err := loadState(ctx, store, scope)
+ 	if err != nil {
+ 		return err
+ 	}
+-	key := findGrantKey(state, []string{keyInput})
++	key := findGrantKey(state, aliases)
+ 	grant, found := state.Grants[key]
+-	if !found {
+-		return errors.New("starter gift grant was not found")
+-	}
+-	if grant.Status == "success" {
+-		return errors.New("completed starter gift cannot be retried; reset it instead")
++	nowText := time.Now().UTC().Format(time.RFC3339Nano)
++	switch action {
++	case "retry", "supplement":
++		if !found {
++			return errors.New("starter gift grant was not found")
++		}
++		if grant.Status == "success" {
++			return errors.New("completed starter gift requires full reissue")
++		}
++		grant.Status = "pending"
++		grant.Phase = "queued"
++		grant.LastError = ""
++		grant.UpdatedAt = nowText
++		appendGrantEvent(&grant, "queued", "info", "管理员已将未完成任务加入补发队列。", nowText)
++		state.Grants[key] = grant
++	case "reissue", "grant_now", "mark_new_now":
++		if !config.Enabled {
++			return errors.New("starter gift must be enabled before a full reissue")
++		}
++		key = canonicalPlayerKey(player)
++		if key == "" {
++			return errors.New("player identifier is unavailable")
++		}
++		grant = newGrantWithReason(player, config, nowText, "manual", "管理员人工标记为新玩家并要求全量重新发放。", true)
++		state.Grants[key] = grant
++		markSeen(&state, aliases)
++		clearMarked(state.Rearm, aliases)
++	case "next_login", "mark_new", "rearm":
++		if found {
++			aliases = uniqueStrings(append(aliases, grantAliases(grant)...))
++			delete(state.Grants, key)
++		}
++		markSeen(&state, aliases)
++		for _, alias := range aliases {
++			state.Rearm[alias] = true
++		}
++	default:
++		return fmt.Errorf("unsupported starter gift action %q", action)
+ 	}
+-	grant.Status = "pending"
+-	grant.LastError = ""
+-	grant.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+-	state.Grants[key] = grant
+ 	return saveState(ctx, store, scope, state)
+ }
+ 
+@@ -331,7 +501,7 @@ func Observe(ctx context.Context, store *db.Store, scope playerpresence.Scope, n
+ 			if config.Enabled {
+ 				key := canonicalPlayerKey(player)
+ 				if key != "" {
+-					state.Grants[key] = newGrant(player, config, nowText)
++					state.Grants[key] = newGrantWithReason(player, config, nowText, "automatic", "功能首次初始化时发现当前在线身份，已建立初始礼包任务。", false)
+ 				}
+ 			}
+ 			markSeen(&state, aliases)
+@@ -360,9 +530,15 @@ func Observe(ctx context.Context, store *db.Store, scope playerpresence.Scope, n
+ 		markSeen(&state, aliases)
+ 
+ 		shouldGrant := false
++		detectionReason := "该身份不在当前 WorldID 的已见基线中，首次在线采样判定为新玩家。"
++		detectionSource := "automatic"
++		manual := false
+ 		if rearmed && !wasOnline {
+ 			if config.Enabled {
+ 				shouldGrant = true
++				detectionReason = "管理员已标记该玩家为新玩家，并且检测到离线后再次进入。"
++				detectionSource = "manual-next-login"
++				manual = true
+ 				clearMarked(state.Rearm, aliases)
+ 			}
+ 		} else if !wasSeen {
+@@ -379,7 +555,7 @@ func Observe(ctx context.Context, store *db.Store, scope playerpresence.Scope, n
+ 		if existing := findGrantKey(state, aliases); existing != "" {
+ 			continue
+ 		}
+-		state.Grants[key] = newGrant(player, config, nowText)
++		state.Grants[key] = newGrantWithReason(player, config, nowText, detectionSource, detectionReason, manual)
+ 	}
+ 	state.Online = currentOnline
+ 	if err := saveState(ctx, store, scope, state); err != nil {
+@@ -464,7 +640,9 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
+ 		}
+ 		if grant.Status == "failed" && retryablePlayerReadinessError(grant.LastError) {
+ 			grant.Status = "pending"
++			grant.Phase = "queued"
+ 			grant.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
++			appendGrantEvent(&grant, "queued", "info", "检测到旧版可重试的玩家解析错误，任务已自动重新排队。", grant.UpdatedAt)
+ 			state.Grants[key] = grant
+ 			if err := saveState(ctx, store, scope, state); err != nil {
+ 				stateMu.Unlock()
+@@ -474,7 +652,9 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
+ 		if !config.Enabled {
+ 			if grant.Status == "running" {
+ 				grant.Status = "pending"
++				grant.Phase = "paused"
+ 				grant.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
++				appendGrantEvent(&grant, "paused", "warning", "初始礼包功能已停用，任务暂停。", grant.UpdatedAt)
+ 				state.Grants[key] = grant
+ 				_ = saveState(ctx, store, scope, state)
+ 			}
+@@ -487,6 +667,15 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
+ 		}
+ 		if playerID == "" {
+ 			aliases := grantAliases(grant)
++			nowText := time.Now().UTC().Format(time.RFC3339Nano)
++			grant.Phase = "resolving_player"
++			grant.UpdatedAt = nowText
++			appendGrantEvent(&grant, "resolving_player", "info", "正在通过 PalDefender 账户目录解析实际发放目标。", nowText)
++			state.Grants[key] = grant
++			if err := saveState(ctx, store, scope, state); err != nil {
++				stateMu.Unlock()
++				return err
++			}
+ 			stateMu.Unlock()
+ 			resolved, resolveErr := dispatcher.ResolvePlayer(ctx, aliases)
+ 			if resolveErr != nil {
+@@ -502,6 +691,27 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
+ 				_ = keepGrantPending(ctx, store, scope, key, err)
+ 				return err
+ 			}
++			stateMu.Lock()
++			state, err = loadState(ctx, store, scope)
++			if err != nil {
++				stateMu.Unlock()
++				return err
++			}
++			current, ok := state.Grants[key]
++			if !ok {
++				stateMu.Unlock()
++				return nil
++			}
++			current.ResolvedPlayerID = playerID
++			current.Phase = "ready"
++			current.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
++			appendGrantEvent(&current, "ready", "success", "已解析发放目标："+playerID, current.UpdatedAt)
++			state.Grants[key] = current
++			err = saveState(ctx, store, scope, state)
++			stateMu.Unlock()
++			if err != nil {
++				return err
++			}
+ 			continue
+ 		}
+ 		if !attemptStarted {
+@@ -510,7 +720,33 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
+ 		}
+ 		grant.Status = "running"
+ 		grant.LastError = ""
++		grant.ResolvedPlayerID = playerID
+ 		grant.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
++
++		batchKind := ""
++		batchStart, batchEnd := 0, 0
++		if grant.NextItem < len(grant.PlanItems) {
++			batchKind = "items"
++			batchStart = grant.NextItem
++			batchEnd = min(grant.NextItem+config.ItemBatchSize, len(grant.PlanItems))
++			grant.Phase = "items"
++			appendGrantBatchEvent(&grant, "items", "info", fmt.Sprintf("开始发放物品批次 %d–%d / %d。", batchStart+1, batchEnd, len(grant.PlanItems)), grant.UpdatedAt, batchStart, batchEnd, 0, 0)
++		} else if grant.NextTemplate < len(grant.PlanTemplates) {
++			batchKind = "templates"
++			batchStart = grant.NextTemplate
++			batchEnd = min(grant.NextTemplate+config.TemplateBatchSize, len(grant.PlanTemplates))
++			grant.Phase = "templates"
++			appendGrantBatchEvent(&grant, "templates", "info", fmt.Sprintf("开始发放帕鲁模板批次 %d–%d / %d。", batchStart+1, batchEnd, len(grant.PlanTemplates)), grant.UpdatedAt, 0, 0, batchStart, batchEnd)
++		} else {
++			grant.Status = "success"
++			grant.Phase = "completed"
++			grant.CompletedAt = grant.UpdatedAt
++			appendGrantEvent(&grant, "completed", "success", "所有物品与帕鲁模板均已完成。", grant.UpdatedAt)
++			state.Grants[key] = grant
++			err := saveState(ctx, store, scope, state)
++			stateMu.Unlock()
++			return err
++		}
+ 		state.Grants[key] = grant
+ 		if err := saveState(ctx, store, scope, state); err != nil {
+ 			stateMu.Unlock()
+@@ -519,17 +755,15 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
+ 		stateMu.Unlock()
+ 
+ 		var sendErr error
+-		if grant.NextItem < len(grant.PlanItems) {
+-			end := min(grant.NextItem+config.ItemBatchSize, len(grant.PlanItems))
+-			sendErr = dispatcher.GiveItems(ctx, playerID, grant.PlanItems[grant.NextItem:end])
++		if batchKind == "items" {
++			sendErr = dispatcher.GiveItems(ctx, playerID, grant.PlanItems[batchStart:batchEnd])
+ 			if sendErr == nil {
+-				grant.NextItem = end
++				grant.NextItem = batchEnd
+ 			}
+-		} else if grant.NextTemplate < len(grant.PlanTemplates) {
+-			end := min(grant.NextTemplate+config.TemplateBatchSize, len(grant.PlanTemplates))
+-			sendErr = dispatcher.GivePalTemplates(ctx, playerID, grant.PlanTemplates[grant.NextTemplate:end])
++		} else {
++			sendErr = dispatcher.GivePalTemplates(ctx, playerID, grant.PlanTemplates[batchStart:batchEnd])
+ 			if sendErr == nil {
+-				grant.NextTemplate = end
++				grant.NextTemplate = batchEnd
+ 			}
+ 		}
+ 
+@@ -547,17 +781,28 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
+ 		current.NextItem = grant.NextItem
+ 		current.NextTemplate = grant.NextTemplate
+ 		current.Attempts = grant.Attempts
++		current.ResolvedPlayerID = playerID
+ 		current.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+ 		if sendErr != nil {
+ 			current.Status = "failed"
++			current.Phase = "failed"
+ 			current.LastError = boundedError(sendErr)
++			appendGrantEvent(&current, "failed", "error", fmt.Sprintf("%s批次发放失败：%s", batchKind, current.LastError), current.UpdatedAt)
+ 		} else if current.NextItem >= len(current.PlanItems) && current.NextTemplate >= len(current.PlanTemplates) {
+ 			current.Status = "success"
++			current.Phase = "completed"
+ 			current.LastError = ""
+-			current.CompletedAt = time.Now().UTC().Format(time.RFC3339Nano)
++			current.CompletedAt = current.UpdatedAt
++			appendGrantEvent(&current, "completed", "success", "所有物品与帕鲁模板均已完成。", current.UpdatedAt)
+ 		} else {
+ 			current.Status = "running"
++			current.Phase = batchKind
+ 			current.LastError = ""
++			if batchKind == "items" {
++				appendGrantBatchEvent(&current, "items", "success", fmt.Sprintf("物品批次已完成，当前进度 %d / %d。", current.NextItem, len(current.PlanItems)), current.UpdatedAt, batchStart, batchEnd, 0, 0)
++			} else {
++				appendGrantBatchEvent(&current, "templates", "success", fmt.Sprintf("帕鲁模板批次已完成，当前进度 %d / %d。", current.NextTemplate, len(current.PlanTemplates)), current.UpdatedAt, 0, 0, batchStart, batchEnd)
++			}
+ 		}
+ 		state.Grants[key] = current
+ 		saveErr := saveState(ctx, store, scope, state)
+@@ -588,8 +833,10 @@ func keepGrantPending(ctx context.Context, store *db.Store, scope playerpresence
+ 		return nil
+ 	}
+ 	grant.Status = "pending"
++	grant.Phase = "waiting_player"
+ 	grant.LastError = boundedError(reason)
+ 	grant.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
++	appendGrantEvent(&grant, "waiting_player", "warning", "暂未解析到 PalDefender 玩家账户，保持待处理并等待下一次在线采样："+grant.LastError, grant.UpdatedAt)
+ 	state.Grants[key] = grant
+ 	return saveState(ctx, store, scope, state)
+ }
+@@ -760,6 +1007,27 @@ func loadStateKey(ctx context.Context, store *db.Store, key, scopeID string) (St
+ 	if state.Grants == nil {
+ 		state.Grants = map[string]grantRecord{}
+ 	}
++	for key, grant := range state.Grants {
++		if grant.Phase == "" {
++			switch grant.Status {
++			case "success":
++				grant.Phase = "completed"
++			case "failed":
++				grant.Phase = "failed"
++			case "running":
++				grant.Phase = "running"
++			default:
++				grant.Phase = "queued"
++			}
++		}
++		if grant.DetectionSource == "" {
++			grant.DetectionSource = "legacy"
++		}
++		if grant.DetectionReason == "" {
++			grant.DetectionReason = "旧版本已创建的初始礼包任务；缺少原始判定证据。"
++		}
++		state.Grants[key] = grant
++	}
+ 	state.Version = Version
+ 	state.ScopeID = scopeID
+ 	return state, true, nil
+@@ -776,28 +1044,66 @@ func saveState(ctx context.Context, store *db.Store, scope playerpresence.Scope,
+ }
+ 
+ func newGrant(player playerpresence.OnlinePlayer, config Config, nowText string) grantRecord {
+-	return grantRecord{
+-		PlayerID:      firstNonEmpty(player.SteamID, player.PlayerUID),
+-		PlayerUID:     strings.TrimSpace(player.PlayerUID),
+-		SteamID:       strings.TrimSpace(player.SteamID),
+-		Nickname:      strings.TrimSpace(player.Nickname),
+-		Status:        "pending",
+-		FirstSeenAt:   nowText,
+-		UpdatedAt:     nowText,
+-		PlanItems:     append([]ItemGrant(nil), config.Items...),
+-		PlanTemplates: append([]string(nil), config.PalTemplates...),
++	return newGrantWithReason(player, config, nowText, "automatic", "首次在线采样判定为新玩家。", false)
++}
++
++func newGrantWithReason(player playerpresence.OnlinePlayer, config Config, nowText, source, reason string, manual bool) grantRecord {
++	record := grantRecord{
++		PlayerID: firstNonEmpty(player.SteamID, player.PlayerUID), PlayerUID: strings.TrimSpace(player.PlayerUID),
++		SteamID: strings.TrimSpace(player.SteamID), Nickname: strings.TrimSpace(player.Nickname), Status: "pending", Phase: "queued",
++		DetectionSource: source, DetectionReason: reason, Manual: manual, FirstSeenAt: nowText, UpdatedAt: nowText,
++		PlanItems: append([]ItemGrant(nil), config.Items...), PlanTemplates: append([]string(nil), config.PalTemplates...),
+ 	}
++	appendGrantEvent(&record, "queued", "info", reason, nowText)
++	return record
+ }
+ 
+ func grantView(record grantRecord) Grant {
++	total := len(record.PlanItems) + len(record.PlanTemplates)
++	done := record.NextItem + record.NextTemplate
++	progress := 0
++	if total > 0 {
++		progress = min(100, done*100/total)
++	}
++	if record.Status == "success" {
++		progress = 100
++	}
+ 	return Grant{
+ 		PlayerID: record.PlayerID, PlayerUID: record.PlayerUID, SteamID: record.SteamID,
+-		Nickname: record.Nickname, Status: record.Status, NextItem: record.NextItem,
+-		NextTemplate: record.NextTemplate, ItemTotal: len(record.PlanItems),
+-		TemplateTotal: len(record.PlanTemplates), Attempts: record.Attempts,
+-		FirstSeenAt: record.FirstSeenAt, UpdatedAt: record.UpdatedAt,
+-		CompletedAt: record.CompletedAt, LastError: record.LastError,
++		Nickname: record.Nickname, Status: record.Status, Phase: record.Phase,
++		DetectionSource: record.DetectionSource, DetectionReason: record.DetectionReason, Manual: record.Manual,
++		ResolvedPlayerID: record.ResolvedPlayerID, NextItem: record.NextItem, NextTemplate: record.NextTemplate,
++		ItemTotal: len(record.PlanItems), TemplateTotal: len(record.PlanTemplates), ProgressPercent: progress,
++		Attempts: record.Attempts, FirstSeenAt: record.FirstSeenAt, UpdatedAt: record.UpdatedAt,
++		CompletedAt: record.CompletedAt, LastError: record.LastError, Events: append([]GrantEvent(nil), record.Events...),
++	}
++}
++
++func appendGrantEvent(record *grantRecord, phase, level, message, at string) {
++	if record == nil {
++		return
++	}
++	message = strings.TrimSpace(message)
++	if message == "" {
++		return
++	}
++	if at == "" {
++		at = time.Now().UTC().Format(time.RFC3339Nano)
++	}
++	record.Events = append(record.Events, GrantEvent{At: at, Phase: phase, Level: level, Message: message})
++	if len(record.Events) > MaxGrantEvents {
++		record.Events = append([]GrantEvent(nil), record.Events[len(record.Events)-MaxGrantEvents:]...)
++	}
++}
++
++func appendGrantBatchEvent(record *grantRecord, phase, level, message, at string, itemFrom, itemTo, templateFrom, templateTo int) {
++	appendGrantEvent(record, phase, level, message, at)
++	if len(record.Events) == 0 {
++		return
+ 	}
++	event := &record.Events[len(record.Events)-1]
++	event.ItemFrom, event.ItemTo = itemFrom, itemTo
++	event.TemplateFrom, event.TemplateTo = templateFrom, templateTo
+ }
+ 
+ func onlineAliasSet(players []playerpresence.OnlinePlayer) map[string]bool {
+diff --git a/backend/internal/startergift/service_test.go b/backend/internal/startergift/service_test.go
+index 26d38b0..9d72e18 100644
+--- a/backend/internal/startergift/service_test.go
++++ b/backend/internal/startergift/service_test.go
+@@ -429,3 +429,142 @@ func TestNormalizeConfigRejectsUnsafeOrOversizedPlans(t *testing.T) {
+ 		t.Fatal("expected oversized item plan")
+ 	}
+ }
++
++func TestInspectPlayersExplainsKnownCandidateAndGrant(t *testing.T) {
++	store := openTestStore(t)
++	scope := testScope("world-decisions")
++	saveTestConfig(t, store, scope)
++	ctx := context.Background()
++	known := playerpresence.OnlinePlayer{PlayerUID: "uid-known", SteamID: "100", Nickname: "Known"}
++	candidate := playerpresence.OnlinePlayer{PlayerUID: "uid-new", SteamID: "200", Nickname: "Candidate"}
++	if err := BaselineKnownPlayers(ctx, store, scope, []playerpresence.OnlinePlayer{known}); err != nil {
++		t.Fatal(err)
++	}
++	decisions, err := InspectPlayers(ctx, store, scope, []playerpresence.OnlinePlayer{known, candidate})
++	if err != nil {
++		t.Fatal(err)
++	}
++	byID := map[string]PlayerDecision{}
++	for _, decision := range decisions {
++		byID[decision.PlayerID] = decision
++	}
++	if byID["100"].Decision != "known_existing" || byID["100"].IsNew {
++		t.Fatalf("known decision=%#v", byID["100"])
++	}
++	if byID["200"].Decision != "unseen_candidate" || !byID["200"].IsNew || !byID["200"].Eligible {
++		t.Fatalf("candidate decision=%#v", byID["200"])
++	}
++	if len(byID["200"].Evidence) < 4 || !strings.Contains(byID["200"].Reason, "不在") {
++		t.Fatalf("candidate evidence=%#v", byID["200"])
++	}
++}
++
++func TestManualNextLoginMarkCanBeRetestedWithoutDeletingPlayer(t *testing.T) {
++	store := openTestStore(t)
++	scope := testScope("world-manual-next-login")
++	saveTestConfig(t, store, scope)
++	ctx := context.Background()
++	now := time.Date(2026, 7, 28, 1, 0, 0, 0, time.UTC)
++	player := playerpresence.OnlinePlayer{PlayerUID: "uid-debug", SteamID: "300", Nickname: "Debug"}
++	if err := BaselineKnownPlayers(ctx, store, scope, []playerpresence.OnlinePlayer{player}); err != nil {
++		t.Fatal(err)
++	}
++	if err := Observe(ctx, store, scope, now.Add(-15*time.Second), []playerpresence.OnlinePlayer{player}, nil); err != nil {
++		t.Fatal(err)
++	}
++	if err := ApplyAction(ctx, store, scope, player, "next_login"); err != nil {
++		t.Fatal(err)
++	}
++	decisions, err := InspectPlayers(ctx, store, scope, []playerpresence.OnlinePlayer{player})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(decisions) != 1 || decisions[0].Decision != "marked_new_next_login" || !decisions[0].Rearmed {
++		t.Fatalf("marked decision=%#v", decisions)
++	}
++	if err := Observe(ctx, store, scope, now, []playerpresence.OnlinePlayer{player}, nil); err != nil {
++		t.Fatal(err)
++	}
++	if len(mustSnapshot(t, store, scope).Grants) != 0 {
++		t.Fatal("mark must not fire until an offline-to-online transition")
++	}
++	if err := Observe(ctx, store, scope, now.Add(15*time.Second), nil, nil); err != nil {
++		t.Fatal(err)
++	}
++	if err := Observe(ctx, store, scope, now.Add(30*time.Second), []playerpresence.OnlinePlayer{player}, nil); err != nil {
++		t.Fatal(err)
++	}
++	grant := mustSnapshot(t, store, scope).Grants[0]
++	if grant.DetectionSource != "manual-next-login" || !grant.Manual || !strings.Contains(grant.DetectionReason, "离线后再次进入") {
++		t.Fatalf("manual grant=%#v", grant)
++	}
++}
++
++func TestSupplementPreservesProgressAndReissueResetsPlan(t *testing.T) {
++	store := openTestStore(t)
++	scope := testScope("world-actions")
++	config := saveTestConfig(t, store, scope)
++	ctx := context.Background()
++	player := playerpresence.OnlinePlayer{PlayerUID: "uid-action", SteamID: "400", Nickname: "Action"}
++	nowText := time.Date(2026, 7, 28, 2, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)
++	state := EmptyState()
++	state.ScopeID = scope.ID
++	state.Initialized = true
++	markSeen(&state, playerAliases(player))
++	grant := newGrantWithReason(player, config, nowText, "automatic", "test", false)
++	grant.Status = "failed"
++	grant.Phase = "failed"
++	grant.NextItem = 1
++	grant.NextTemplate = 1
++	grant.LastError = "test failure"
++	state.Grants[identity(player.SteamID)] = grant
++	if err := saveState(ctx, store, scope, state); err != nil {
++		t.Fatal(err)
++	}
++	if err := ApplyAction(ctx, store, scope, player, "supplement"); err != nil {
++		t.Fatal(err)
++	}
++	continued := mustSnapshot(t, store, scope).Grants[0]
++	if continued.NextItem != 1 || continued.NextTemplate != 1 || continued.Status != "pending" || continued.Phase != "queued" {
++		t.Fatalf("supplement reset progress=%#v", continued)
++	}
++	if err := ApplyAction(ctx, store, scope, player, "reissue"); err != nil {
++		t.Fatal(err)
++	}
++	reissued := mustSnapshot(t, store, scope).Grants[0]
++	if reissued.NextItem != 0 || reissued.NextTemplate != 0 || !reissued.Manual || reissued.DetectionSource != "manual" {
++		t.Fatalf("reissue did not reset=%#v", reissued)
++	}
++	if len(reissued.Events) == 0 || reissued.ProgressPercent != 0 {
++		t.Fatalf("reissue events/progress=%#v", reissued)
++	}
++}
++
++func TestGrantTimelineRecordsResolutionBatchesAndCompletion(t *testing.T) {
++	store := openTestStore(t)
++	scope := testScope("world-timeline")
++	saveTestConfig(t, store, scope)
++	ctx := context.Background()
++	player := playerpresence.OnlinePlayer{PlayerUID: "uid-timeline", SteamID: "500", Nickname: "Timeline"}
++	now := time.Date(2026, 7, 28, 3, 0, 0, 0, time.UTC)
++	if err := Observe(ctx, store, scope, now, []playerpresence.OnlinePlayer{player}, nil); err != nil {
++		t.Fatal(err)
++	}
++	fake := &fakeDispatcher{resolvedID: "pd-user-500"}
++	if err := processOne(ctx, store, scope, fake, identity(player.SteamID)); err != nil {
++		t.Fatal(err)
++	}
++	grant := mustSnapshot(t, store, scope).Grants[0]
++	if grant.Status != "success" || grant.ProgressPercent != 100 || grant.ResolvedPlayerID != "pd-user-500" {
++		t.Fatalf("completed grant=%#v", grant)
++	}
++	phases := map[string]bool{}
++	for _, event := range grant.Events {
++		phases[event.Phase] = true
++	}
++	for _, phase := range []string{"queued", "resolving_player", "ready", "items", "templates", "completed"} {
++		if !phases[phase] {
++			t.Fatalf("timeline missing %s: %#v", phase, grant.Events)
++		}
++	}
++}
+diff --git a/frontend/src/api/starterGift.ts b/frontend/src/api/starterGift.ts
+index 75fca3d..bb9e49a 100644
+--- a/frontend/src/api/starterGift.ts
++++ b/frontend/src/api/starterGift.ts
+@@ -10,21 +10,55 @@ export interface StarterGiftConfig {
+   template_batch_size: number;
+   batch_delay_ms: number;
+ }
++export interface StarterGiftGrantEvent {
++  at: string;
++  phase: string;
++  level: string;
++  message: string;
++  item_from?: number;
++  item_to?: number;
++  template_from?: number;
++  template_to?: number;
++}
+ export interface StarterGiftGrant {
+   player_id: string;
+   player_uid?: string;
+   steam_id?: string;
+   nickname?: string;
+   status: 'pending' | 'running' | 'success' | 'failed' | string;
++  phase?: string;
++  detection_source?: string;
++  detection_reason?: string;
++  manual?: boolean;
++  resolved_player_id?: string;
+   next_item: number;
+   next_template: number;
+   item_total: number;
+   template_total: number;
++  progress_percent: number;
+   attempts: number;
+   first_seen_at: string;
+   updated_at: string;
+   completed_at?: string;
+   last_error?: string;
++  events: StarterGiftGrantEvent[];
++}
++export interface StarterGiftPlayerDecision {
++  player_id: string;
++  player_uid?: string;
++  steam_id?: string;
++  nickname?: string;
++  online: boolean;
++  seen: boolean;
++  rearmed: boolean;
++  is_new: boolean;
++  eligible: boolean;
++  decision: string;
++  reason: string;
++  grant_status?: string;
++  grant_phase?: string;
++  evidence: string[];
++  last_update_at?: string;
+ }
+ export interface PalTemplateInfo {
+   name: string;
+@@ -32,7 +66,16 @@ export interface PalTemplateInfo {
+   pal_name?: string;
+   english_name?: string;
+   category?: string;
++  usage_category?: string;
++  overall_grade?: string;
+   index_names: string[];
++  classification_tags: string[];
++  graduation_pal?: boolean;
++  graduation_uses: string[];
++  current_graduation_use?: boolean;
++  transitional?: boolean;
++  passive_names: string[];
++  night_work_mode?: string;
+   nickname?: string;
+   level?: number;
+   modified_at?: string;
+@@ -45,12 +88,18 @@ export interface StarterGiftSnapshot {
+   scope: StarterGiftScope;
+   config: StarterGiftConfig;
+   grants: StarterGiftGrant[];
++  players: StarterGiftPlayerDecision[];
++  worker_running: boolean;
+   templates: PalTemplateInfo[];
+   template_indexes: PalTemplateIndexInfo[];
+   item_catalog: StarterGiftCatalogItem[];
+   template_error?: string;
++  players_error?: string;
++  save_index_state?: string;
+ }
+ 
++export type StarterGiftPlayerAction = 'retry' | 'supplement' | 'reissue' | 'next_login';
++
+ const emptyConfig: StarterGiftConfig = {
+   enabled: false,
+   items: [],
+@@ -60,6 +109,9 @@ const emptyConfig: StarterGiftConfig = {
+   batch_delay_ms: 500,
+ };
+ 
++const strings = (value: unknown) => (Array.isArray(value) ? value : []).map(String).filter(Boolean);
++const optionalString = (value: unknown) => value ? String(value) : undefined;
++
+ const mapSnapshot = (raw: unknown): StarterGiftSnapshot => {
+   const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+   const config = (data.config && typeof data.config === 'object' ? data.config : {}) as Record<string, unknown>;
+@@ -68,7 +120,7 @@ const mapSnapshot = (raw: unknown): StarterGiftSnapshot => {
+     scope: {
+       id: String(scope.id || ''),
+       world_id: String(scope.world_id || ''),
+-      world_path: scope.world_path ? String(scope.world_path) : undefined,
++      world_path: optionalString(scope.world_path),
+     },
+     config: {
+       enabled: Boolean(config.enabled),
+@@ -76,7 +128,7 @@ const mapSnapshot = (raw: unknown): StarterGiftSnapshot => {
+         const item = (rawItem && typeof rawItem === 'object' ? rawItem : {}) as Record<string, unknown>;
+         return { item_id: String(item.item_id || ''), count: Number(item.count || 0) };
+       }),
+-      pal_templates: (Array.isArray(config.pal_templates) ? config.pal_templates : []).map(String),
++      pal_templates: strings(config.pal_templates),
+       item_batch_size: Number(config.item_batch_size || emptyConfig.item_batch_size),
+       template_batch_size: Number(config.template_batch_size || emptyConfig.template_batch_size),
+       batch_delay_ms: Number(config.batch_delay_ms || emptyConfig.batch_delay_ms),
+@@ -85,72 +137,82 @@ const mapSnapshot = (raw: unknown): StarterGiftSnapshot => {
+       const grant = (rawGrant && typeof rawGrant === 'object' ? rawGrant : {}) as Record<string, unknown>;
+       return {
+         player_id: String(grant.player_id || ''),
+-        player_uid: grant.player_uid ? String(grant.player_uid) : undefined,
+-        steam_id: grant.steam_id ? String(grant.steam_id) : undefined,
+-        nickname: grant.nickname ? String(grant.nickname) : undefined,
++        player_uid: optionalString(grant.player_uid),
++        steam_id: optionalString(grant.steam_id),
++        nickname: optionalString(grant.nickname),
+         status: String(grant.status || 'pending'),
++        phase: optionalString(grant.phase),
++        detection_source: optionalString(grant.detection_source),
++        detection_reason: optionalString(grant.detection_reason),
++        manual: Boolean(grant.manual),
++        resolved_player_id: optionalString(grant.resolved_player_id),
+         next_item: Number(grant.next_item || 0),
+         next_template: Number(grant.next_template || 0),
+         item_total: Number(grant.item_total || 0),
+         template_total: Number(grant.template_total || 0),
++        progress_percent: Number(grant.progress_percent || 0),
+         attempts: Number(grant.attempts || 0),
+         first_seen_at: String(grant.first_seen_at || ''),
+         updated_at: String(grant.updated_at || ''),
+-        completed_at: grant.completed_at ? String(grant.completed_at) : undefined,
+-        last_error: grant.last_error ? String(grant.last_error) : undefined,
++        completed_at: optionalString(grant.completed_at),
++        last_error: optionalString(grant.last_error),
++        events: (Array.isArray(grant.events) ? grant.events : []).map((rawEvent) => {
++          const event = (rawEvent && typeof rawEvent === 'object' ? rawEvent : {}) as Record<string, unknown>;
++          return {
++            at: String(event.at || ''), phase: String(event.phase || ''), level: String(event.level || ''), message: String(event.message || ''),
++            item_from: event.item_from == null ? undefined : Number(event.item_from), item_to: event.item_to == null ? undefined : Number(event.item_to),
++            template_from: event.template_from == null ? undefined : Number(event.template_from), template_to: event.template_to == null ? undefined : Number(event.template_to),
++          };
++        }),
+       };
+     }),
++    players: (Array.isArray(data.players) ? data.players : []).map((rawPlayer) => {
++      const player = (rawPlayer && typeof rawPlayer === 'object' ? rawPlayer : {}) as Record<string, unknown>;
++      return {
++        player_id: String(player.player_id || ''), player_uid: optionalString(player.player_uid), steam_id: optionalString(player.steam_id), nickname: optionalString(player.nickname),
++        online: Boolean(player.online), seen: Boolean(player.seen), rearmed: Boolean(player.rearmed), is_new: Boolean(player.is_new), eligible: Boolean(player.eligible),
++        decision: String(player.decision || ''), reason: String(player.reason || ''), grant_status: optionalString(player.grant_status), grant_phase: optionalString(player.grant_phase),
++        evidence: strings(player.evidence), last_update_at: optionalString(player.last_update_at),
++      };
++    }).filter((player) => player.player_id),
++    worker_running: Boolean(data.worker_running),
+     templates: (Array.isArray(data.templates) ? data.templates : []).map((rawTemplate) => {
+       const template = (rawTemplate && typeof rawTemplate === 'object' ? rawTemplate : {}) as Record<string, unknown>;
+       return {
+-        name: String(template.name || ''),
+-        pal_id: template.pal_id ? String(template.pal_id) : undefined,
+-        pal_name: template.pal_name ? String(template.pal_name) : undefined,
+-        english_name: template.english_name ? String(template.english_name) : undefined,
+-        category: template.category ? String(template.category) : undefined,
+-        index_names: (Array.isArray(template.index_names) ? template.index_names : []).map(String),
+-        nickname: template.nickname ? String(template.nickname) : undefined,
+-        level: template.level == null ? undefined : Number(template.level),
+-        modified_at: template.modified_at ? String(template.modified_at) : undefined,
+-        size: template.size == null ? undefined : Number(template.size),
+-        parse_error: template.parse_error ? String(template.parse_error) : undefined,
++        name: String(template.name || ''), pal_id: optionalString(template.pal_id), pal_name: optionalString(template.pal_name), english_name: optionalString(template.english_name),
++        category: optionalString(template.category), usage_category: optionalString(template.usage_category), overall_grade: optionalString(template.overall_grade),
++        index_names: strings(template.index_names), classification_tags: strings(template.classification_tags), graduation_pal: Boolean(template.graduation_pal),
++        graduation_uses: strings(template.graduation_uses), current_graduation_use: Boolean(template.current_graduation_use), transitional: Boolean(template.transitional),
++        passive_names: strings(template.passive_names), night_work_mode: optionalString(template.night_work_mode), nickname: optionalString(template.nickname),
++        level: template.level == null ? undefined : Number(template.level), modified_at: optionalString(template.modified_at), size: template.size == null ? undefined : Number(template.size), parse_error: optionalString(template.parse_error),
+       };
+     }).filter((template) => template.name),
+     template_indexes: (Array.isArray(data.template_indexes) ? data.template_indexes : []).map((rawIndex) => {
+       const index = (rawIndex && typeof rawIndex === 'object' ? rawIndex : {}) as Record<string, unknown>;
+-      return {
+-        name: String(index.name || ''),
+-        label: String(index.label || index.name || ''),
+-        count: Number(index.count || 0),
+-      };
++      return { name: String(index.name || ''), label: String(index.label || index.name || ''), count: Number(index.count || 0) };
+     }).filter((index) => index.name),
+     item_catalog: (Array.isArray(data.item_catalog) ? data.item_catalog : []).map((rawItem) => {
+       const item = (rawItem && typeof rawItem === 'object' ? rawItem : {}) as Record<string, unknown>;
+-      return { id: String(item.id || ''), name: String(item.name || item.id || ''), icon: item.icon ? String(item.icon) : undefined };
++      return { id: String(item.id || ''), name: String(item.name || item.id || ''), icon: optionalString(item.icon) };
+     }).filter((item) => item.id),
+-    template_error: data.template_error ? String(data.template_error) : undefined,
++    template_error: optionalString(data.template_error),
++    players_error: optionalString(data.players_error),
++    save_index_state: optionalString(data.save_index_state),
+   };
+ };
+ 
+ export const starterGiftApi = {
+   get: () => handleRequest<unknown, StarterGiftSnapshot>(
+-    () => apiClient.get('/security/paldefender/starter-gift'),
+-    mapSnapshot({}),
+-    { fallbackOnError: false, map: mapSnapshot },
++    () => apiClient.get('/security/paldefender/starter-gift'), mapSnapshot({}), { fallbackOnError: false, map: mapSnapshot },
+   ),
+   save: (config: StarterGiftConfig) => handleRequest<unknown, StarterGiftSnapshot>(
+-    () => apiClient.put('/security/paldefender/starter-gift', config),
+-    mapSnapshot({}),
+-    { fallbackOnError: false, map: mapSnapshot },
++    () => apiClient.put('/security/paldefender/starter-gift', config), mapSnapshot({}), { fallbackOnError: false, map: mapSnapshot },
+   ),
+-  retry: (id: string) => handleRequest(
+-    () => apiClient.post(`/security/paldefender/starter-gift/grants/${encodeURIComponent(id)}/retry`),
+-    {},
+-    { fallbackOnError: false },
++  action: (id: string, action: StarterGiftPlayerAction) => handleRequest(
++    () => apiClient.post(`/security/paldefender/starter-gift/grants/${encodeURIComponent(id)}/retry`, { action }), {}, { fallbackOnError: false },
+   ),
++  retry: (id: string) => starterGiftApi.action(id, 'retry'),
+   forget: (id: string) => handleRequest(
+-    () => apiClient.delete(`/security/paldefender/starter-gift/grants/${encodeURIComponent(id)}`),
+-    {},
+-    { fallbackOnError: false },
++    () => apiClient.delete(`/security/paldefender/starter-gift/grants/${encodeURIComponent(id)}`), {}, { fallbackOnError: false },
+   ),
+ };
+diff --git a/frontend/src/pages/StarterGift.tsx b/frontend/src/pages/StarterGift.tsx
+index 26022d7..13e6ea0 100644
+--- a/frontend/src/pages/StarterGift.tsx
++++ b/frontend/src/pages/StarterGift.tsx
+@@ -1,8 +1,8 @@
+ import React, { useEffect, useMemo, useState } from 'react';
+ import {
+-  AlertTriangle, CheckCircle2, CheckSquare, ClipboardList, Gift, LoaderCircle, Minus, Package,
+-  PackageCheck, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, ShieldCheck, Sparkles,
+-  Square, Trash2, Users,
++  AlertTriangle, CheckCircle2, CheckSquare, ChevronDown, CircleDot, ClipboardList, Flag, Gift, LoaderCircle, Minus, Package,
++  PackageCheck, PlayCircle, Plus, RefreshCw, RotateCcw, Save, Search, Settings2, ShieldCheck, Sparkles,
++  Square, Trash2, UserCheck, Users, Wifi, WifiOff,
+ } from 'lucide-react';
+ import { getErrorMessage } from '../api/client';
+ import {
+@@ -10,6 +10,7 @@ import {
+   type PalTemplateInfo,
+   type StarterGiftCatalogItem,
+   type StarterGiftConfig,
++  type StarterGiftPlayerAction,
+   type StarterGiftSnapshot,
+ } from '../api/starterGift';
+ import { PalIcon } from '../components/gm/PalIcon';
+@@ -23,7 +24,7 @@ const emptyConfig: StarterGiftConfig = {
+   batch_delay_ms: 500,
+ };
+ 
+-type GiftTab = 'items' | 'templates' | 'grants';
++type GiftTab = 'players' | 'items' | 'templates' | 'grants';
+ type ItemCategory =
+   | 'all'
+   | 'sphere'
+@@ -93,7 +94,23 @@ const templateDisplayName = (template: PalTemplateInfo) =>
+ const templateCategoryName = (template: PalTemplateInfo) => template.category?.trim() || '未分类';
+ 
+ const templateSearchText = (template: PalTemplateInfo) =>
+-  `${template.pal_name || ''} ${template.english_name || ''} ${template.pal_id || ''} ${template.nickname || ''} ${template.category || ''} ${template.index_names.join(' ')} ${template.name}`.toLowerCase();
++  `${template.pal_name || ''} ${template.english_name || ''} ${template.pal_id || ''} ${template.nickname || ''} ${template.category || ''} ${template.usage_category || ''} ${template.overall_grade || ''} ${template.classification_tags.join(' ')} ${template.passive_names.join(' ')} ${template.index_names.join(' ')} ${template.name}`.toLowerCase();
++
++const decisionLabel = (decision: string) => ({
++  starter_gift_created: '已创建礼包任务', marked_new_next_login: '已标记：下次进入发放', unseen_candidate: '未见过：候选新玩家', known_existing: '已知老玩家',
++}[decision] || decision || '未知');
++
++const decisionClass = (decision: string) => ({
++  starter_gift_created: 'border-sky-200 bg-sky-50 text-sky-700', marked_new_next_login: 'border-violet-200 bg-violet-50 text-violet-700',
++  unseen_candidate: 'border-emerald-200 bg-emerald-50 text-emerald-700', known_existing: 'border-slate-200 bg-slate-50 text-slate-600',
++}[decision] || 'border-amber-200 bg-amber-50 text-amber-700');
++
++const phaseLabel = (phase?: string) => ({
++  queued: '已排队', resolving_player: '解析玩家', ready: '准备发放', items: '发放物品', templates: '发放模板', waiting_player: '等待玩家可用',
++  failed: '失败', completed: '完成', paused: '暂停',
++}[phase || ''] || phase || '等待处理');
++
++const formatTime = (value?: string) => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—';
+ 
+ const ItemIcon: React.FC<{ item: StarterGiftCatalogItem; className?: string }> = ({ item, className = '' }) => {
+   const source = item.icon ? `/assets/items/${encodeURIComponent(item.icon)}.webp` : '';
+@@ -126,22 +143,22 @@ export const StarterGift: React.FC = () => {
+   const [templateIndex, setTemplateIndex] = useState('all');
+   const [templateCategory, setTemplateCategory] = useState('all');
+   const [onlySelectedTemplates, setOnlySelectedTemplates] = useState(false);
++  const [playerSearch, setPlayerSearch] = useState('');
++  const [playerDecision, setPlayerDecision] = useState('all');
+   const [busy, setBusy] = useState(false);
+   const [notice, setNotice] = useState('');
+   const [noticeKind, setNoticeKind] = useState<'success' | 'error'>('success');
+ 
+-  const load = async () => {
+-    setBusy(true);
+-    setNotice('');
++  const load = async (quiet = false, preserveConfig = false) => {
++    if (!quiet) { setBusy(true); setNotice(''); }
+     try {
+       const next = await starterGiftApi.get();
+       setSnapshot(next);
+-      setConfig(next.config);
++      if (!preserveConfig) setConfig(next.config);
+     } catch (error) {
+-      setNoticeKind('error');
+-      setNotice(getErrorMessage(error));
++      if (!quiet) { setNoticeKind('error'); setNotice(getErrorMessage(error)); }
+     } finally {
+-      setBusy(false);
++      if (!quiet) setBusy(false);
+     }
+   };
+ 
+@@ -170,7 +187,7 @@ export const StarterGift: React.FC = () => {
+   const templates = useMemo(() => (snapshot?.templates || []).filter((item) => item.name), [snapshot]);
+   const templateIndexes = useMemo(() => snapshot?.template_indexes || [], [snapshot]);
+   const templateIndexLabels = useMemo(() => new Map(templateIndexes.map((index) => [index.name, index.label || index.name])), [templateIndexes]);
+-  const templateCategories = useMemo(() => Array.from(new Set(templates.map(templateCategoryName))).sort((left, right) => left.localeCompare(right, 'zh-CN')), [templates]);
++  const templateCategories = useMemo(() => Array.from(new Set<string>(templates.map(templateCategoryName))).sort((left, right) => left.localeCompare(right, 'zh-CN')), [templates]);
+   const selectedTemplates = useMemo(() => new Set(config.pal_templates), [config.pal_templates]);
+   const visibleTemplates = useMemo(() => {
+     const query = templateSearch.trim().toLowerCase();
+@@ -200,6 +217,20 @@ export const StarterGift: React.FC = () => {
+   }, [snapshot]);
+   const selectedItemTotal = useMemo(() => config.items.reduce((sum, item) => sum + Math.max(0, Number(item.count) || 0), 0), [config.items]);
+   const dirty = Boolean(snapshot && JSON.stringify(config) !== JSON.stringify(snapshot.config));
++  const visiblePlayers = useMemo(() => {
++    const query = playerSearch.trim().toLowerCase();
++    return (snapshot?.players || []).filter((player) => {
++      if (playerDecision !== 'all' && player.decision !== playerDecision) return false;
++      return !query || `${player.nickname || ''} ${player.player_id} ${player.player_uid || ''} ${player.steam_id || ''} ${player.reason}`.toLowerCase().includes(query);
++    }).sort((left, right) => Number(right.online) - Number(left.online) || (left.nickname || left.player_id).localeCompare(right.nickname || right.player_id, 'zh-CN'));
++  }, [snapshot, playerDecision, playerSearch]);
++  const activeGrant = Boolean(snapshot?.worker_running || snapshot?.grants.some((grant) => grant.status === 'pending' || grant.status === 'running'));
++
++  useEffect(() => {
++    if (!activeGrant) return;
++    const timer = window.setInterval(() => void load(true, true), 3000);
++    return () => window.clearInterval(timer);
++  }, [activeGrant]);
+ 
+   const toggleItem = (catalogItem: StarterGiftCatalogItem) => {
+     setConfig((current) => current.items.some((item) => item.item_id === catalogItem.id)
+@@ -252,19 +283,24 @@ export const StarterGift: React.FC = () => {
+     }
+   };
+ 
+-  const retry = async (playerID: string) => {
+-    setBusy(true);
+-    setNotice('');
++  const runPlayerAction = async (playerID: string, action: StarterGiftPlayerAction) => {
++    const messages: Record<StarterGiftPlayerAction, string> = {
++      retry: '已重新排队，将从未完成批次继续。', supplement: '已排队补发未完成内容，不会重复已成功批次。',
++      reissue: '已创建完整重发任务，将从第一批重新发放。', next_login: '已标记为新玩家；当前在线时需先离线，再次进入后自动发放。',
++    };
++    const confirms: Partial<Record<StarterGiftPlayerAction, string>> = {
++      reissue: '完整重发会从第一批重新发放，可能产生重复物品或帕鲁。确认继续？',
++      next_login: '将清除该玩家现有礼包任务并标记为“下次进入视为新玩家”。确认继续？',
++    };
++    if (confirms[action] && !window.confirm(confirms[action])) return;
++    setBusy(true); setNotice('');
+     try {
+-      await starterGiftApi.retry(playerID);
+-      await load();
+-      setNoticeKind('success');
+-      setNotice('已排队，将在下一次在线检测时从未完成批次继续。');
++      await starterGiftApi.action(playerID, action);
++      await load(true);
++      setNoticeKind('success'); setNotice(messages[action]);
+     } catch (error) {
+-      setNoticeKind('error');
+-      setNotice(getErrorMessage(error));
+-      setBusy(false);
+-    }
++      setNoticeKind('error'); setNotice(getErrorMessage(error));
++    } finally { setBusy(false); }
+   };
+ 
+   const forget = async (playerID: string) => {
+@@ -284,6 +320,7 @@ export const StarterGift: React.FC = () => {
+   };
+ 
+   const tabs: Array<{ id: GiftTab; label: string; count: number; icon: React.ReactNode }> = [
++    { id: 'players', label: '玩家判定', count: snapshot?.players.length || 0, icon: <UserCheck size={15} /> },
+     { id: 'items', label: '礼包物品', count: config.items.length, icon: <PackageCheck size={15} /> },
+     { id: 'templates', label: '帕鲁模板', count: config.pal_templates.length, icon: <Sparkles size={15} /> },
+     { id: 'grants', label: '发放记录', count: grantCounts.total, icon: <ClipboardList size={15} /> },
+@@ -297,7 +334,7 @@ export const StarterGift: React.FC = () => {
+           <h1>新玩家礼包</h1>
+           <p>为当前存档世界中首次进入的玩家配置开局物品与帕鲁模板。</p>
+         </div>
+-        <button type="button" className="pp-button" onClick={() => void load()} disabled={busy}><RefreshCw className={busy ? 'animate-spin' : ''} size={15} />刷新</button>
++        <button type="button" className="pp-button" onClick={() => void load(false, dirty)} disabled={busy}><RefreshCw className={busy ? 'animate-spin' : ''} size={15} />刷新</button>
+       </div>
+ 
+       {notice && <div role={noticeKind === 'error' ? 'alert' : 'status'} className={`flex items-start gap-2 rounded-xl border px-4 py-3 text-xs font-semibold ${noticeKind === 'error' ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>{noticeKind === 'error' ? <AlertTriangle className="mt-0.5 shrink-0" size={15} /> : <CheckCircle2 className="mt-0.5 shrink-0" size={15} />}<span>{notice}</span></div>}
+@@ -306,7 +343,7 @@ export const StarterGift: React.FC = () => {
+         <SummaryCard label="当前世界" value={snapshot?.scope.world_id || '尚未解析'} detail="配置和发放记录按 WorldID 隔离" icon={<ShieldCheck size={18} />} />
+         <SummaryCard label="自动发放" value={config.enabled ? '已启用' : '已停用'} detail={dirty ? '有未保存修改' : '配置已同步'} icon={<Gift size={18} />} />
+         <SummaryCard label="礼包内容" value={`${config.items.length} 种 / ${selectedItemTotal} 件`} detail={`${config.pal_templates.length} 个帕鲁模板`} icon={<PackageCheck size={18} />} />
+-        <SummaryCard label="发放任务" value={`${grantCounts.pending} 处理中`} detail={`${grantCounts.success} 完成 · ${grantCounts.failed} 失败`} icon={<Users size={18} />} />
++        <SummaryCard label="发放任务" value={snapshot?.worker_running ? '执行器运行中' : `${grantCounts.pending} 处理中`} detail={`${grantCounts.success} 完成 · ${grantCounts.failed} 失败 · 每 3 秒刷新`} icon={<Users size={18} />} />
+       </section>
+ 
+       <section className="pp-card">
+@@ -327,6 +364,25 @@ export const StarterGift: React.FC = () => {
+           {tabs.map((tab) => <button type="button" role="tab" aria-selected={activeTab === tab.id} key={tab.id} onClick={() => setActiveTab(tab.id)} className={`inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2.5 text-xs font-black ${activeTab === tab.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>{tab.icon}{tab.label}<span className={`rounded-full px-2 py-0.5 text-[10px] ${activeTab === tab.id ? 'bg-violet-100 text-violet-700' : 'bg-slate-200 text-slate-500'}`}>{tab.count}</span></button>)}
+         </div>
+ 
++        {activeTab === 'players' && <div className="mt-5 min-w-0">
++          {snapshot?.players_error && <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800"><AlertTriangle className="mt-0.5 shrink-0" size={15} />玩家判定读取不完整：{snapshot.players_error}</div>}
++          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_14rem]">
++            <label className="relative block"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} /><input className="pp-input pp-input--icon w-full" value={playerSearch} onChange={(event) => setPlayerSearch(event.target.value)} placeholder="搜索昵称、PlayerUID、SteamID 或判定原因" /></label>
++            <select className="pp-input" value={playerDecision} onChange={(event) => setPlayerDecision(event.target.value)} aria-label="筛选玩家判定"><option value="all">全部判定</option><option value="unseen_candidate">候选新玩家</option><option value="marked_new_next_login">已标记下次进入</option><option value="starter_gift_created">已有礼包任务</option><option value="known_existing">已知老玩家</option></select>
++          </div>
++          <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-[11px] font-semibold leading-5 text-sky-800"><strong>判定规则：</strong>当前 WorldID 内从未出现在 seen 基线中的账号，在首次在线采样时视为新玩家；人工“下次进入视为新玩家”会设置 rearm 标记，必须观察到离线后再次上线才触发。已有任务优先显示任务来源与状态。</div>
++          <div className="mt-4 max-h-[42rem] overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50/50 p-2">
++            {visiblePlayers.map((player) => <article key={player.player_id} className="mb-2 rounded-2xl border border-slate-200 bg-white p-4 last:mb-0">
++              <div className="flex flex-col gap-3 xl:flex-row xl:items-start">
++                <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><strong className="truncate text-sm font-black text-slate-800">{player.nickname || player.player_id}</strong><span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-black ${player.online ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>{player.online ? <Wifi size={11} /> : <WifiOff size={11} />}{player.online ? '在线' : '离线'}</span><span className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${decisionClass(player.decision)}`}>{decisionLabel(player.decision)}</span>{player.rearmed && <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-black text-violet-700">rearm</span>}</div>
++                <p className="mt-2 text-xs font-semibold leading-5 text-slate-700">{player.reason}</p><div className="mt-2 flex flex-wrap gap-1.5">{player.evidence.map((evidence) => <span key={evidence} className="rounded-lg bg-slate-100 px-2 py-1 font-mono text-[9px] text-slate-600">{evidence}</span>)}</div><p className="mt-2 truncate font-mono text-[10px] text-slate-400">PlayerID {player.player_id}{player.player_uid ? ` · UID ${player.player_uid}` : ''}{player.steam_id ? ` · Steam ${player.steam_id}` : ''}</p></div>
++                <div className="flex shrink-0 flex-wrap gap-2 xl:max-w-sm xl:justify-end"><button type="button" className="pp-button" disabled={busy} onClick={() => void runPlayerAction(player.player_id, 'next_login')}><Flag size={14} />下次进入视为新玩家</button>{player.grant_status && player.grant_status !== 'success' && <button type="button" className="pp-button" disabled={busy} onClick={() => void runPlayerAction(player.player_id, 'supplement')}><PackageCheck size={14} />补发未完成</button>}<button type="button" className="pp-button" disabled={busy || !config.enabled} title={config.enabled ? '从头创建完整发放任务' : '请先启用并保存自动发放配置'} onClick={() => void runPlayerAction(player.player_id, 'reissue')}><PlayCircle size={14} />立即完整重发</button></div>
++              </div>
++            </article>)}
++            {visiblePlayers.length === 0 && <div className="flex min-h-56 flex-col items-center justify-center gap-2 p-8 text-center text-slate-400"><UserCheck size={30} /><strong className="text-sm text-slate-600">没有匹配玩家</strong><span className="text-xs">存档索引状态：{snapshot?.save_index_state || '未知'}</span></div>}
++          </div>
++        </div>}
++
+         {activeTab === 'items' && <div className="mt-5 min-w-0">
+           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+             <label className="relative block min-w-0 flex-1"><span className="sr-only">搜索物品</span><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} /><input className="pp-input pp-input--icon w-full" value={itemSearch} onChange={(event) => setItemSearch(event.target.value)} placeholder="搜索中文名称或 ItemID" /></label>
+@@ -402,6 +458,12 @@ export const StarterGift: React.FC = () => {
+                     {template.index_names.length === 0 && <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">未命中索引</span>}
+                     {template.level != null && template.level > 0 && <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">Lv.{template.level}</span>}
+                     {template.nickname && <span className="inline-flex max-w-36 truncate rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">{template.nickname}</span>}
++                    {template.overall_grade && <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">{template.overall_grade}</span>}
++                    {template.usage_category && <span className="inline-flex max-w-44 truncate rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">{template.usage_category}</span>}
++                    {template.classification_tags.slice(0, 2).map((tag) => <span key={tag} className="inline-flex max-w-44 truncate rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{tag}</span>)}
++                    {template.graduation_pal && <span className="inline-flex rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-bold text-orange-800">毕业帕鲁</span>}
++                    {template.transitional && <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">低阶/过渡</span>}
++                    {template.passive_names.length > 0 && <span className="inline-flex max-w-52 truncate rounded-full bg-fuchsia-100 px-2 py-0.5 text-[10px] font-bold text-fuchsia-700" title={template.passive_names.join('、')}>{template.passive_names.join('、')}</span>}
+                     {template.parse_error && <span className="inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700" title={template.parse_error}>模板解析失败</span>}
+                   </span>
+                 </span>
+@@ -412,14 +474,20 @@ export const StarterGift: React.FC = () => {
+         </div>}
+ 
+         {activeTab === 'grants' && <div className="mt-5 min-w-0">
+-          <div className="mb-4 grid gap-3 sm:grid-cols-3">
++          <div className="mb-4 grid gap-3 sm:grid-cols-4">
+             <div className="rounded-xl border border-sky-200 bg-sky-50 p-3"><span className="text-[10px] font-black uppercase tracking-wider text-sky-600">处理中</span><strong className="mt-1 block text-xl font-black text-sky-900">{grantCounts.pending}</strong></div>
+             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3"><span className="text-[10px] font-black uppercase tracking-wider text-emerald-600">已完成</span><strong className="mt-1 block text-xl font-black text-emerald-900">{grantCounts.success}</strong></div>
+             <div className="rounded-xl border border-rose-200 bg-rose-50 p-3"><span className="text-[10px] font-black uppercase tracking-wider text-rose-600">失败</span><strong className="mt-1 block text-xl font-black text-rose-900">{grantCounts.failed}</strong></div>
++            <div className="rounded-xl border border-violet-200 bg-violet-50 p-3"><span className="text-[10px] font-black uppercase tracking-wider text-violet-600">执行器</span><strong className="mt-1 block text-sm font-black text-violet-900">{snapshot?.worker_running ? '运行中' : '空闲'}</strong></div>
+           </div>
+-          <div className="max-h-[36rem] overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50/50 p-2">
+-            {(snapshot?.grants || []).map((grant) => <article className="mb-2 flex min-w-0 flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 last:mb-0 md:flex-row md:items-center" key={grant.player_id}><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><strong className="truncate text-sm font-black text-slate-800">{grant.nickname || grant.player_id}</strong><span className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${statusClass(grant.status)}`}>{statusLabel(grant.status)}</span></div><span className="mt-2 block text-[11px] font-semibold text-slate-500">物品 {grant.next_item}/{grant.item_total} · 模板 {grant.next_template}/{grant.template_total} · 尝试 {grant.attempts}</span>{grant.last_error && <span className="mt-2 block break-words rounded-lg bg-rose-50 px-3 py-2 text-[11px] font-semibold text-rose-700">{grant.last_error}</span>}</div><div className="flex shrink-0 justify-end gap-2">{grant.status === 'failed' && <button type="button" className="pp-button" disabled={busy} onClick={() => void retry(grant.player_id)}><RotateCcw size={14} />重试</button>}<button type="button" className="icon-danger" aria-label="重置玩家礼包记录" disabled={busy} onClick={() => void forget(grant.player_id)}><Trash2 size={15} /></button></div></article>)}
+-            {(snapshot?.grants || []).length === 0 && <div className="flex min-h-56 flex-col items-center justify-center gap-2 p-8 text-center text-slate-400"><ClipboardList size={30} /><strong className="text-sm text-slate-600">当前世界暂无发放记录</strong><span className="text-xs">新玩家首次进入并被在线采样后，任务会显示在这里</span></div>}
++          <div className="max-h-[42rem] overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50/50 p-2">
++            {(snapshot?.grants || []).map((grant) => <article className="mb-2 rounded-2xl border border-slate-200 bg-white p-4 last:mb-0" key={grant.player_id}>
++              <div className="flex flex-col gap-3 md:flex-row md:items-start"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><strong className="truncate text-sm font-black text-slate-800">{grant.nickname || grant.player_id}</strong><span className={`rounded-full border px-2 py-0.5 text-[10px] font-black ${statusClass(grant.status)}`}>{statusLabel(grant.status)}</span><span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-black text-slate-600">{phaseLabel(grant.phase)}</span>{grant.manual && <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-black text-violet-700">人工任务</span>}</div>
++              <p className="mt-2 text-[11px] font-semibold leading-5 text-slate-600">{grant.detection_reason || '旧记录未保存判定原因'}</p><div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-violet-500 transition-all" style={{ width: `${Math.max(0, Math.min(100, grant.progress_percent))}%` }} /></div><span className="mt-1 block text-[10px] font-bold text-slate-500">{grant.progress_percent}% · 物品 {grant.next_item}/{grant.item_total} · 模板 {grant.next_template}/{grant.template_total} · 尝试 {grant.attempts}</span>{grant.resolved_player_id && <span className="mt-1 block truncate font-mono text-[9px] text-slate-400">PalDefender UserId：{grant.resolved_player_id}</span>}{grant.last_error && <span className="mt-2 block break-words rounded-lg bg-rose-50 px-3 py-2 text-[11px] font-semibold text-rose-700">{grant.last_error}</span>}</div>
++              <div className="flex shrink-0 flex-wrap justify-end gap-2">{grant.status !== 'success' && <button type="button" className="pp-button" disabled={busy} onClick={() => void runPlayerAction(grant.player_id, 'supplement')}><PackageCheck size={14} />补发未完成</button>}<button type="button" className="pp-button" disabled={busy || !config.enabled} onClick={() => void runPlayerAction(grant.player_id, 'reissue')}><PlayCircle size={14} />完整重发</button><button type="button" className="pp-button" disabled={busy} onClick={() => void runPlayerAction(grant.player_id, 'next_login')}><Flag size={14} />下次进入重发</button><button type="button" className="icon-danger" aria-label="删除玩家礼包任务与标记" disabled={busy} onClick={() => void forget(grant.player_id)}><Trash2 size={15} /></button></div></div>
++              <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50/70"><summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-[11px] font-black text-slate-700"><ChevronDown size={13} />发放进程与判定日志（{grant.events.length}）</summary><div className="border-t border-slate-200 p-3"><ol className="space-y-2">{grant.events.slice().reverse().map((event, index) => <li key={`${event.at}-${index}`} className="flex gap-2 text-[10px]"><CircleDot className={`mt-0.5 shrink-0 ${event.level === 'error' ? 'text-rose-500' : event.level === 'warn' ? 'text-amber-500' : 'text-sky-500'}`} size={12} /><span className="min-w-0"><strong className="font-black text-slate-700">{phaseLabel(event.phase)}</strong><span className="ml-2 text-slate-400">{formatTime(event.at)}</span><span className="mt-0.5 block break-words font-semibold leading-4 text-slate-600">{event.message}</span></span></li>)}</ol>{grant.events.length === 0 && <p className="text-[10px] font-semibold text-slate-400">这是旧版创建的任务，尚无事件日志；下一次操作会开始记录。</p>}</div></details>
++            </article>)}
++            {(snapshot?.grants || []).length === 0 && <div className="flex min-h-56 flex-col items-center justify-center gap-2 p-8 text-center text-slate-400"><ClipboardList size={30} /><strong className="text-sm text-slate-600">当前世界暂无发放记录</strong><span className="text-xs">到“玩家判定”页可以直接标记或创建测试任务</span></div>}
+           </div>
+         </div>}
+       </section>
+diff --git a/frontend/src/components/gm/PalWorkspace.tsx b/frontend/src/components/gm/PalWorkspace.tsx
+--- a/frontend/src/components/gm/PalWorkspace.tsx
++++ b/frontend/src/components/gm/PalWorkspace.tsx
+@@ -1,6 +1,7 @@
+-import React, { useRef, useState } from 'react';
++import React, { useMemo, useRef, useState } from 'react';
+ import { useQuery, useQueryClient } from '@tanstack/react-query';
+ import { AlertTriangle, Download, ExternalLink, FileJson, LoaderCircle, RefreshCw, Save, Search, Send, Sparkles, Sword, Trash2, Upload, X } from 'lucide-react';
+ import { palDefenderGMApi } from '../../api/paldefenderGM';
++import { starterGiftApi, type PalTemplateInfo } from '../../api/starterGift';
+ import type { Pal, PalDefenderPalCatalogEntry, PalDefenderPalTemplate } from '../../types';
+ import { PalIcon } from './PalIcon';
+@@ -28,4 +29,6 @@ import { PalIcon } from './PalIcon';
+   const [palCount, setPalCount] = useState('1');
+   const [selectedTemplate, setSelectedTemplate] = useState('');
++  const [templateSearch, setTemplateSearch] = useState('');
++  const [templateIndex, setTemplateIndex] = useState('all');
+   const [templateCount, setTemplateCount] = useState('1');
+   const [selectedExport, setSelectedExport] = useState('');
+@@ -69,4 +72,10 @@ import { PalIcon } from './PalIcon';
+     enabled: available,
+   });
++  const indexedTemplateQuery = useQuery({
++    queryKey: ['paldefender-gm', 'template-index-catalog'],
++    queryFn: starterGiftApi.get,
++    enabled: available,
++    staleTime: 5 * 60 * 1000,
++  });
+   const exportedQuery = useQuery({
+     queryKey: ['paldefender-gm', 'exported-templates', identifier],
+@@ -75,4 +84,22 @@ import { PalIcon } from './PalIcon';
+   });
+ 
++  const indexedTemplateByName = useMemo(() => new Map(
++    (indexedTemplateQuery.data?.templates ?? []).map((template) => [template.name.toLowerCase(), template] as const),
++  ), [indexedTemplateQuery.data]);
++  const templateIndexLabels = useMemo(() => new Map(
++    (indexedTemplateQuery.data?.template_indexes ?? []).map((index) => [index.name, index.label || index.name] as const),
++  ), [indexedTemplateQuery.data]);
++  const visibleManagedTemplates = useMemo(() => {
++    const needle = templateSearch.trim().toLowerCase();
++    return (templatesQuery.data?.templates ?? []).map((template) => {
++      const info = indexedTemplateByName.get(template.name.toLowerCase()) as PalTemplateInfo | undefined;
++      return { template, info };
++    }).filter(({ template, info }) => {
++      if (templateIndex !== 'all' && !info?.index_names.includes(templateIndex)) return false;
++      const text = `${template.name} ${info?.pal_id || ''} ${info?.pal_name || ''} ${info?.english_name || ''} ${info?.category || ''} ${info?.usage_category || ''} ${info?.overall_grade || ''} ${(info?.classification_tags ?? []).join(' ')}`.toLowerCase();
++      return !needle || text.includes(needle);
++    }).slice(0, 120);
++  }, [indexedTemplateByName, templateIndex, templateSearch, templatesQuery.data]);
++
+   const directGrant = async () => {
+ 
+@@ -270,4 +297,15 @@ import { PalIcon } from './PalIcon';
+ 			<label className="text-xs font-bold text-slate-600">发放数量<input aria-label="模板发放数量" type="number" min={1} max={20} value={templateCount} onChange={(event) => setTemplateCount(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-semibold text-slate-700 focus:border-violet-500 focus:outline-none" /></label>
+           </div>
++          <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_13rem]">
++            <label className="relative block"><Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input aria-label="搜索已保存帕鲁模板" value={templateSearch} onChange={(event) => setTemplateSearch(event.target.value)} placeholder="搜索中文名、PalID、用途或分类" className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-xs font-semibold text-slate-700" /></label>
++            <select aria-label="按帕鲁模板索引筛选" value={templateIndex} onChange={(event) => setTemplateIndex(event.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700"><option value="all">全部索引</option>{(indexedTemplateQuery.data?.template_indexes ?? []).map((index) => <option key={index.name} value={index.name}>{index.label}（{index.count}）</option>)}</select>
++          </div>
++          <div className="mt-3 grid max-h-56 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
++            {visibleManagedTemplates.map(({ template, info }) => <button type="button" key={template.name} onClick={() => setSelectedTemplate(template.name)} aria-pressed={selectedTemplate === template.name} className={`flex min-w-0 items-center gap-2 rounded-xl border p-2 text-left ${selectedTemplate === template.name ? 'border-violet-300 bg-violet-50' : 'border-slate-100 bg-slate-50/70'}`}>
++              <PalIcon characterID={info?.pal_id || ''} name={info?.pal_name || template.name} className="h-10 w-10 rounded-lg" />
++              <span className="min-w-0 flex-1"><span className="block truncate text-[11px] font-bold text-slate-700">{info?.category ? `${info.category} · ` : ''}{info?.pal_name || template.name}</span><span className="mt-1 block truncate font-mono text-[9px] text-slate-400">{info?.pal_id || template.name}</span><span className="mt-1 flex flex-wrap gap-1">{info?.overall_grade && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-800">{info.overall_grade}</span>}{info?.usage_category && <span className="max-w-32 truncate rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">{info.usage_category}</span>}{info?.index_names.slice(0, 1).map((name) => <span key={name} className="max-w-32 truncate rounded-full bg-sky-100 px-1.5 py-0.5 text-[9px] font-bold text-sky-700">{templateIndexLabels.get(name) || name}</span>)}</span></span>
++            </button>)}
++            {visibleManagedTemplates.length === 0 && <p className="col-span-full rounded-xl bg-slate-50 px-3 py-6 text-center text-[11px] font-semibold text-slate-400">没有匹配的模板；索引 JSON 与模板 JSON 应一起放在 Templates 目录。</p>}
++          </div>
+           <div className="mt-4 flex flex-wrap gap-2">
+             <button type="button" onClick={() => void giveTemplate()} disabled={disabled || !selectedTemplate} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-40">{pending === 'give-template' ? <LoaderCircle size={14} className="animate-spin" /> : <Upload size={14} />}发放模板</button>
