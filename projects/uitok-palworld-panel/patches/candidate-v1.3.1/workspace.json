@@ -1,0 +1,25 @@
+{
+  "schema_version": 2,
+  "target_version": "v1.3.1",
+  "state": "blocked",
+  "verified": false,
+  "created_at": "2026-08-08T03:02:12Z",
+  "updated_at": "2026-08-08T03:02:43Z",
+  "source_track": "/home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track",
+  "derivation": {
+    "schema_version": 2,
+    "mode": "previous-stable-release",
+    "source_track": null,
+    "derived_from_release": "uitok-stable-v1.3.0-p0.8.18",
+    "derived_from_target_version": "v1.3.0",
+    "derived_from_patch_version": "0.8.18",
+    "derived_source_asset": "uitok-palworld-panel_stable-v1.3.0_patch-0.8.18_source.tar.gz",
+    "release_patch_version": "0.8.18"
+  },
+  "release_tag": null,
+  "failed_stage": "per-patch-compatibility",
+  "failure_reason": {
+    "patch": "0002-add-base-custom-names.patch",
+    "reason": "命令失败（exit=1）：/home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/apply-source-patch.sh /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track/source/0002-add-base-custom-names.patch\nerror: patch failed: backend/internal/api/routes.go:238\nerror: backend/internal/api/routes.go: patch does not apply\nerror: frontend/src/api/bases.test.ts: already exists in working directory\nerror: patch failed: frontend/src/api/bases.ts:59\nerror: frontend/src/api/bases.ts: patch does not apply\nerror: patch failed: frontend/src/pages/Bases.tsx:137\nerror: frontend/src/pages/Bases.tsx: patch does not apply\n错误：补丁无法直接应用，且未匹配任何已登记的精确重定位规则。\n"
+  }
+}

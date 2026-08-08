@@ -1,0 +1,348 @@
+diff --git a/backend/internal/api/starter_gift.go b/backend/internal/api/starter_gift.go
+index 107c429..3b50ff3 100644
+--- a/backend/internal/api/starter_gift.go
++++ b/backend/internal/api/starter_gift.go
+@@ -368,7 +368,12 @@ func (s Server) putStarterGiftConfig(c *gin.Context) {
+ 	if !s.canonicalizeStarterGiftTemplates(c, &config) {
+ 		return
+ 	}
+-	if config.Enabled {
++	current, err := startergift.LoadSnapshot(c.Request.Context(), s.store, scope)
++	if err != nil {
++		fail(c, http.StatusInternalServerError, "starter_gift_read_failed", err.Error())
++		return
++	}
++	if config.Enabled && !current.Config.Enabled {
+ 		index, status, indexErr := s.serverSaveIndex.Current(c.Request.Context())
+ 		if indexErr == nil && status.State == "not_indexed" {
+ 			index, status, indexErr = s.serverSaveIndex.Rebuild(c.Request.Context())
+diff --git a/backend/internal/startergift/service.go b/backend/internal/startergift/service.go
+index b686347..b1fab22 100644
+--- a/backend/internal/startergift/service.go
++++ b/backend/internal/startergift/service.go
+@@ -26,9 +26,13 @@ const (
+ 
+ 	MaxItems        = 500
+ 	MaxPalTemplates = 500
++
++	starterGiftWorkerTimeout = 3 * time.Hour
+ )
+ 
+ var (
++	ErrPlayerNotReady = errors.New("PalDefender has not registered the online player yet")
++
+ 	stateMu       sync.Mutex
+ 	workerMu      sync.Mutex
+ 	workerRunning = map[string]bool{}
+@@ -100,6 +104,7 @@ type Snapshot struct {
+ }
+ 
+ type Dispatcher interface {
++	ResolvePlayer(context.Context, []string) (string, error)
+ 	GiveItems(context.Context, string, []ItemGrant) error
+ 	GivePalTemplates(context.Context, string, []string) error
+ }
+@@ -110,6 +115,34 @@ func NewPalDefenderDispatcher(manager paldefender.Manager) Dispatcher {
+ 	return palDefenderDispatcher{manager: manager}
+ }
+ 
++func (d palDefenderDispatcher) ResolvePlayer(ctx context.Context, aliases []string) (string, error) {
++	wanted := map[string]bool{}
++	for _, alias := range aliases {
++		if key := identity(alias); key != "" {
++			wanted[key] = true
++		}
++	}
++	if len(wanted) == 0 {
++		return "", errors.New("player identifier is unavailable")
++	}
++	response, err := d.manager.RESTPlayers(ctx)
++	if err != nil {
++		return "", err
++	}
++	for _, player := range response.Players {
++		if !strings.EqualFold(strings.TrimSpace(player.Status), "online") {
++			continue
++		}
++		if !wanted[identity(player.UserID)] && !wanted[identity(player.PlayerUID)] {
++			continue
++		}
++		if resolved := firstNonEmpty(player.UserID, player.PlayerUID); resolved != "" {
++			return resolved, nil
++		}
++	}
++	return "", ErrPlayerNotReady
++}
++
+ func (d palDefenderDispatcher) GiveItems(ctx context.Context, player string, items []ItemGrant) error {
+ 	request := paldefender.GiveItemsRequest{Items: make([]paldefender.ItemGrant, 0, len(items))}
+ 	for _, item := range items {
+@@ -372,7 +405,9 @@ func startWorker(ctx context.Context, store *db.Store, scope playerpresence.Scop
+ 			delete(workerRunning, workerKey)
+ 			workerMu.Unlock()
+ 		}()
+-		processOnline(ctx, store, scope, dispatcher, players)
++		workerCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), starterGiftWorkerTimeout)
++		defer cancel()
++		processOnline(workerCtx, store, scope, dispatcher, players)
+ 	}()
+ }
+ 
+@@ -403,6 +438,7 @@ func processOnline(ctx context.Context, store *db.Store, scope playerpresence.Sc
+ 
+ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope, dispatcher Dispatcher, key string) error {
+ 	attemptStarted := false
++	playerID := ""
+ 	for {
+ 		stateMu.Lock()
+ 		config, err := loadConfig(ctx, store, scope)
+@@ -420,6 +456,15 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
+ 			stateMu.Unlock()
+ 			return nil
+ 		}
++		if grant.Status == "failed" && retryablePlayerReadinessError(grant.LastError) {
++			grant.Status = "pending"
++			grant.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
++			state.Grants[key] = grant
++			if err := saveState(ctx, store, scope, state); err != nil {
++				stateMu.Unlock()
++				return err
++			}
++		}
+ 		if !config.Enabled {
+ 			if grant.Status == "running" {
+ 				grant.Status = "pending"
+@@ -434,11 +479,31 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
+ 			stateMu.Unlock()
+ 			return nil
+ 		}
++		if playerID == "" {
++			aliases := grantAliases(grant)
++			stateMu.Unlock()
++			resolved, resolveErr := dispatcher.ResolvePlayer(ctx, aliases)
++			if resolveErr != nil {
++				_ = keepGrantPending(ctx, store, scope, key, resolveErr)
++				if errors.Is(resolveErr, ErrPlayerNotReady) {
++					return nil
++				}
++				return resolveErr
++			}
++			playerID = strings.TrimSpace(resolved)
++			if playerID == "" {
++				err := errors.New("resolved player identifier is empty")
++				_ = keepGrantPending(ctx, store, scope, key, err)
++				return err
++			}
++			continue
++		}
+ 		if !attemptStarted {
+ 			grant.Attempts++
+ 			attemptStarted = true
+ 		}
+ 		grant.Status = "running"
++		grant.LastError = ""
+ 		grant.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+ 		state.Grants[key] = grant
+ 		if err := saveState(ctx, store, scope, state); err != nil {
+@@ -447,11 +512,8 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
+ 		}
+ 		stateMu.Unlock()
+ 
+-		playerID := firstNonEmpty(grant.SteamID, grant.PlayerUID, grant.PlayerID)
+ 		var sendErr error
+-		if playerID == "" {
+-			sendErr = errors.New("player identifier is unavailable")
+-		} else if grant.NextItem < len(grant.PlanItems) {
++		if grant.NextItem < len(grant.PlanItems) {
+ 			end := min(grant.NextItem+config.ItemBatchSize, len(grant.PlanItems))
+ 			sendErr = dispatcher.GiveItems(ctx, playerID, grant.PlanItems[grant.NextItem:end])
+ 			if sendErr == nil {
+@@ -508,6 +570,31 @@ func processOne(ctx context.Context, store *db.Store, scope playerpresence.Scope
+ 	}
+ }
+ 
++func keepGrantPending(ctx context.Context, store *db.Store, scope playerpresence.Scope, key string, reason error) error {
++	stateMu.Lock()
++	defer stateMu.Unlock()
++	state, err := loadState(ctx, store, scope)
++	if err != nil {
++		return err
++	}
++	grant, found := state.Grants[key]
++	if !found || grant.Status == "success" {
++		return nil
++	}
++	grant.Status = "pending"
++	grant.LastError = boundedError(reason)
++	grant.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
++	state.Grants[key] = grant
++	return saveState(ctx, store, scope, state)
++}
++
++func retryablePlayerReadinessError(message string) bool {
++	message = strings.ToLower(strings.TrimSpace(message))
++	return strings.Contains(message, "player_not_found") ||
++		strings.Contains(message, "player was not found") ||
++		strings.Contains(message, "has not registered the online player yet")
++}
++
+ func normalizeConfig(config Config) (Config, error) {
+ 	if config.ItemBatchSize == 0 {
+ 		config.ItemBatchSize = 20
+diff --git a/backend/internal/startergift/service_test.go b/backend/internal/startergift/service_test.go
+index 8af650a..ed73c2d 100644
+--- a/backend/internal/startergift/service_test.go
++++ b/backend/internal/startergift/service_test.go
+@@ -4,6 +4,7 @@ import (
+ 	"context"
+ 	"errors"
+ 	"path/filepath"
++	"strings"
+ 	"sync"
+ 	"testing"
+ 	"time"
+@@ -17,6 +18,33 @@ type fakeDispatcher struct {
+ 	itemBatches     [][]ItemGrant
+ 	templateBatches [][]string
+ 	failTemplates   int
++	resolveErr      error
++	resolvedID      string
++	resolvedAliases [][]string
++}
++
++func (f *fakeDispatcher) ResolvePlayer(_ context.Context, aliases []string) (string, error) {
++	f.mu.Lock()
++	defer f.mu.Unlock()
++	f.resolvedAliases = append(f.resolvedAliases, append([]string(nil), aliases...))
++	if f.resolveErr != nil {
++		return "", f.resolveErr
++	}
++	if f.resolvedID != "" {
++		return f.resolvedID, nil
++	}
++	for _, alias := range aliases {
++		if strings.TrimSpace(alias) != "" {
++			return alias, nil
++		}
++	}
++	return "", ErrPlayerNotReady
++}
++
++func (f *fakeDispatcher) counts() (int, int) {
++	f.mu.Lock()
++	defer f.mu.Unlock()
++	return len(f.itemBatches), len(f.templateBatches)
+ }
+ 
+ func (f *fakeDispatcher) GiveItems(_ context.Context, _ string, items []ItemGrant) error {
+@@ -251,6 +279,110 @@ func TestForgetWaitsForOfflineBeforeRearming(t *testing.T) {
+ 	}
+ }
+ 
++func TestWorkerOutlivesCanceledObservationContext(t *testing.T) {
++	store := openTestStore(t)
++	scope := testScope("world-worker-context")
++	saveTestConfig(t, store, scope)
++	now := time.Date(2026, 7, 25, 14, 0, 0, 0, time.UTC)
++	bob := playerpresence.OnlinePlayer{PlayerUID: "uid-bob", SteamID: "2", Nickname: "Bob"}
++	fake := &fakeDispatcher{resolvedID: "uid-bob"}
++	ctx, cancel := context.WithCancel(context.Background())
++	if err := Observe(ctx, store, scope, now, []playerpresence.OnlinePlayer{bob}, fake); err != nil {
++		t.Fatal(err)
++	}
++	cancel()
++
++	deadline := time.Now().Add(3 * time.Second)
++	for time.Now().Before(deadline) {
++		snapshot, err := LoadSnapshot(context.Background(), store, scope)
++		if err != nil {
++			t.Fatal(err)
++		}
++		if len(snapshot.Grants) == 1 && snapshot.Grants[0].Status == "success" {
++			items, templates := fake.counts()
++			if items != 2 || templates != 2 {
++				t.Fatalf("worker batches items=%d templates=%d", items, templates)
++			}
++			return
++		}
++		time.Sleep(20 * time.Millisecond)
++	}
++	t.Fatalf("detached worker did not finish: %#v", mustSnapshot(t, store, scope).Grants)
++}
++
++func TestPlayerReadinessIsRetriedWithoutFreezingGrant(t *testing.T) {
++	store := openTestStore(t)
++	scope := testScope("world-player-ready")
++	saveTestConfig(t, store, scope)
++	now := time.Date(2026, 7, 25, 15, 0, 0, 0, time.UTC)
++	bob := playerpresence.OnlinePlayer{PlayerUID: "ABC-DEF", SteamID: "7656119", Nickname: "Bob"}
++	if err := Observe(context.Background(), store, scope, now, []playerpresence.OnlinePlayer{bob}, nil); err != nil {
++		t.Fatal(err)
++	}
++
++	fake := &fakeDispatcher{resolveErr: ErrPlayerNotReady}
++	if err := processOne(context.Background(), store, scope, fake, identity(bob.SteamID)); err != nil {
++		t.Fatal(err)
++	}
++	grant := mustSnapshot(t, store, scope).Grants[0]
++	if grant.Status != "pending" || !strings.Contains(grant.LastError, "has not registered") || grant.Attempts != 0 {
++		t.Fatalf("not-ready grant=%#v", grant)
++	}
++
++	fake.mu.Lock()
++	fake.resolveErr = nil
++	fake.resolvedID = "ABCDEF"
++	fake.mu.Unlock()
++	if err := processOne(context.Background(), store, scope, fake, identity(bob.SteamID)); err != nil {
++		t.Fatal(err)
++	}
++	grant = mustSnapshot(t, store, scope).Grants[0]
++	if grant.Status != "success" || grant.Attempts != 1 {
++		t.Fatalf("retried grant=%#v", grant)
++	}
++}
++
++func TestLegacyPlayerNotFoundFailureAutomaticallyRequeues(t *testing.T) {
++	store := openTestStore(t)
++	scope := testScope("world-legacy-failure")
++	saveTestConfig(t, store, scope)
++	now := time.Date(2026, 7, 25, 16, 0, 0, 0, time.UTC)
++	bob := playerpresence.OnlinePlayer{SteamID: "7656119", Nickname: "Bob"}
++	if err := Observe(context.Background(), store, scope, now, []playerpresence.OnlinePlayer{bob}, nil); err != nil {
++		t.Fatal(err)
++	}
++	state, err := loadState(context.Background(), store, scope)
++	if err != nil {
++		t.Fatal(err)
++	}
++	key := identity(bob.SteamID)
++	grant := state.Grants[key]
++	grant.Status = "failed"
++	grant.LastError = "PalDefender REST API returned PLAYER_NOT_FOUND: player was not found"
++	state.Grants[key] = grant
++	if err := saveState(context.Background(), store, scope, state); err != nil {
++		t.Fatal(err)
++	}
++
++	fake := &fakeDispatcher{resolvedID: bob.SteamID}
++	if err := processOne(context.Background(), store, scope, fake, key); err != nil {
++		t.Fatal(err)
++	}
++	grantView := mustSnapshot(t, store, scope).Grants[0]
++	if grantView.Status != "success" || grantView.LastError != "" {
++		t.Fatalf("legacy failure was not recovered: %#v", grantView)
++	}
++}
++
++func mustSnapshot(t *testing.T, store *db.Store, scope playerpresence.Scope) Snapshot {
++	t.Helper()
++	snapshot, err := LoadSnapshot(context.Background(), store, scope)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return snapshot
++}
++
+ func TestNormalizeConfigRejectsUnsafeOrOversizedPlans(t *testing.T) {
+ 	if _, err := normalizeConfig(Config{Enabled: true, Items: []ItemGrant{{ItemID: "../Money", Count: 1}}}); err == nil {
+ 		t.Fatal("expected invalid item id")
