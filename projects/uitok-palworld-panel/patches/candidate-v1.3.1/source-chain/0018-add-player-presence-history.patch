@@ -1,0 +1,894 @@
+diff --git a/backend/internal/api/patch_info.go b/backend/internal/api/patch_info.go
+index 90591bcba3502700a30c664f9759a578ed618c7d..7c5bbd0f1b677eee5ec9ca4292105d2dd889d523 100644
+--- a/backend/internal/api/patch_info.go
++++ b/backend/internal/api/patch_info.go
+@@ -14,7 +14,7 @@ const (
+ 	patchRepository       = "ninhua/Palworld-Panel-Patches"
+ )
+ 
+-var patchFeatures = []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display"}
++var patchFeatures = []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display", "player-presence-history"}
+ 
+ func (s Server) patchInfo(c *gin.Context) {
+ 	info := buildinfo.Current()
+diff --git a/backend/internal/api/patch_info_test.go b/backend/internal/api/patch_info_test.go
+index f63e46ad941611877841d5986f83224afc4dbfda..460730e5d12852df917540390fe8492652c0ff93 100644
+--- a/backend/internal/api/patch_info_test.go
++++ b/backend/internal/api/patch_info_test.go
+@@ -77,7 +77,7 @@ func TestPatchInfo(t *testing.T) {
+ 	for _, feature := range response.Data.Patch.Features {
+ 		features[feature] = true
+ 	}
+-	for _, expected := range []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display"} {
++	for _, expected := range []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary", "insecure-endpoint-support", "panel-patch-hot-update", "audit-log-response-display", "player-presence-history"} {
+ 		if !features[expected] {
+ 			t.Fatalf("missing feature %q in %#v", expected, response.Data.Patch.Features)
+ 		}
+diff --git a/backend/internal/api/save_index.go b/backend/internal/api/save_index.go
+index 4ba4283..d29f766 100644
+--- a/backend/internal/api/save_index.go
++++ b/backend/internal/api/save_index.go
+@@ -2,7 +2,9 @@ func (s Server) listSavePlayers(c *gin.Context) {
+ 	players = filterPlayersWithAnnotations(players, annotations, c)
+ 	limit, offset := limitOffset(c)
+ 	paged, summary := paginate(players, limit, offset)
+-	ok(c, gin.H{"players": flattenPlayersWithAnnotations(paged, online, annotations), "status": status, "summary": summary, "view": view})
++	playerViews := flattenPlayersWithAnnotations(paged, online, annotations)
++	s.attachPlayerPresence(c.Request.Context(), playerViews, view.SourceKind == "server")
++	ok(c, gin.H{"players": playerViews, "status": status, "summary": summary, "view": view})
+ }
+ 
+ func (s Server) getSavePlayer(c *gin.Context) {
+@@ -10,7 +12,9 @@ func (s Server) getSavePlayer(c *gin.Context) {
+ 	players := playersForView(index.Players, online, overlay)
+ 	for _, player := range players {
+ 		if matchesID(id, player.PlayerUID, player.SteamID) {
+-			ok(c, gin.H{"player": flattenPlayerWithAnnotation(player, online, annotationForPlayer(annotations, player)), "status": status, "view": view})
++			playerView := flattenPlayerWithAnnotation(player, online, annotationForPlayer(annotations, player))
++			s.attachPlayerPresence(c.Request.Context(), []gin.H{playerView}, view.SourceKind == "server")
++			ok(c, gin.H{"player": playerView, "status": status, "view": view})
+ 			return
+ 		}
+ 	}
+diff --git a/backend/internal/monitor/manager.go b/backend/internal/monitor/manager.go
+index d4513d5..f2940ab 100644
+--- a/backend/internal/monitor/manager.go
++++ b/backend/internal/monitor/manager.go
+@@ -4,6 +4,9 @@ func (m Manager) fillRESTStats(ctx context.Context, sample *db.MonitorSample, ru
+ 	data := mapFromAny(resp.Body)
+ 	sample.CurrentPlayers = int(numberValue(data, "current_players", "currentPlayerNum", "currentplayernum", "players"))
+ 	sample.MaxPlayers = int(numberValue(data, "max_players", "maxPlayerNum", "maxplayernum"))
++	if err := m.observePlayerPresence(ctx, client); err != nil {
++		m.debugf("player presence observation failed: %q", err.Error())
++	}
+ }
+ 
+ func (m Manager) palworldREST(settings palconfig.Settings, runtimeMode string) palrest.Client {
+diff --git a/docs/openapi.yaml b/docs/openapi.yaml
+index 8633ce7..cfd5d9d 100644
+--- a/docs/openapi.yaml
++++ b/docs/openapi.yaml
+@@ -3,8 +3,26 @@
+         tags: {type: array, maxItems: 8, items: {type: string, maxLength: 24}}
+         has_annotation: {type: boolean}
+         annotation_updated_at: {type: string}
++        presence_available: {type: boolean}
++        presence_stale: {type: boolean}
++        presence_observed_at: {type: string, format: date-time}
++        presence_online: {type: boolean}
++        session_seconds: {type: integer, format: int64, minimum: 0}
++        total_seconds: {type: integer, format: int64, minimum: 0}
++        session_started_at: {type: string, format: date-time}
++        last_seen_at: {type: string, format: date-time}
++        last_online_at: {type: string, format: date-time}
++        last_offline_at: {type: string, format: date-time}
++        presence_sessions: {type: array, items: {$ref: '#/components/schemas/PlayerPresenceSession'}}
+         ping: {type: number}
+         ip: {type: string}
++    PlayerPresenceSession:
++      type: object
++      required: [started_at, ended_at, duration_seconds]
++      properties:
++        started_at: {type: string, format: date-time}
++        ended_at: {type: string, format: date-time}
++        duration_seconds: {type: integer, format: int64, minimum: 0}
+     PlayerAnnotationUpdate:
+       type: object
+       additionalProperties: false
+diff --git a/frontend/src/api/players.test.ts b/frontend/src/api/players.test.ts
+index 5459799..c1f8fdd 100644
+--- a/frontend/src/api/players.test.ts
++++ b/frontend/src/api/players.test.ts
+@@ -13,4 +13,25 @@
+     });
+   });
+ 
++  it('maps player presence totals and completed sessions', () => {
++    expect(mapPlayer({
++      player_uid: 'uid-presence',
++      presence_available: true,
++      session_seconds: 90,
++      total_seconds: 3600,
++      last_online_at: '2026-07-24T10:00:00Z',
++      last_offline_at: '2026-07-24T11:00:00Z',
++      presence_sessions: [{
++        started_at: '2026-07-24T10:00:00Z',
++        ended_at: '2026-07-24T11:00:00Z',
++        duration_seconds: 3600,
++      }],
++    })).toMatchObject({
++      presence_available: true,
++      session_seconds: 90,
++      total_seconds: 3600,
++      presence_sessions: [{ duration_seconds: 3600 }],
++    });
++  });
++
+   it('maps parsed inventory slots and ignores entries without an ItemID', () => {
+diff --git a/frontend/src/api/players.ts b/frontend/src/api/players.ts
+index f6d6e6c..ae14d0d 100644
+--- a/frontend/src/api/players.ts
++++ b/frontend/src/api/players.ts
+@@ -2,5 +2,25 @@
+     tags: Array.isArray(player.tags) ? player.tags.map((tag) => String(tag)).filter(Boolean) : [],
+     has_annotation: Boolean(player.has_annotation),
+     annotation_updated_at: String(player.annotation_updated_at || ''),
++    presence_available: Boolean(player.presence_available),
++    presence_stale: Boolean(player.presence_stale),
++    presence_observed_at: String(player.presence_observed_at || ''),
++    presence_online: Boolean(player.presence_online),
++    session_seconds: Math.max(0, Number(player.session_seconds || 0)),
++    total_seconds: Math.max(0, Number(player.total_seconds || 0)),
++    session_started_at: String(player.session_started_at || ''),
++    last_seen_at: String(player.last_seen_at || ''),
++    last_online_at: String(player.last_online_at || ''),
++    last_offline_at: String(player.last_offline_at || ''),
++    presence_sessions: Array.isArray(player.presence_sessions)
++      ? player.presence_sessions.map((rawSession) => {
++          const session = (rawSession && typeof rawSession === 'object' ? rawSession : {}) as Record<string, unknown>;
++          return {
++            started_at: String(session.started_at || ''),
++            ended_at: String(session.ended_at || ''),
++            duration_seconds: Math.max(0, Number(session.duration_seconds || 0)),
++          };
++        })
++      : [],
+   };
+ };
+diff --git a/frontend/src/pages/Players.tsx b/frontend/src/pages/Players.tsx
+--- a/frontend/src/pages/Players.tsx
++++ b/frontend/src/pages/Players.tsx
+@@ -17,2 +17,19 @@ const pageSize = 50;
+ 
++const formatPresenceDuration = (seconds?: number) => {
++  const value = Math.max(0, Math.floor(Number(seconds) || 0));
++  const days = Math.floor(value / 86400);
++  const hours = Math.floor((value % 86400) / 3600);
++  const minutes = Math.floor((value % 3600) / 60);
++  if (days > 0) return `${days} 天 ${hours} 小时`;
++  if (hours > 0) return `${hours} 小时 ${minutes} 分`;
++  return `${minutes} 分钟`;
++};
++
++const formatPresenceTime = (value?: string) => {
++  if (!value) return '-';
++  const date = new Date(value);
++  if (Number.isNaN(date.getTime())) return value;
++  return date.toLocaleString('zh-CN', { hour12: false });
++};
++
+ export const Players: React.FC = () => {
+@@ -318,2 +335,7 @@ export const Players: React.FC = () => {
+       )}
++      {player.presence_available && (
++        <p className="mt-1 truncate text-[9px] font-semibold text-sky-600">
++          {player.is_online ? '本次在线' : '上次在线'} {formatPresenceDuration(player.session_seconds)} · 累计 {formatPresenceDuration(player.total_seconds)}
++        </p>
++      )}
+     </div>
+@@ -439,4 +461,25 @@ const PlayerDetail: React.FC<{
+             <Detail label="Ping" value={player.ping == null ? '-' : `${player.ping} ms`} />
++            <Detail label={player.is_online ? '本次在线' : '上次在线'} value={player.presence_available ? formatPresenceDuration(player.session_seconds) : '统计暂不可用'} />
++            <Detail label="累计在线" value={player.presence_available ? formatPresenceDuration(player.total_seconds) : '统计暂不可用'} />
++            <Detail label="最近上线" value={formatPresenceTime(player.last_online_at)} />
++            <Detail label="最近下线" value={formatPresenceTime(player.last_offline_at)} />
+           </div>
+ 
++          {(player.presence_sessions?.length ?? 0) > 0 && (
++            <section className="mt-5 rounded-2xl border border-sky-100 bg-sky-50/40 p-4">
++              <h3 className="text-xs font-bold text-slate-700">最近在线记录</h3>
++              <div className="mt-3 space-y-2">
++                {[...player.presence_sessions!].slice(-5).reverse().map((session) => (
++                  <div key={`${session.started_at}-${session.ended_at}`} className="rounded-xl border border-sky-100 bg-white px-3 py-2">
++                    <div className="flex items-center justify-between gap-3 text-[10px]">
++                      <span className="font-semibold text-slate-500">{formatPresenceTime(session.started_at)}</span>
++                      <span className="font-bold text-sky-600">{formatPresenceDuration(session.duration_seconds)}</span>
++                    </div>
++                    <p className="mt-1 text-[9px] text-slate-400">下线：{formatPresenceTime(session.ended_at)}</p>
++                  </div>
++                ))}
++              </div>
++            </section>
++          )}
++
+           <section className="mt-5 rounded-2xl border border-violet-100 bg-violet-50/40 p-4">
+diff --git a/frontend/src/types/index.ts b/frontend/src/types/index.ts
+index 7c6e2aa40e7e55fa6decf7a5e10c6b4a73888a38..a8917ea04ba607733e84452b24ee65df8d58c589 100644
+--- a/frontend/src/types/index.ts
++++ b/frontend/src/types/index.ts
+@@ -825,6 +825,12 @@
+   path: string;
+ }
+ 
++export interface PlayerPresenceSession {
++  started_at: string;
++  ended_at: string;
++  duration_seconds: number;
++}
++
+ export interface Player {
+   id: string;
+   player_uid?: string;
+@@ -848,6 +854,17 @@ export interface Player {
+   tags?: string[];
+   has_annotation?: boolean;
+   annotation_updated_at?: string;
++  presence_available?: boolean;
++  presence_stale?: boolean;
++  presence_observed_at?: string;
++  presence_online?: boolean;
++  session_seconds?: number;
++  total_seconds?: number;
++  session_started_at?: string;
++  last_seen_at?: string;
++  last_online_at?: string;
++  last_offline_at?: string;
++  presence_sessions?: PlayerPresenceSession[];
+ }
+ 
+ export interface SaveInventorySlot {
+diff --git a/backend/internal/api/player_presence.go b/backend/internal/api/player_presence.go
+new file mode 100644
+index 0000000..0cc0564
+--- /dev/null
++++ b/backend/internal/api/player_presence.go
+@@ -0,0 +1,53 @@
++package api
++
++import (
++	"context"
++	"time"
++
++	"github.com/gin-gonic/gin"
++
++	"palpanel/internal/playerpresence"
++)
++
++func (s Server) attachPlayerPresence(ctx context.Context, views []gin.H, enabled bool) {
++	if !enabled {
++		for _, view := range views {
++			view["presence_available"] = false
++			view["presence_stale"] = false
++		}
++		return
++	}
++	state, err := playerpresence.Load(ctx, s.store)
++	if err != nil {
++		for _, view := range views {
++			view["presence_available"] = false
++			view["presence_stale"] = true
++		}
++		return
++	}
++	stale := playerpresence.IsStale(state, time.Now())
++	available := state.Available && !stale
++	for _, view := range views {
++		view["presence_available"] = false
++		view["presence_stale"] = stale
++		view["presence_observed_at"] = state.ObservedAt
++		record, found := playerpresence.Find(state, firstNonEmpty(stringFromPresenceView(view, "player_uid"), stringFromPresenceView(view, "steam_id"), stringFromPresenceView(view, "id")))
++		if !found {
++			continue
++		}
++		view["presence_available"] = available
++		view["presence_online"] = record.Online
++		view["session_seconds"] = record.SessionSeconds
++		view["total_seconds"] = record.TotalSeconds
++		view["session_started_at"] = record.SessionStartedAt
++		view["last_seen_at"] = record.LastSeenAt
++		view["last_online_at"] = record.LastOnlineAt
++		view["last_offline_at"] = record.LastOfflineAt
++		view["presence_sessions"] = record.Sessions
++	}
++}
++
++func stringFromPresenceView(view gin.H, key string) string {
++	value, _ := view[key].(string)
++	return value
++}
+diff --git a/backend/internal/api/player_presence_test.go b/backend/internal/api/player_presence_test.go
+new file mode 100644
+index 0000000..a94bc27
+--- /dev/null
++++ b/backend/internal/api/player_presence_test.go
+@@ -0,0 +1,73 @@
++package api
++
++import (
++	"context"
++	"encoding/json"
++	"path/filepath"
++	"testing"
++	"time"
++
++	"github.com/gin-gonic/gin"
++
++	"palpanel/internal/db"
++	"palpanel/internal/playerpresence"
++)
++
++func TestAttachPlayerPresenceAddsDurationsAndHistory(t *testing.T) {
++	store, err := db.Open(filepath.Join(t.TempDir(), "panel.db"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer store.Close()
++
++	now := time.Now().UTC()
++	state := playerpresence.Advance(playerpresence.EmptyState(), now.Add(-30*time.Second), []playerpresence.OnlinePlayer{{PlayerUID: "UID-1", SteamID: "7656", Nickname: "Alice"}})
++	state = playerpresence.Advance(state, now.Add(-15*time.Second), nil)
++	raw, err := json.Marshal(state)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := store.SetKV(context.Background(), playerpresence.StorageKey, string(raw)); err != nil {
++		t.Fatal(err)
++	}
++
++	views := []gin.H{{"player_uid": "UID-1", "steam_id": "7656"}}
++	Server{store: store}.attachPlayerPresence(context.Background(), views, true)
++	if views[0]["total_seconds"] != int64(15) || views[0]["presence_available"] != true {
++		t.Fatalf("view = %#v", views[0])
++	}
++	sessions, ok := views[0]["presence_sessions"].([]playerpresence.Session)
++	if !ok || len(sessions) != 1 || sessions[0].DurationSeconds != 15 {
++		t.Fatalf("sessions = %#v", views[0]["presence_sessions"])
++	}
++}
++
++func TestAttachPlayerPresenceDoesNotExposeUnobservedOrImportedPlayers(t *testing.T) {
++	store, err := db.Open(filepath.Join(t.TempDir(), "panel.db"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer store.Close()
++
++	now := time.Now().UTC()
++	state := playerpresence.Advance(playerpresence.EmptyState(), now, []playerpresence.OnlinePlayer{{PlayerUID: "UID-1"}})
++	raw, err := json.Marshal(state)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := store.SetKV(context.Background(), playerpresence.StorageKey, string(raw)); err != nil {
++		t.Fatal(err)
++	}
++
++	unobserved := []gin.H{{"player_uid": "UID-2"}}
++	Server{store: store}.attachPlayerPresence(context.Background(), unobserved, true)
++	if unobserved[0]["presence_available"] != false {
++		t.Fatalf("unobserved view = %#v", unobserved[0])
++	}
++
++	imported := []gin.H{{"player_uid": "UID-1"}}
++	Server{store: store}.attachPlayerPresence(context.Background(), imported, false)
++	if imported[0]["presence_available"] != false || imported[0]["presence_stale"] != false {
++		t.Fatalf("imported view = %#v", imported[0])
++	}
++}
+diff --git a/backend/internal/monitor/player_presence.go b/backend/internal/monitor/player_presence.go
+new file mode 100644
+index 0000000..6dd8f26
+--- /dev/null
++++ b/backend/internal/monitor/player_presence.go
+@@ -0,0 +1,22 @@
++package monitor
++
++import (
++	"context"
++	"net/http"
++	"time"
++
++	"palpanel/internal/palrest"
++	"palpanel/internal/playerpresence"
++)
++
++func (m Manager) observePlayerPresence(ctx context.Context, client palrest.Client) error {
++	requestCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
++	defer cancel()
++
++	response, err := client.Do(requestCtx, http.MethodGet, "players", nil)
++	if err != nil {
++		return err
++	}
++	_, err = playerpresence.Observe(requestCtx, m.store, m.currentTime(), playerpresence.ParseRESTPlayers(response.Body))
++	return err
++}
+diff --git a/backend/internal/monitor/player_presence_test.go b/backend/internal/monitor/player_presence_test.go
+new file mode 100644
+index 0000000..7d0bd58
+--- /dev/null
++++ b/backend/internal/monitor/player_presence_test.go
+@@ -0,0 +1,47 @@
++package monitor
++
++import (
++	"context"
++	"net/http"
++	"net/http/httptest"
++	"path/filepath"
++	"testing"
++	"time"
++
++	"palpanel/internal/db"
++	"palpanel/internal/palrest"
++	"palpanel/internal/playerpresence"
++)
++
++func TestObservePlayerPresencePersistsRESTPlayers(t *testing.T) {
++	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
++		if request.URL.Path != "/players" {
++			http.NotFound(writer, request)
++			return
++		}
++		writer.Header().Set("Content-Type", "application/json")
++		_, _ = writer.Write([]byte(`{"players":[{"playerId":"UID-1","userId":"7656","name":"Alice"}]}`))
++	}))
++	defer server.Close()
++
++	store, err := db.Open(filepath.Join(t.TempDir(), "panel.db"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer store.Close()
++
++	now := time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC)
++	manager := Manager{store: store, now: func() time.Time { return now }}
++	client := palrest.New(server.URL, "", "")
++	if err := manager.observePlayerPresence(context.Background(), client); err != nil {
++		t.Fatal(err)
++	}
++	state, err := playerpresence.Load(context.Background(), store)
++	if err != nil {
++		t.Fatal(err)
++	}
++	record, found := playerpresence.Find(state, "7656")
++	if !found || !record.Online || record.Nickname != "Alice" {
++		t.Fatalf("record = %#v found=%v", record, found)
++	}
++}
+diff --git a/backend/internal/playerpresence/state.go b/backend/internal/playerpresence/state.go
+new file mode 100644
+index 0000000..bf27baa
+--- /dev/null
++++ b/backend/internal/playerpresence/state.go
+@@ -0,0 +1,346 @@
++package playerpresence
++
++import (
++	"context"
++	"encoding/json"
++	"sort"
++	"strings"
++	"sync"
++	"time"
++
++	"palpanel/internal/db"
++)
++
++const (
++	StorageKey = "player_presence:server"
++	Version    = 1
++
++	MaxSampleGap = 60 * time.Second
++	StaleAfter   = 45 * time.Second
++	MaxSessions  = 20
++)
++
++var observeMu sync.Mutex
++
++type OnlinePlayer struct {
++	PlayerUID string `json:"player_uid,omitempty"`
++	SteamID   string `json:"steam_id,omitempty"`
++	Nickname  string `json:"nickname,omitempty"`
++}
++
++type Session struct {
++	StartedAt       string `json:"started_at"`
++	EndedAt         string `json:"ended_at"`
++	DurationSeconds int64  `json:"duration_seconds"`
++}
++
++type Record struct {
++	PlayerUID        string    `json:"player_uid,omitempty"`
++	SteamID          string    `json:"steam_id,omitempty"`
++	Nickname         string    `json:"nickname,omitempty"`
++	Online           bool      `json:"online"`
++	SessionStartedAt string    `json:"session_started_at,omitempty"`
++	LastSeenAt       string    `json:"last_seen_at,omitempty"`
++	LastOnlineAt     string    `json:"last_online_at,omitempty"`
++	LastOfflineAt    string    `json:"last_offline_at,omitempty"`
++	SessionSeconds   int64     `json:"session_seconds"`
++	TotalSeconds     int64     `json:"total_seconds"`
++	Sessions         []Session `json:"sessions,omitempty"`
++}
++
++type State struct {
++	Version    int               `json:"version"`
++	ObservedAt string            `json:"observed_at,omitempty"`
++	Available  bool              `json:"available"`
++	Players    map[string]Record `json:"players"`
++}
++
++func EmptyState() State {
++	return State{Version: Version, Players: map[string]Record{}}
++}
++
++func Load(ctx context.Context, store *db.Store) (State, error) {
++	state := EmptyState()
++	if store == nil {
++		return state, nil
++	}
++	raw, found, err := store.GetKV(ctx, StorageKey)
++	if err != nil {
++		return state, err
++	}
++	if !found || strings.TrimSpace(raw) == "" {
++		return state, nil
++	}
++	if err := json.Unmarshal([]byte(raw), &state); err != nil {
++		return EmptyState(), err
++	}
++	if state.Version == 0 {
++		state.Version = Version
++	}
++	if state.Players == nil {
++		state.Players = map[string]Record{}
++	}
++	return state, nil
++}
++
++func Observe(ctx context.Context, store *db.Store, now time.Time, online []OnlinePlayer) (State, error) {
++	observeMu.Lock()
++	defer observeMu.Unlock()
++
++	state, err := Load(ctx, store)
++	if err != nil {
++		return EmptyState(), err
++	}
++	state = Advance(state, now, online)
++	encoded, err := json.Marshal(state)
++	if err != nil {
++		return EmptyState(), err
++	}
++	if err := store.SetKV(ctx, StorageKey, string(encoded)); err != nil {
++		return EmptyState(), err
++	}
++	return state, nil
++}
++
++func Advance(previous State, now time.Time, online []OnlinePlayer) State {
++	now = now.UTC()
++	nowText := now.Format(time.RFC3339Nano)
++	next := cloneState(previous)
++	next.Version = Version
++	next.Available = true
++
++	elapsed := elapsedSeconds(previous.ObservedAt, now)
++	if elapsed > 0 {
++		for key, record := range next.Players {
++			if !record.Online {
++				continue
++			}
++			record.SessionSeconds += elapsed
++			record.TotalSeconds += elapsed
++			next.Players[key] = record
++		}
++	}
++
++	seen := make(map[string]struct{}, len(online))
++	for _, current := range online {
++		key := findRecordKey(next.Players, current)
++		if key == "" {
++			key = canonicalKey(current)
++		}
++		if key == "" {
++			continue
++		}
++		record := next.Players[key]
++		wasOnline := record.Online
++		if strings.TrimSpace(current.PlayerUID) != "" {
++			record.PlayerUID = strings.TrimSpace(current.PlayerUID)
++		}
++		if strings.TrimSpace(current.SteamID) != "" {
++			record.SteamID = strings.TrimSpace(current.SteamID)
++		}
++		if strings.TrimSpace(current.Nickname) != "" {
++			record.Nickname = strings.TrimSpace(current.Nickname)
++		}
++		if !wasOnline {
++			record.Online = true
++			record.SessionStartedAt = nowText
++			record.LastOnlineAt = nowText
++			record.SessionSeconds = 0
++		}
++		record.LastSeenAt = nowText
++		next.Players[key] = record
++		seen[key] = struct{}{}
++	}
++
++	for key, record := range next.Players {
++		if !record.Online {
++			continue
++		}
++		if _, found := seen[key]; found {
++			continue
++		}
++		record.Online = false
++		record.LastOfflineAt = nowText
++		if record.SessionStartedAt != "" {
++			record.Sessions = append(record.Sessions, Session{
++				StartedAt:       record.SessionStartedAt,
++				EndedAt:         nowText,
++				DurationSeconds: record.SessionSeconds,
++			})
++			if len(record.Sessions) > MaxSessions {
++				record.Sessions = append([]Session(nil), record.Sessions[len(record.Sessions)-MaxSessions:]...)
++			}
++		}
++		next.Players[key] = record
++	}
++
++	next.ObservedAt = nowText
++	return next
++}
++
++func ParseRESTPlayers(bodyValue any) []OnlinePlayer {
++	body := bodyValue
++	if data, ok := bodyValue.(map[string]any); ok {
++		body = data
++		if nested, nestedOK := data["body"].(map[string]any); nestedOK {
++			body = nested
++		}
++	}
++
++	var list []any
++	switch value := body.(type) {
++	case map[string]any:
++		list, _ = value["players"].([]any)
++	case []any:
++		list = value
++	}
++
++	players := make([]OnlinePlayer, 0, len(list))
++	for _, raw := range list {
++		item, ok := raw.(map[string]any)
++		if !ok {
++			continue
++		}
++		player := OnlinePlayer{
++			PlayerUID: stringValue(item["player_uid"], item["playerUid"], item["playerId"]),
++			SteamID:   stringValue(item["steam_id"], item["userId"], item["userid"]),
++			Nickname:  stringValue(item["nickname"], item["name"], item["playerName"]),
++		}
++		if canonicalKey(player) == "" {
++			continue
++		}
++		players = append(players, player)
++	}
++	return players
++}
++
++func Find(state State, identifier string) (Record, bool) {
++	needle := identityKey(identifier)
++	if needle == "" {
++		return Record{}, false
++	}
++	if record, found := state.Players[needle]; found {
++		return record, true
++	}
++	for _, record := range state.Players {
++		if needle == identityKey(record.PlayerUID) || needle == identityKey(record.SteamID) {
++			return record, true
++		}
++	}
++	return Record{}, false
++}
++
++func Records(state State) []Record {
++	items := make([]Record, 0, len(state.Players))
++	for _, record := range state.Players {
++		items = append(items, record)
++	}
++	sort.Slice(items, func(i, j int) bool {
++		if items[i].Online != items[j].Online {
++			return items[i].Online
++		}
++		left := strings.ToLower(strings.TrimSpace(items[i].Nickname))
++		right := strings.ToLower(strings.TrimSpace(items[j].Nickname))
++		if left != right {
++			return left < right
++		}
++		return canonicalRecordKey(items[i]) < canonicalRecordKey(items[j])
++	})
++	return items
++}
++
++func IsStale(state State, now time.Time) bool {
++	observed, err := time.Parse(time.RFC3339Nano, state.ObservedAt)
++	if err != nil {
++		return true
++	}
++	return now.UTC().Sub(observed) > StaleAfter
++}
++
++func cloneState(previous State) State {
++	next := previous
++	next.Players = make(map[string]Record, len(previous.Players))
++	for key, record := range previous.Players {
++		record.Sessions = append([]Session(nil), record.Sessions...)
++		next.Players[key] = record
++	}
++	return next
++}
++
++func elapsedSeconds(observedAt string, now time.Time) int64 {
++	previous, err := time.Parse(time.RFC3339Nano, observedAt)
++	if err != nil {
++		return 0
++	}
++	elapsed := now.Sub(previous)
++	if elapsed <= 0 {
++		return 0
++	}
++	if elapsed > MaxSampleGap {
++		elapsed = MaxSampleGap
++	}
++	return int64(elapsed / time.Second)
++}
++
++func findRecordKey(records map[string]Record, player OnlinePlayer) string {
++	aliases := []string{identityKey(player.PlayerUID), identityKey(player.SteamID)}
++	for _, alias := range aliases {
++		if alias == "" {
++			continue
++		}
++		if _, found := records[alias]; found {
++			return alias
++		}
++	}
++	for key, record := range records {
++		for _, alias := range aliases {
++			if alias != "" && (alias == identityKey(record.PlayerUID) || alias == identityKey(record.SteamID)) {
++				return key
++			}
++		}
++	}
++	return ""
++}
++
++func canonicalKey(player OnlinePlayer) string {
++	if key := identityKey(player.PlayerUID); key != "" {
++		return key
++	}
++	return identityKey(player.SteamID)
++}
++
++func canonicalRecordKey(record Record) string {
++	return canonicalKey(OnlinePlayer{PlayerUID: record.PlayerUID, SteamID: record.SteamID})
++}
++
++func identityKey(value string) string {
++	value = strings.ToLower(strings.TrimSpace(value))
++	value = strings.ReplaceAll(value, "-", "")
++	switch value {
++	case "", "none", "null", "undefined":
++		return ""
++	}
++	if strings.Trim(value, "0") == "" {
++		return ""
++	}
++	return value
++}
++
++func stringValue(values ...any) string {
++	for _, value := range values {
++		switch typed := value.(type) {
++		case string:
++			if strings.TrimSpace(typed) != "" {
++				return strings.TrimSpace(typed)
++			}
++		case json.Number:
++			return typed.String()
++		case float64:
++			if typed != 0 {
++				encoded, _ := json.Marshal(typed)
++				return string(encoded)
++			}
++		}
++	}
++	return ""
++}
+diff --git a/backend/internal/playerpresence/state_test.go b/backend/internal/playerpresence/state_test.go
+new file mode 100644
+index 0000000..95a5f8c
+--- /dev/null
++++ b/backend/internal/playerpresence/state_test.go
+@@ -0,0 +1,68 @@
++package playerpresence
++
++import (
++	"testing"
++	"time"
++)
++
++func TestAdvanceTracksSessionsAndOfflineTransitions(t *testing.T) {
++	start := time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC)
++	state := Advance(EmptyState(), start, []OnlinePlayer{{PlayerUID: "UID-1", SteamID: "7656", Nickname: "Alice"}})
++	record, found := Find(state, "uid1")
++	if !found || !record.Online || record.SessionSeconds != 0 || record.TotalSeconds != 0 {
++		t.Fatalf("initial record = %#v found=%v", record, found)
++	}
++
++	state = Advance(state, start.Add(15*time.Second), []OnlinePlayer{{PlayerUID: "UID-1", SteamID: "7656", Nickname: "Alice"}})
++	record, _ = Find(state, "7656")
++	if record.SessionSeconds != 15 || record.TotalSeconds != 15 || !record.Online {
++		t.Fatalf("continued record = %#v", record)
++	}
++
++	state = Advance(state, start.Add(30*time.Second), nil)
++	record, _ = Find(state, "UID-1")
++	if record.Online || record.SessionSeconds != 30 || record.TotalSeconds != 30 || record.LastOfflineAt == "" || len(record.Sessions) != 1 || record.Sessions[0].DurationSeconds != 30 {
++		t.Fatalf("offline record = %#v", record)
++	}
++
++	state = Advance(state, start.Add(45*time.Second), []OnlinePlayer{{SteamID: "7656", Nickname: "Alice"}})
++	record, _ = Find(state, "UID-1")
++	if !record.Online || record.SessionSeconds != 0 || record.TotalSeconds != 30 || record.LastOnlineAt == "" {
++		t.Fatalf("new session record = %#v", record)
++	}
++}
++
++func TestAdvanceCapsLongObservationGaps(t *testing.T) {
++	start := time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC)
++	state := Advance(EmptyState(), start, []OnlinePlayer{{PlayerUID: "uid-1"}})
++	state = Advance(state, start.Add(10*time.Minute), []OnlinePlayer{{PlayerUID: "uid-1"}})
++	record, _ := Find(state, "uid-1")
++	if record.TotalSeconds != int64(MaxSampleGap/time.Second) {
++		t.Fatalf("long gap total = %d", record.TotalSeconds)
++	}
++}
++
++func TestAdvanceMergesPlayerAliases(t *testing.T) {
++	start := time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC)
++	state := Advance(EmptyState(), start, []OnlinePlayer{{PlayerUID: "ABC-DEF", SteamID: "7656", Nickname: "Alice"}})
++	state = Advance(state, start.Add(15*time.Second), []OnlinePlayer{{SteamID: "7656", Nickname: "Alice 2"}})
++	if len(state.Players) != 1 {
++		t.Fatalf("players = %#v", state.Players)
++	}
++	record, found := Find(state, "abcdef")
++	if !found || record.Nickname != "Alice 2" || record.TotalSeconds != 15 {
++		t.Fatalf("merged record = %#v found=%v", record, found)
++	}
++}
++
++func TestParseRESTPlayers(t *testing.T) {
++	players := ParseRESTPlayers(map[string]any{
++		"players": []any{
++			map[string]any{"playerId": "UID-1", "userId": "7656", "name": "Alice"},
++			map[string]any{"playerId": "", "userId": "", "name": "invalid"},
++		},
++	})
++	if len(players) != 1 || players[0].PlayerUID != "UID-1" || players[0].SteamID != "7656" || players[0].Nickname != "Alice" {
++		t.Fatalf("players = %#v", players)
++	}
++}
