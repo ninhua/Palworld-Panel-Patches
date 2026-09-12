@@ -1,0 +1,178 @@
+diff --git a/backend/internal/server/patch_update.go b/backend/internal/server/patch_update.go
+index 5ba696c7acf04c9865a93926b77a44ccc3fb7862..2138d6d92f0dbee2c6faced0972785e36a92b6a4 100644
+--- a/backend/internal/server/patch_update.go
++++ b/backend/internal/server/patch_update.go
+@@ -72,6 +72,14 @@ type patchReleaseSelection struct {
+ 	Checksums patchGitHubAsset
+ }
+ 
++type patchPublishedWorkspace struct {
++	SchemaVersion int    `json:"schema_version"`
++	TargetVersion string `json:"target_version"`
++	State         string `json:"state"`
++	Verified      bool   `json:"verified"`
++	ReleaseTag    string `json:"release_tag"`
++}
++
+ type patchReleaseManifest struct {
+ 	SchemaVersion int    `json:"schema_version"`
+ 	Project       string `json:"project"`
+@@ -336,6 +344,70 @@ func (m Manager) runPatchUpdate(ctx context.Context, jobID string, request Patch
+ }
+ 
+ func (m Manager) resolvePatchRelease(ctx context.Context, request PatchUpdateRequest) (patchReleaseSelection, error) {
++	selection, workspaceErr := m.resolvePatchReleaseFromWorkspace(ctx, request)
++	if workspaceErr == nil {
++		return selection, nil
++	}
++	selection, apiErr := m.resolvePatchReleaseFromAPI(ctx, request)
++	if apiErr == nil {
++		return selection, nil
++	}
++	return patchReleaseSelection{}, fmt.Errorf(
++		"patch release lookup failed (published workspace: %v; github api: %v)",
++		workspaceErr,
++		apiErr,
++	)
++}
++
++func (m Manager) resolvePatchReleaseFromWorkspace(ctx context.Context, request PatchUpdateRequest) (patchReleaseSelection, error) {
++	endpoint := "https://raw.githubusercontent.com/" + request.Repository + "/main/projects/uitok-palworld-panel/patches/stable-" + request.TargetVersion + "/workspace.json"
++	if override := strings.TrimSpace(os.Getenv("PALPANEL_PATCH_RELEASE_WORKSPACE_URL")); override != "" {
++		endpoint = override
++	}
++	var workspace patchPublishedWorkspace
++	if err := m.getPatchJSON(ctx, endpoint, &workspace); err != nil {
++		return patchReleaseSelection{}, err
++	}
++	return patchSelectionFromWorkspace(request, workspace)
++}
++
++func patchSelectionFromWorkspace(request PatchUpdateRequest, workspace patchPublishedWorkspace) (patchReleaseSelection, error) {
++	if workspace.SchemaVersion != 2 || workspace.TargetVersion != request.TargetVersion || workspace.State != "released" || !workspace.Verified {
++		return patchReleaseSelection{}, fmt.Errorf("published workspace is not released and verified for %s", request.TargetVersion)
++	}
++	prefix := "uitok-stable-" + request.TargetVersion + "-p"
++	if !strings.HasPrefix(workspace.ReleaseTag, prefix) {
++		return patchReleaseSelection{}, fmt.Errorf("published workspace release tag does not match %s", request.TargetVersion)
++	}
++	version := strings.TrimPrefix(workspace.ReleaseTag, prefix)
++	if _, err := parsePatchVersion(version); err != nil {
++		return patchReleaseSelection{}, err
++	}
++	archiveName := fmt.Sprintf("uitok-palworld-panel_stable-%s_patch-%s_linux-amd64.tar.gz", request.TargetVersion, version)
++	releaseURL := "https://github.com/" + request.Repository + "/releases/tag/" + workspace.ReleaseTag
++	downloadBase := "https://github.com/" + request.Repository + "/releases/download/" + workspace.ReleaseTag + "/"
++	return patchReleaseSelection{
++		Release: patchGitHubRelease{
++			TagName: workspace.ReleaseTag,
++			HTMLURL: releaseURL,
++		},
++		Version: version,
++		Archive: patchGitHubAsset{
++			Name:               archiveName,
++			BrowserDownloadURL: downloadBase + archiveName,
++		},
++		Manifest: patchGitHubAsset{
++			Name:               "manifest.json",
++			BrowserDownloadURL: downloadBase + "manifest.json",
++		},
++		Checksums: patchGitHubAsset{
++			Name:               "SHA256SUMS",
++			BrowserDownloadURL: downloadBase + "SHA256SUMS",
++		},
++	}, nil
++}
++
++func (m Manager) resolvePatchReleaseFromAPI(ctx context.Context, request PatchUpdateRequest) (patchReleaseSelection, error) {
+ 	endpoint := "https://api.github.com/repos/" + request.Repository + "/releases?per_page=100"
+ 	var releases []patchGitHubRelease
+ 	if err := m.getPatchJSON(ctx, endpoint, &releases); err != nil {
+@@ -507,7 +579,13 @@ func patchRequestURLs(endpoint string) []string {
+ func setPatchRequestHeaders(req *http.Request) {
+ 	req.Header.Set("Accept", "application/vnd.github+json")
+ 	req.Header.Set("User-Agent", "PalPanel-patch-hot-update")
+-	if token := strings.TrimSpace(firstPatchValue(os.Getenv("GITHUB_TOKEN"), os.Getenv("GH_TOKEN"))); token != "" {
++	if token := strings.TrimSpace(firstPatchValue(
++		os.Getenv("PALWORLD_LINUX_PANEL_PATCH_GITHUB_TOKEN"),
++		os.Getenv("PALPANEL_PANEL_PATCH_GITHUB_TOKEN"),
++		os.Getenv("PALPANEL_PATCH_GITHUB_TOKEN"),
++		os.Getenv("GITHUB_TOKEN"),
++		os.Getenv("GH_TOKEN"),
++	)); token != "" {
+ 		req.Header.Set("Authorization", "Bearer "+token)
+ 	}
+ }
+diff --git a/backend/internal/server/patch_update_test.go b/backend/internal/server/patch_update_test.go
+index 8c59b44e06d247bcd98b511e09e78ca4db9ff028..10a0969f6b6b2cc31a7d68f3816a834f17ebd01e 100644
+--- a/backend/internal/server/patch_update_test.go
++++ b/backend/internal/server/patch_update_test.go
+@@ -3,6 +3,7 @@ package server
+ import (
+ 	"archive/tar"
+ 	"compress/gzip"
++	"net/http"
+ 	"os"
+ 	"path/filepath"
+ 	"strings"
+@@ -102,3 +103,60 @@ func TestExtractPatchBinaryRejectsTraversalAndFindsBinary(t *testing.T) {
+ 		t.Fatalf("extracted body = %q", got)
+ 	}
+ }
++
++func TestPatchSelectionFromPublishedWorkspace(t *testing.T) {
++	request := PatchUpdateRequest{
++		TargetVersion:       "v1.3.0",
++		CurrentPatchVersion: "0.8.4",
++		Repository:          patchUpdateRepository,
++		RequiredFeature:     "panel-patch-hot-update",
++	}
++	selection, err := patchSelectionFromWorkspace(request, patchPublishedWorkspace{
++		SchemaVersion: 2,
++		TargetVersion: "v1.3.0",
++		State:         "released",
++		Verified:      true,
++		ReleaseTag:    "uitok-stable-v1.3.0-p0.8.5",
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	if selection.Version != "0.8.5" || selection.Release.TagName != "uitok-stable-v1.3.0-p0.8.5" {
++		t.Fatalf("unexpected selection: %#v", selection)
++	}
++	wantArchive := "uitok-palworld-panel_stable-v1.3.0_patch-0.8.5_linux-amd64.tar.gz"
++	if selection.Archive.Name != wantArchive || !strings.HasSuffix(selection.Archive.BrowserDownloadURL, "/"+wantArchive) {
++		t.Fatalf("unexpected archive: %#v", selection.Archive)
++	}
++	if selection.Manifest.Name != "manifest.json" || selection.Checksums.Name != "SHA256SUMS" {
++		t.Fatalf("unexpected metadata assets: %#v %#v", selection.Manifest, selection.Checksums)
++	}
++}
++
++func TestPatchSelectionRejectsUnverifiedWorkspace(t *testing.T) {
++	request := PatchUpdateRequest{TargetVersion: "v1.3.0", Repository: patchUpdateRepository}
++	_, err := patchSelectionFromWorkspace(request, patchPublishedWorkspace{
++		SchemaVersion: 2,
++		TargetVersion: "v1.3.0",
++		State:         "releasable",
++		Verified:      false,
++		ReleaseTag:    "uitok-stable-v1.3.0-p0.8.6",
++	})
++	if err == nil {
++		t.Fatal("expected unverified workspace to be rejected")
++	}
++}
++
++func TestSetPatchRequestHeadersUsesDeploymentTokenAlias(t *testing.T) {
++	t.Setenv("PALPANEL_PANEL_PATCH_GITHUB_TOKEN", "deployment-token")
++	t.Setenv("GITHUB_TOKEN", "")
++	t.Setenv("GH_TOKEN", "")
++	req, err := http.NewRequest(http.MethodGet, "https://api.github.com/repos/example/repo/releases", nil)
++	if err != nil {
++		t.Fatal(err)
++	}
++	setPatchRequestHeaders(req)
++	if got := req.Header.Get("Authorization"); got != "Bearer deployment-token" {
++		t.Fatalf("Authorization = %q", got)
++	}
++}

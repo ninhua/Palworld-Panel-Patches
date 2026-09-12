@@ -1,0 +1,56 @@
+diff --git a/frontend/src/pages/AuditLogs.tsx b/frontend/src/pages/AuditLogs.tsx
+index 201ca20..35d2846 100644
+--- a/frontend/src/pages/AuditLogs.tsx
++++ b/frontend/src/pages/AuditLogs.tsx
+@@ -1,4 +1,5 @@
+ import React, { useEffect, useState } from 'react';
++import { createPortal } from 'react-dom';
+ import { ClipboardList, Copy, RefreshCw, X } from 'lucide-react';
+ import { auditApi } from '../api/audit';
+ import type { AuditLog } from '../types';
+@@ -185,14 +186,14 @@ export const AuditLogs: React.FC = () => {
+         )}
+       </section>
+ 
+-      {selected && (
+-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm" onMouseDown={closeDetails}>
++      {selected && createPortal(
++        <div className="pp-dialog-backdrop fixed inset-0 z-[90] flex items-center justify-center p-4" onMouseDown={closeDetails}>
+           <section
+             role="dialog"
+             aria-modal="true"
+             aria-labelledby="audit-response-title"
+             onMouseDown={(event) => event.stopPropagation()}
+-            className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-white/70 bg-white shadow-2xl"
++            className="pp-dialog-panel flex min-h-0 max-h-[88dvh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl"
+           >
+             <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 sm:px-6">
+               <div>
+@@ -205,7 +206,7 @@ export const AuditLogs: React.FC = () => {
+               </button>
+             </header>
+ 
+-            <div className="overflow-y-auto px-5 py-5 sm:px-6">
++            <div className="min-h-0 overflow-y-auto px-5 py-5 sm:px-6">
+               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                 {[
+                   ['时间', selected.created_at || '-'],
+@@ -238,7 +239,7 @@ export const AuditLogs: React.FC = () => {
+                     {copied ? '已复制' : '复制响应'}
+                   </button>
+                 </div>
+-                <pre className={`mt-3 max-h-[42vh] overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-6 ${selected.status === 'success' ? 'text-emerald-200' : 'text-rose-200'}`}>
++                <pre className={`mt-3 min-h-20 max-h-[42dvh] overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-6 ${selected.status === 'success' ? 'text-emerald-200' : 'text-rose-200'}`}>
+                   {selectedResponse}
+                 </pre>
+               </div>
+@@ -246,7 +247,8 @@ export const AuditLogs: React.FC = () => {
+               <p className="mt-3 text-[10px] leading-5 text-slate-400">此处展示的是后端已脱敏并写入审计记录的响应信息，不包含未过滤的完整 HTTP 响应体。</p>
+             </div>
+           </section>
+-        </div>
++        </div>,
++        document.body,
+       )}
+     </div>
+   );

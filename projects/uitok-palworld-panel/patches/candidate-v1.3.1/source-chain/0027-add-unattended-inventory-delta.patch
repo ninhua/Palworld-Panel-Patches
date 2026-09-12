@@ -1,0 +1,1023 @@
+diff --git a/backend/internal/api/global_inventory.go b/backend/internal/api/global_inventory.go
+index 4d7c3e8..6a6bf50 100644
+--- a/backend/internal/api/global_inventory.go
++++ b/backend/internal/api/global_inventory.go
+@@ -101,11 +101,12 @@ func (s Server) listGlobalInventory(c *gin.Context) {
+ 	summary := summarizeGlobalInventory(items, paged, offset, limit)
+ 
+ 	ok(c, gin.H{
+-		"items":     paged,
+-		"summary":   summary,
+-		"filters":   gin.H{"categories": categories, "owner_types": []string{"all", "base", "player", "unknown"}},
+-		"status":    status,
+-		"source_id": sourceID,
++		"items":      paged,
++		"summary":    summary,
++		"filters":    gin.H{"categories": categories, "owner_types": []string{"all", "base", "player", "unknown"}},
++		"status":     status,
++		"source_id":  sourceID,
++		"unattended": s.unattendedInventoryView(c, sourceID),
+ 	})
+ }
+ 
+diff --git a/backend/internal/api/unattended_inventory.go b/backend/internal/api/unattended_inventory.go
+new file mode 100644
+index 0000000..127442e
+--- /dev/null
++++ b/backend/internal/api/unattended_inventory.go
+@@ -0,0 +1,82 @@
++package api
++
++import (
++	"time"
++
++	"github.com/gin-gonic/gin"
++
++	"palpanel/internal/pallocalize"
++	"palpanel/internal/playerpresence"
++	"palpanel/internal/unattendedinventory"
++)
++
++func init() {
++	patchFeatures = append(patchFeatures, "unattended-inventory-delta")
++}
++
++type unattendedInventoryItem struct {
++	ItemID   string `json:"item_id"`
++	ItemName string `json:"item_name"`
++	ItemIcon string `json:"item_icon"`
++	Category string `json:"category"`
++	Quantity int64  `json:"quantity"`
++}
++
++func (s Server) unattendedInventoryView(c *gin.Context, sourceID string) gin.H {
++	if sourceID != "server" {
++		return gin.H{
++			"available":   false,
++			"status":      "source_mismatch",
++			"additions":   []unattendedInventoryItem{},
++			"total_added": 0,
++		}
++	}
++	scope, err := playerpresence.ResolveServerScope(s.cfg.ServerDirectory())
++	if err != nil {
++		return gin.H{
++			"available":   false,
++			"status":      "world_unavailable",
++			"additions":   []unattendedInventoryItem{},
++			"total_added": 0,
++		}
++	}
++	state, err := unattendedinventory.Load(c.Request.Context(), s.store, scope)
++	if err != nil {
++		return gin.H{
++			"available":   false,
++			"status":      "state_unavailable",
++			"world_id":    scope.WorldID,
++			"additions":   []unattendedInventoryItem{},
++			"total_added": 0,
++		}
++	}
++	view := unattendedinventory.Public(state, time.Now())
++	items := make([]unattendedInventoryItem, 0, len(view.Additions))
++	for _, item := range view.Additions {
++		items = append(items, unattendedInventoryItem{
++			ItemID:   item.ItemID,
++			ItemName: pallocalize.ItemName(item.ItemID),
++			ItemIcon: pallocalize.ItemIcon(item.ItemID),
++			Category: inventoryItemCategory(item.ItemID),
++			Quantity: item.Quantity,
++		})
++	}
++	return gin.H{
++		"available":                  view.Available,
++		"status":                     view.Status,
++		"world_id":                   view.WorldID,
++		"started_at":                 view.StartedAt,
++		"baseline_at":                view.BaselineAt,
++		"eligible_at":                view.EligibleAt,
++		"ended_at":                   view.EndedAt,
++		"last_observed_at":           view.LastObservedAt,
++		"duration_seconds":           view.DurationSeconds,
++		"eligible_remaining_seconds": view.EligibleRemainingSeconds,
++		"qualified":                  view.Qualified,
++		"current_online":             view.CurrentOnline,
++		"presence_stale":             view.PresenceStale,
++		"snapshot_stale":             view.SnapshotStale,
++		"additions":                  items,
++		"total_added":                view.TotalAdded,
++	}
++}
+diff --git a/backend/internal/monitor/player_presence.go b/backend/internal/monitor/player_presence.go
+index 7a41580..3525260 100644
+--- a/backend/internal/monitor/player_presence.go
++++ b/backend/internal/monitor/player_presence.go
+@@ -9,6 +9,7 @@ import (
+ 	"palpanel/internal/palrest"
+ 	"palpanel/internal/playerpresence"
+ 	"palpanel/internal/startergift"
++	"palpanel/internal/unattendedinventory"
+ )
+ 
+ func (m Manager) observePlayerPresence(ctx context.Context, client palrest.Client) error {
+@@ -24,9 +25,14 @@ func (m Manager) observePlayerPresence(ctx context.Context, client palrest.Clien
+ 		return err
+ 	}
+ 	players := playerpresence.ParseRESTPlayers(response.Body)
+-	if _, err = playerpresence.ObserveScoped(requestCtx, m.store, scope, m.currentTime(), players); err != nil {
++	now := m.currentTime()
++	if _, err = playerpresence.ObserveScoped(requestCtx, m.store, scope, now, players); err != nil {
+ 		return err
+ 	}
++	snapshot, snapshotErr := unattendedinventory.CurrentSnapshot(requestCtx, m.cfg)
++	if observeErr := unattendedinventory.Observe(requestCtx, m.store, scope, now, len(players), snapshot, snapshotErr); observeErr != nil {
++		m.debugf("unattended inventory observation failed: %q", observeErr.Error())
++	}
+ 	dispatcher := startergift.NewPalDefenderDispatcher(paldefender.NewManager(m.cfg, m.store))
+-	return startergift.Observe(ctx, m.store, scope, m.currentTime(), players, dispatcher)
++	return startergift.Observe(ctx, m.store, scope, now, players, dispatcher)
+ }
+diff --git a/backend/internal/unattendedinventory/saveindex.go b/backend/internal/unattendedinventory/saveindex.go
+new file mode 100644
+index 0000000..e450f34
+--- /dev/null
++++ b/backend/internal/unattendedinventory/saveindex.go
+@@ -0,0 +1,64 @@
++package unattendedinventory
++
++import (
++	"context"
++	"fmt"
++	"strings"
++	"sync"
++
++	"palpanel/internal/appconfig"
++	"palpanel/internal/saveindex"
++)
++
++var indexManagers sync.Map
++
++func CurrentSnapshot(ctx context.Context, cfg appconfig.Config) (Snapshot, error) {
++	key := strings.Join([]string{
++		cfg.ServerDirectory(), cfg.SaveIndexCacheDir, cfg.SaveIndexerURL,
++	}, "\x00")
++	value, _ := indexManagers.LoadOrStore(key, saveindex.NewManager(cfg))
++	manager := value.(*saveindex.Manager)
++	manager.EnsureFresh(ctx)
++	index, status, err := manager.Current(ctx)
++	if err != nil && !status.Stale {
++		return Snapshot{}, err
++	}
++	switch status.State {
++	case "ready", "stale":
++	default:
++		return Snapshot{}, fmt.Errorf("%w: save index state is %s", ErrSnapshotUnavailable, status.State)
++	}
++	return SnapshotFromIndex(index, status), nil
++}
++
++func SnapshotFromIndex(index saveindex.Index, status saveindex.Status) Snapshot {
++	totals := make(map[string]int64)
++	seenContainers := make(map[string]struct{})
++	for _, container := range index.Containers {
++		containerID := normalizeID(container.ContainerID)
++		if containerID == "" {
++			continue
++		}
++		if _, found := seenContainers[containerID]; found {
++			continue
++		}
++		seenContainers[containerID] = struct{}{}
++		for _, slot := range container.Slots {
++			itemID := strings.TrimSpace(slot.ItemID)
++			if itemID == "" || slot.Count <= 0 {
++				continue
++			}
++			totals[itemID] += int64(slot.Count)
++		}
++	}
++	return Snapshot{
++		Fingerprint: strings.TrimSpace(index.Snapshot.Fingerprint),
++		GeneratedAt: strings.TrimSpace(index.GeneratedAt),
++		Stale:       status.Stale,
++		Totals:      totals,
++	}
++}
++
++func normalizeID(value string) string {
++	return strings.ToLower(strings.TrimSpace(value))
++}
+diff --git a/backend/internal/unattendedinventory/saveindex_test.go b/backend/internal/unattendedinventory/saveindex_test.go
+new file mode 100644
+index 0000000..64af182
+--- /dev/null
++++ b/backend/internal/unattendedinventory/saveindex_test.go
+@@ -0,0 +1,23 @@
++package unattendedinventory
++
++import (
++	"testing"
++
++	"palpanel/internal/saveindex"
++)
++
++func TestSnapshotFromIndexDeduplicatesContainers(t *testing.T) {
++	index := saveindex.Index{
++		GeneratedAt: "2026-07-26T10:00:00Z",
++		Snapshot:    saveindex.Snapshot{Fingerprint: "fp-1"},
++		Containers: []saveindex.Container{
++			{ContainerID: "bag-1", Slots: []saveindex.Slot{{ItemID: "Wood", Count: 10}, {ItemID: "Stone", Count: 3}}},
++			{ContainerID: "BAG-1", Slots: []saveindex.Slot{{ItemID: "Wood", Count: 99}}},
++			{ContainerID: "box-2", Slots: []saveindex.Slot{{ItemID: "Wood", Count: 5}, {ItemID: "Ore", Count: 0}}},
++		},
++	}
++	snapshot := SnapshotFromIndex(index, saveindex.Status{State: "stale", Stale: true})
++	if snapshot.Totals["Wood"] != 15 || snapshot.Totals["Stone"] != 3 || snapshot.Stale != true || snapshot.Fingerprint != "fp-1" {
++		t.Fatalf("snapshot = %#v", snapshot)
++	}
++}
+diff --git a/backend/internal/unattendedinventory/state.go b/backend/internal/unattendedinventory/state.go
+new file mode 100644
+index 0000000..ea7c692
+--- /dev/null
++++ b/backend/internal/unattendedinventory/state.go
+@@ -0,0 +1,369 @@
++package unattendedinventory
++
++import (
++	"context"
++	"crypto/sha256"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"sort"
++	"strings"
++	"sync"
++	"time"
++
++	"palpanel/internal/playerpresence"
++)
++
++const (
++	Version           = 1
++	StorageKeyPrefix  = "unattended_inventory:v1:"
++	MinimumDuration   = 5 * time.Minute
++	MaxObservationGap = 60 * time.Second
++	MaxPublicItems    = 100
++)
++
++var stateMu sync.Mutex
++
++var ErrSnapshotUnavailable = errors.New("inventory snapshot is unavailable")
++
++type KVStore interface {
++	GetKV(context.Context, string) (string, bool, error)
++	SetKV(context.Context, string, string) error
++}
++
++type Snapshot struct {
++	Fingerprint string           `json:"fingerprint,omitempty"`
++	GeneratedAt string           `json:"generated_at,omitempty"`
++	Stale       bool             `json:"stale,omitempty"`
++	Totals      map[string]int64 `json:"totals"`
++}
++
++type ItemDelta struct {
++	ItemID   string `json:"item_id"`
++	Quantity int64  `json:"quantity"`
++}
++
++type Session struct {
++	WorldID             string      `json:"world_id"`
++	StartedAt           string      `json:"started_at"`
++	BaselineAt          string      `json:"baseline_at"`
++	EligibleAt          string      `json:"eligible_at"`
++	EndedAt             string      `json:"ended_at,omitempty"`
++	LastObservedAt      string      `json:"last_observed_at"`
++	BaselineFingerprint string      `json:"baseline_fingerprint,omitempty"`
++	CurrentFingerprint  string      `json:"current_fingerprint,omitempty"`
++	SnapshotStale       bool        `json:"snapshot_stale,omitempty"`
++	Additions           []ItemDelta `json:"additions"`
++	TotalAdded          int64       `json:"total_added"`
++}
++
++type State struct {
++	Version        int         `json:"version"`
++	ScopeID        string      `json:"scope_id"`
++	WorldID        string      `json:"world_id"`
++	Status         string      `json:"status"`
++	StartedAt      string      `json:"started_at,omitempty"`
++	BaselineAt     string      `json:"baseline_at,omitempty"`
++	EligibleAt     string      `json:"eligible_at,omitempty"`
++	LastObservedAt string      `json:"last_observed_at,omitempty"`
++	Baseline       Snapshot    `json:"baseline,omitempty"`
++	Current        Snapshot    `json:"current,omitempty"`
++	Additions      []ItemDelta `json:"additions,omitempty"`
++	TotalAdded     int64       `json:"total_added,omitempty"`
++	LastCompleted  *Session    `json:"last_completed,omitempty"`
++}
++
++type PublicState struct {
++	Available                bool        `json:"available"`
++	Status                   string      `json:"status"`
++	WorldID                  string      `json:"world_id,omitempty"`
++	StartedAt                string      `json:"started_at,omitempty"`
++	BaselineAt               string      `json:"baseline_at,omitempty"`
++	EligibleAt               string      `json:"eligible_at,omitempty"`
++	EndedAt                  string      `json:"ended_at,omitempty"`
++	LastObservedAt           string      `json:"last_observed_at,omitempty"`
++	DurationSeconds          int64       `json:"duration_seconds"`
++	EligibleRemainingSeconds int64       `json:"eligible_remaining_seconds"`
++	Qualified                bool        `json:"qualified"`
++	CurrentOnline            bool        `json:"current_online"`
++	PresenceStale            bool        `json:"presence_stale"`
++	SnapshotStale            bool        `json:"snapshot_stale"`
++	Additions                []ItemDelta `json:"additions"`
++	TotalAdded               int64       `json:"total_added"`
++}
++
++func StorageKey(scope playerpresence.Scope) string {
++	digest := sha256.Sum256([]byte(strings.TrimSpace(scope.ID)))
++	return fmt.Sprintf("%s%x", StorageKeyPrefix, digest[:16])
++}
++
++func Observe(ctx context.Context, store KVStore, scope playerpresence.Scope, now time.Time, onlineCount int, snapshot Snapshot, snapshotErr error) error {
++	stateMu.Lock()
++	defer stateMu.Unlock()
++
++	state, err := loadUnlocked(ctx, store, scope)
++	if err != nil {
++		return err
++	}
++	state = Advance(state, scope, now, onlineCount, snapshot, snapshotErr)
++	return saveUnlocked(ctx, store, scope, state)
++}
++
++func Load(ctx context.Context, store KVStore, scope playerpresence.Scope) (State, error) {
++	stateMu.Lock()
++	defer stateMu.Unlock()
++	return loadUnlocked(ctx, store, scope)
++}
++
++func loadUnlocked(ctx context.Context, store KVStore, scope playerpresence.Scope) (State, error) {
++	raw, found, err := store.GetKV(ctx, StorageKey(scope))
++	if err != nil {
++		return State{}, err
++	}
++	if !found || strings.TrimSpace(raw) == "" {
++		return emptyState(scope), nil
++	}
++	var state State
++	if err := json.Unmarshal([]byte(raw), &state); err != nil {
++		return State{}, err
++	}
++	if state.ScopeID != scope.ID || state.WorldID != scope.WorldID {
++		return emptyState(scope), nil
++	}
++	state = normalizeState(state, scope)
++	return state, nil
++}
++
++func saveUnlocked(ctx context.Context, store KVStore, scope playerpresence.Scope, state State) error {
++	state = normalizeState(state, scope)
++	raw, err := json.Marshal(state)
++	if err != nil {
++		return err
++	}
++	return store.SetKV(ctx, StorageKey(scope), string(raw))
++}
++
++func Advance(previous State, scope playerpresence.Scope, now time.Time, onlineCount int, snapshot Snapshot, snapshotErr error) State {
++	now = now.UTC()
++	state := normalizeState(previous, scope)
++	if state.ScopeID != scope.ID || state.WorldID != scope.WorldID {
++		state = emptyState(scope)
++	}
++	if (state.Status == "active" || state.Status == "waiting") && observationGap(state.LastObservedAt, now) > MaxObservationGap {
++		last := state.LastCompleted
++		state = emptyState(scope)
++		state.LastCompleted = last
++	}
++
++	snapshotOK := snapshotErr == nil && snapshot.Totals != nil
++	if snapshotOK {
++		snapshot = normalizeSnapshot(snapshot)
++	}
++
++	if onlineCount > 0 {
++		last := state.LastCompleted
++		if state.Status == "active" || state.Status == "waiting" {
++			if snapshotOK && state.Status == "active" {
++				state = updateCurrent(state, snapshot)
++			}
++			if state.Status == "active" && !now.Before(parseTime(state.EligibleAt)) {
++				completed := sessionFromState(state, now)
++				last = &completed
++			}
++		}
++		state = emptyState(scope)
++		state.Status = "online"
++		state.LastObservedAt = formatTime(now)
++		state.LastCompleted = last
++		return state
++	}
++
++	switch state.Status {
++	case "active":
++		state.LastObservedAt = formatTime(now)
++		if snapshotOK {
++			state = updateCurrent(state, snapshot)
++		}
++		return state
++	case "waiting":
++		state.LastObservedAt = formatTime(now)
++		if snapshotOK {
++			state.Status = "active"
++			state.Baseline = snapshot
++			state.Current = snapshot
++			state.BaselineAt = formatTime(now)
++			state.EligibleAt = formatTime(now.Add(MinimumDuration))
++			state.Additions = []ItemDelta{}
++			state.TotalAdded = 0
++		}
++		return state
++	default:
++		last := state.LastCompleted
++		state = emptyState(scope)
++		state.LastCompleted = last
++		state.StartedAt = formatTime(now)
++		state.LastObservedAt = formatTime(now)
++		if snapshotOK {
++			state.Status = "active"
++			state.Baseline = snapshot
++			state.Current = snapshot
++			state.BaselineAt = formatTime(now)
++			state.EligibleAt = formatTime(now.Add(MinimumDuration))
++			state.Additions = []ItemDelta{}
++		} else {
++			state.Status = "waiting"
++		}
++		return state
++	}
++}
++
++func Public(state State, now time.Time) PublicState {
++	now = now.UTC()
++	state = normalizeState(state, playerpresence.Scope{ID: state.ScopeID, WorldID: state.WorldID})
++	if state.ScopeID == "" || state.WorldID == "" {
++		return PublicState{Available: false, Status: "unavailable", Additions: []ItemDelta{}}
++	}
++	if state.Status == "active" || state.Status == "waiting" {
++		observed := parseTime(state.LastObservedAt)
++		end := observed
++		if end.IsZero() || now.Before(end) {
++			end = now
++		}
++		started := parseTime(state.StartedAt)
++		eligible := parseTime(state.EligibleAt)
++		remaining := int64(0)
++		if !eligible.IsZero() && now.Before(eligible) {
++			remaining = int64(eligible.Sub(now).Seconds())
++		}
++		return PublicState{
++			Available: true, Status: state.Status, WorldID: state.WorldID,
++			StartedAt: state.StartedAt, BaselineAt: state.BaselineAt, EligibleAt: state.EligibleAt,
++			LastObservedAt:           state.LastObservedAt,
++			DurationSeconds:          durationSeconds(started, end),
++			EligibleRemainingSeconds: remaining,
++			Qualified:                state.Status == "active" && !eligible.IsZero() && !now.Before(eligible),
++			PresenceStale:            !observed.IsZero() && now.Sub(observed) > MaxObservationGap,
++			SnapshotStale:            state.Current.Stale,
++			Additions:                limitDeltas(state.Additions), TotalAdded: state.TotalAdded,
++		}
++	}
++	if state.LastCompleted != nil {
++		session := *state.LastCompleted
++		return PublicState{
++			Available: true, Status: "completed", WorldID: session.WorldID,
++			StartedAt: session.StartedAt, BaselineAt: session.BaselineAt, EligibleAt: session.EligibleAt,
++			EndedAt: session.EndedAt, LastObservedAt: session.LastObservedAt,
++			DurationSeconds: durationSeconds(parseTime(session.StartedAt), parseTime(session.EndedAt)),
++			Qualified:       true, CurrentOnline: state.Status == "online",
++			SnapshotStale: session.SnapshotStale,
++			Additions:     limitDeltas(session.Additions), TotalAdded: session.TotalAdded,
++		}
++	}
++	return PublicState{Available: true, Status: state.Status, WorldID: state.WorldID, CurrentOnline: state.Status == "online", Additions: []ItemDelta{}}
++}
++
++func emptyState(scope playerpresence.Scope) State {
++	return State{Version: Version, ScopeID: scope.ID, WorldID: scope.WorldID, Status: "idle", Additions: []ItemDelta{}}
++}
++
++func normalizeState(state State, scope playerpresence.Scope) State {
++	if state.Version == 0 {
++		state.Version = Version
++	}
++	if state.ScopeID == "" {
++		state.ScopeID = scope.ID
++	}
++	if state.WorldID == "" {
++		state.WorldID = scope.WorldID
++	}
++	if state.Status == "" {
++		state.Status = "idle"
++	}
++	if state.Additions == nil {
++		state.Additions = []ItemDelta{}
++	}
++	state.Baseline = normalizeSnapshot(state.Baseline)
++	state.Current = normalizeSnapshot(state.Current)
++	if state.LastCompleted != nil && state.LastCompleted.Additions == nil {
++		state.LastCompleted.Additions = []ItemDelta{}
++	}
++	return state
++}
++
++func normalizeSnapshot(snapshot Snapshot) Snapshot {
++	if snapshot.Totals == nil {
++		snapshot.Totals = map[string]int64{}
++	}
++	clean := make(map[string]int64, len(snapshot.Totals))
++	for itemID, count := range snapshot.Totals {
++		itemID = strings.TrimSpace(itemID)
++		if itemID != "" && count > 0 {
++			clean[itemID] += count
++		}
++	}
++	snapshot.Totals = clean
++	return snapshot
++}
++
++func updateCurrent(state State, snapshot Snapshot) State {
++	state.Current = snapshot
++	state.Additions, state.TotalAdded = additions(state.Baseline.Totals, snapshot.Totals)
++	return state
++}
++
++func additions(baseline, current map[string]int64) ([]ItemDelta, int64) {
++	out := make([]ItemDelta, 0)
++	var total int64
++	for itemID, count := range current {
++		quantity := count - baseline[itemID]
++		if quantity <= 0 {
++			continue
++		}
++		out = append(out, ItemDelta{ItemID: itemID, Quantity: quantity})
++		total += quantity
++	}
++	sort.Slice(out, func(i, j int) bool {
++		if out[i].Quantity != out[j].Quantity {
++			return out[i].Quantity > out[j].Quantity
++		}
++		return strings.ToLower(out[i].ItemID) < strings.ToLower(out[j].ItemID)
++	})
++	return out, total
++}
++
++func sessionFromState(state State, ended time.Time) Session {
++	return Session{
++		WorldID: state.WorldID, StartedAt: state.StartedAt, BaselineAt: state.BaselineAt,
++		EligibleAt: state.EligibleAt, EndedAt: formatTime(ended), LastObservedAt: state.LastObservedAt,
++		BaselineFingerprint: state.Baseline.Fingerprint, CurrentFingerprint: state.Current.Fingerprint,
++		SnapshotStale: state.Current.Stale, Additions: append([]ItemDelta(nil), state.Additions...), TotalAdded: state.TotalAdded,
++	}
++}
++
++func limitDeltas(items []ItemDelta) []ItemDelta {
++	if len(items) > MaxPublicItems {
++		items = items[:MaxPublicItems]
++	}
++	return append([]ItemDelta(nil), items...)
++}
++
++func observationGap(value string, now time.Time) time.Duration {
++	observed := parseTime(value)
++	if observed.IsZero() || now.Before(observed) {
++		return 0
++	}
++	return now.Sub(observed)
++}
++
++func durationSeconds(start, end time.Time) int64 {
++	if start.IsZero() || end.IsZero() || end.Before(start) {
++		return 0
++	}
++	return int64(end.Sub(start).Seconds())
++}
++
++func formatTime(value time.Time) string { return value.UTC().Format(time.RFC3339Nano) }
++func parseTime(value string) time.Time {
++	parsed, _ := time.Parse(time.RFC3339Nano, strings.TrimSpace(value))
++	return parsed
++}
+diff --git a/backend/internal/unattendedinventory/state_test.go b/backend/internal/unattendedinventory/state_test.go
+new file mode 100644
+index 0000000..ff5e26f
+--- /dev/null
++++ b/backend/internal/unattendedinventory/state_test.go
+@@ -0,0 +1,104 @@
++package unattendedinventory
++
++import (
++	"context"
++	"testing"
++	"time"
++
++	"palpanel/internal/playerpresence"
++)
++
++type memoryStore struct{ values map[string]string }
++
++func (m *memoryStore) GetKV(_ context.Context, key string) (string, bool, error) {
++	value, ok := m.values[key]
++	return value, ok, nil
++}
++func (m *memoryStore) SetKV(_ context.Context, key, value string) error {
++	m.values[key] = value
++	return nil
++}
++
++func testScope(id string) playerpresence.Scope {
++	return playerpresence.Scope{ID: "server-world:" + id, WorldID: id}
++}
++func snap(fp string, values map[string]int64) Snapshot {
++	return Snapshot{Fingerprint: fp, Totals: values}
++}
++
++func observeUntil(state State, scope playerpresence.Scope, start time.Time, minutes int, snapshot Snapshot) State {
++	for minute := 1; minute <= minutes; minute++ {
++		state = Advance(state, scope, start.Add(time.Duration(minute)*time.Minute), 0, snapshot, nil)
++	}
++	return state
++}
++
++func TestShortUnattendedSessionIsDiscarded(t *testing.T) {
++	scope := testScope("world-a")
++	now := time.Date(2026, 7, 26, 10, 0, 0, 0, time.UTC)
++	state := Advance(State{}, scope, now, 0, snap("a", map[string]int64{"Wood": 10}), nil)
++	state = observeUntil(state, scope, now, 2, snap("b", map[string]int64{"Wood": 15}))
++	state = Advance(state, scope, now.Add(3*time.Minute), 1, snap("b", map[string]int64{"Wood": 15}), nil)
++	if state.LastCompleted != nil || state.Status != "online" {
++		t.Fatalf("state = %#v", state)
++	}
++}
++
++func TestQualifiedSessionKeepsOnlyPositiveNetAdditions(t *testing.T) {
++	scope := testScope("world-a")
++	now := time.Date(2026, 7, 26, 10, 0, 0, 0, time.UTC)
++	state := Advance(State{}, scope, now, 0, snap("a", map[string]int64{"Wood": 10, "Stone": 20}), nil)
++	state = observeUntil(state, scope, now, 6, snap("b", map[string]int64{"Wood": 17, "Stone": 5, "Ore": 3}))
++	state = Advance(state, scope, now.Add(7*time.Minute), 1, snap("b", map[string]int64{"Wood": 17, "Stone": 5, "Ore": 3}), nil)
++	if state.LastCompleted == nil || state.LastCompleted.TotalAdded != 10 {
++		t.Fatalf("completed = %#v", state.LastCompleted)
++	}
++	got := state.LastCompleted.Additions
++	if len(got) != 2 || got[0].ItemID != "Wood" || got[0].Quantity != 7 || got[1].ItemID != "Ore" || got[1].Quantity != 3 {
++		t.Fatalf("additions = %#v", got)
++	}
++	public := Public(state, now.Add(7*time.Minute))
++	if public.Status != "completed" || !public.CurrentOnline || public.DurationSeconds != 420 {
++		t.Fatalf("public = %#v", public)
++	}
++}
++
++func TestMissingSnapshotWaitsAndEligibilityStartsAtBaseline(t *testing.T) {
++	scope := testScope("world-a")
++	now := time.Date(2026, 7, 26, 10, 0, 0, 0, time.UTC)
++	state := Advance(State{}, scope, now, 0, Snapshot{}, ErrSnapshotUnavailable)
++	if state.Status != "waiting" {
++		t.Fatalf("state = %#v", state)
++	}
++	state = Advance(state, scope, now.Add(30*time.Second), 0, snap("a", map[string]int64{"Wood": 10}), nil)
++	if state.Status != "active" || parseTime(state.EligibleAt) != now.Add(5*time.Minute+30*time.Second) {
++		t.Fatalf("state = %#v", state)
++	}
++}
++
++func TestObservationGapStartsNewBaseline(t *testing.T) {
++	scope := testScope("world-a")
++	now := time.Date(2026, 7, 26, 10, 0, 0, 0, time.UTC)
++	state := Advance(State{}, scope, now, 0, snap("a", map[string]int64{"Wood": 10}), nil)
++	state = Advance(state, scope, now.Add(2*time.Minute), 0, snap("b", map[string]int64{"Wood": 50}), nil)
++	if state.Baseline.Fingerprint != "b" || state.StartedAt != formatTime(now.Add(2*time.Minute)) {
++		t.Fatalf("gap must reset session: %#v", state)
++	}
++}
++
++func TestStorageIsIsolatedByWorld(t *testing.T) {
++	store := &memoryStore{values: map[string]string{}}
++	now := time.Date(2026, 7, 26, 10, 0, 0, 0, time.UTC)
++	worldA, worldB := testScope("world-a"), testScope("world-b")
++	if err := Observe(context.Background(), store, worldA, now, 0, snap("a", map[string]int64{"Wood": 10}), nil); err != nil {
++		t.Fatal(err)
++	}
++	if err := Observe(context.Background(), store, worldB, now, 0, snap("b", map[string]int64{"Stone": 20}), nil); err != nil {
++		t.Fatal(err)
++	}
++	stateA, _ := Load(context.Background(), store, worldA)
++	stateB, _ := Load(context.Background(), store, worldB)
++	if stateA.Baseline.Totals["Wood"] != 10 || stateB.Baseline.Totals["Stone"] != 20 || StorageKey(worldA) == StorageKey(worldB) {
++		t.Fatalf("states = %#v / %#v", stateA, stateB)
++	}
++}
+diff --git a/frontend/src/api/inventory.test.ts b/frontend/src/api/inventory.test.ts
+index 8804cfa..33eb0af 100644
+--- a/frontend/src/api/inventory.test.ts
++++ b/frontend/src/api/inventory.test.ts
+@@ -1,10 +1,37 @@
+ import { describe, expect, it } from 'vitest';
+-import { inventoryApi } from './inventory';
++import { inventoryApi, mapGlobalInventoryResponse } from './inventory';
+ 
+-// The runtime client mapper is covered through the public API contract in the generated source patch.
+-// This smoke assertion prevents accidental removal of the endpoint wrapper.
+ describe('inventoryApi', () => {
+   it('exposes the global inventory list operation', () => {
+     expect(typeof inventoryApi.list).toBe('function');
+   });
++
++  it('maps world-scoped unattended inventory state', () => {
++    const result = mapGlobalInventoryResponse({
++      unattended: {
++        available: true,
++        status: 'completed',
++        world_id: 'WORLD-A',
++        duration_seconds: 900,
++        qualified: true,
++        total_added: 35,
++        additions: [{ item_id: 'Wood', item_name: '木材', item_icon: 'Wood', category: '材料', quantity: 35 }],
++      },
++    });
++    expect(result.unattended.world_id).toBe('WORLD-A');
++    expect(result.unattended.duration_seconds).toBe(900);
++    expect(result.unattended.additions).toEqual([
++      { item_id: 'Wood', item_name: '木材', item_icon: 'Wood', category: '材料', quantity: 35 },
++    ]);
++  });
++
++  it('uses an unavailable empty state when the server omits the field', () => {
++    const result = mapGlobalInventoryResponse({});
++    expect(result.unattended).toMatchObject({
++      available: false,
++      status: 'unavailable',
++      additions: [],
++      total_added: 0,
++    });
++  });
+ });
+diff --git a/frontend/src/api/inventory.ts b/frontend/src/api/inventory.ts
+index 666ac4a..3ce92de 100644
+--- a/frontend/src/api/inventory.ts
++++ b/frontend/src/api/inventory.ts
+@@ -26,6 +26,34 @@ export interface GlobalInventoryItem {
+   locations: GlobalInventoryLocation[];
+ }
+ 
++
++export interface UnattendedInventoryItem {
++  item_id: string;
++  item_name: string;
++  item_icon: string;
++  category: string;
++  quantity: number;
++}
++
++export interface UnattendedInventoryState {
++  available: boolean;
++  status: 'idle' | 'online' | 'waiting' | 'active' | 'completed' | 'source_mismatch' | 'world_unavailable' | 'state_unavailable' | 'unavailable' | string;
++  world_id: string;
++  started_at?: string;
++  baseline_at?: string;
++  eligible_at?: string;
++  ended_at?: string;
++  last_observed_at?: string;
++  duration_seconds: number;
++  eligible_remaining_seconds: number;
++  qualified: boolean;
++  current_online: boolean;
++  presence_stale: boolean;
++  snapshot_stale: boolean;
++  additions: UnattendedInventoryItem[];
++  total_added: number;
++}
++
+ export interface GlobalInventorySummary {
+   item_types: number;
+   total_count: number;
+@@ -43,6 +71,7 @@ export interface GlobalInventoryResponse {
+   filters: { categories: string[]; owner_types: InventoryOwnerType[] };
+   status: SaveIndexStatus;
+   source_id: string;
++  unattended: UnattendedInventoryState;
+ }
+ 
+ export interface GlobalInventoryQuery {
+@@ -54,6 +83,21 @@ export interface GlobalInventoryQuery {
+   offset?: number;
+ }
+ 
++
++const emptyUnattended: UnattendedInventoryState = {
++  available: false,
++  status: 'unavailable',
++  world_id: '',
++  duration_seconds: 0,
++  eligible_remaining_seconds: 0,
++  qualified: false,
++  current_online: false,
++  presence_stale: false,
++  snapshot_stale: false,
++  additions: [],
++  total_added: 0,
++};
++
+ const emptySummary: GlobalInventorySummary = {
+   item_types: 0,
+   total_count: 0,
+@@ -93,7 +137,39 @@ const mapItem = (raw: unknown): GlobalInventoryItem => {
+   };
+ };
+ 
+-const mapResponse = (raw: unknown): GlobalInventoryResponse => {
++
++const mapUnattended = (raw: unknown): UnattendedInventoryState => {
++  const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
++  return {
++    available: Boolean(data.available),
++    status: String(data.status || 'unavailable'),
++    world_id: String(data.world_id || ''),
++    started_at: data.started_at ? String(data.started_at) : undefined,
++    baseline_at: data.baseline_at ? String(data.baseline_at) : undefined,
++    eligible_at: data.eligible_at ? String(data.eligible_at) : undefined,
++    ended_at: data.ended_at ? String(data.ended_at) : undefined,
++    last_observed_at: data.last_observed_at ? String(data.last_observed_at) : undefined,
++    duration_seconds: Number(data.duration_seconds || 0),
++    eligible_remaining_seconds: Number(data.eligible_remaining_seconds || 0),
++    qualified: Boolean(data.qualified),
++    current_online: Boolean(data.current_online),
++    presence_stale: Boolean(data.presence_stale),
++    snapshot_stale: Boolean(data.snapshot_stale),
++    additions: (Array.isArray(data.additions) ? data.additions : []).map((item) => {
++      const value = (item && typeof item === 'object' ? item : {}) as Record<string, unknown>;
++      return {
++        item_id: String(value.item_id || ''),
++        item_name: String(value.item_name || value.item_id || '未知物品'),
++        item_icon: String(value.item_icon || ''),
++        category: String(value.category || '其他'),
++        quantity: Number(value.quantity || 0),
++      };
++    }),
++    total_added: Number(data.total_added || 0),
++  };
++};
++
++export const mapGlobalInventoryResponse = (raw: unknown): GlobalInventoryResponse => {
+   const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+   const rawSummary = (data.summary && typeof data.summary === 'object' ? data.summary : {}) as Record<string, unknown>;
+   const rawFilters = (data.filters && typeof data.filters === 'object' ? data.filters : {}) as Record<string, unknown>;
+@@ -115,6 +191,7 @@ const mapResponse = (raw: unknown): GlobalInventoryResponse => {
+     },
+     status: data.status ? mapSaveIndexStatus(data.status) : emptySaveIndexStatus,
+     source_id: String(data.source_id || ''),
++    unattended: data.unattended ? mapUnattended(data.unattended) : emptyUnattended,
+   };
+ };
+ 
+@@ -130,7 +207,7 @@ export const inventoryApi = {
+         offset: query.offset || 0,
+       },
+     }),
+-    { items: [], summary: emptySummary, filters: { categories: [], owner_types: ['all', 'base', 'player', 'unknown'] }, status: emptySaveIndexStatus, source_id: '' },
+-    { fallbackOnError: false, map: mapResponse },
++    { items: [], summary: emptySummary, filters: { categories: [], owner_types: ['all', 'base', 'player', 'unknown'] }, status: emptySaveIndexStatus, source_id: '', unattended: emptyUnattended },
++    { fallbackOnError: false, map: mapGlobalInventoryResponse },
+   ),
+ };
+diff --git a/frontend/src/pages/Inventory.tsx b/frontend/src/pages/Inventory.tsx
+index 90f9cd1..0a78eba 100644
+--- a/frontend/src/pages/Inventory.tsx
++++ b/frontend/src/pages/Inventory.tsx
+@@ -1,13 +1,13 @@
+ import React, { useEffect, useMemo, useState } from 'react';
+ import { useQuery } from '@tanstack/react-query';
+ import {
+-  AlertTriangle, Boxes, ChevronDown, ChevronUp, Database, MapPin, Package, PackageSearch,
+-  RefreshCw, Search, UserRound, Warehouse,
++  AlertTriangle, Boxes, ChevronDown, ChevronUp, Clock3, Database, MapPin, Package, PackageSearch,
++  RefreshCw, Search, TrendingUp, UserRound, Users, Warehouse, WifiOff,
+ } from 'lucide-react';
+ import { getErrorMessage } from '../api/client';
+ import {
+   inventoryApi, type GlobalInventoryItem, type GlobalInventoryLocation,
+-  type InventoryOwnerType, type InventorySort,
++  type InventoryOwnerType, type InventorySort, type UnattendedInventoryState,
+ } from '../api/inventory';
+ 
+ export const Inventory: React.FC = () => {
+@@ -26,6 +26,7 @@ export const Inventory: React.FC = () => {
+   const inventory = useQuery({
+     queryKey: ['global-inventory', deferredQuery, category, ownerType, sort],
+     queryFn: () => inventoryApi.list({ q: deferredQuery, category, owner_type: ownerType, sort, limit: 500 }),
++    refetchInterval: 15000,
+   });
+   const data = inventory.data;
+   const items = data?.items || [];
+@@ -60,6 +61,8 @@ export const Inventory: React.FC = () => {
+       {inventory.error && <div className="pp-notice pp-notice--danger"><AlertTriangle size={16} />{getErrorMessage(inventory.error)}</div>}
+       {data?.status.warnings?.length ? <div className="pp-notice"><AlertTriangle size={16} />{data.status.warnings.join('；')}</div> : null}
+ 
++      <UnattendedInventoryCard state={data?.unattended} loading={inventory.isLoading} />
++
+       <section className="pp-card">
+         <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_180px_180px]">
+           <label className="relative">
+@@ -112,6 +115,72 @@ export const Inventory: React.FC = () => {
+   );
+ };
+ 
++
++const unattendedStatusCopy = (state?: UnattendedInventoryState) => {
++  if (!state) return { title: '正在读取无人时段状态', detail: '状态随全服库存索引一同刷新。' };
++  if (state.status === 'source_mismatch') return { title: '仅支持当前服务器存档', detail: '导入存档只用于浏览，不参与实时无人时段统计。' };
++  if (state.status === 'world_unavailable') return { title: '当前世界不可用', detail: '无法解析正在运行的 WorldID，统计已暂停。' };
++  if (state.status === 'state_unavailable' || state.status === 'unavailable') return { title: '统计状态不可用', detail: '暂时无法读取无人时段记录。' };
++  if (state.status === 'waiting') return { title: '等待建立库存基线', detail: '当前没有玩家在线；存档索引可用后才开始计算有效时段。' };
++  if (state.status === 'active') return {
++    title: state.qualified ? '无人时段统计中' : '无人时段正在建立',
++    detail: state.qualified ? '已达到 5 分钟门槛，后续库存净增加会持续更新。' : `还需 ${formatDuration(state.eligible_remaining_seconds)} 才保留本次记录。`,
++  };
++  if (state.status === 'completed') return { title: '最近一次完整无人时段', detail: '玩家重新上线后冻结结果，展示该时段的库存正向净变化。' };
++  if (state.status === 'online') return { title: '当前有玩家在线', detail: state.additions.length ? '下方保留最近一次完整无人时段结果。' : '无人时段开始后达到 5 分钟才会保留记录。' };
++  return { title: '等待无人时段', detail: '当服务器无人在线时自动建立全服库存基线。' };
++};
++
++const UnattendedInventoryCard: React.FC<{ state?: UnattendedInventoryState; loading: boolean }> = ({ state, loading }) => {
++  const copy = unattendedStatusCopy(state);
++  const additions = state?.additions?.slice(0, 8) || [];
++  const active = state?.status === 'active' || state?.status === 'waiting';
++  const completed = state?.status === 'completed' || (state?.status === 'online' && additions.length > 0);
++  const unavailable = Boolean(state && !state.available && ['source_mismatch', 'world_unavailable', 'state_unavailable', 'unavailable'].includes(state.status));
++  const Icon = unavailable ? WifiOff : active ? Clock3 : completed ? TrendingUp : Users;
++
++  return <section className="pp-card overflow-hidden p-0">
++    <div className="flex flex-col gap-4 border-b border-slate-100 bg-gradient-to-r from-sky-50/80 via-white to-emerald-50/60 px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
++      <div className="flex min-w-0 items-start gap-3">
++        <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${unavailable ? 'border-slate-200 bg-white text-slate-400' : 'border-sky-100 bg-white text-sky-600'}`}>
++          {loading ? <RefreshCw className="animate-spin" size={20} /> : <Icon size={20} />}
++        </span>
++        <div className="min-w-0">
++          <div className="flex flex-wrap items-center gap-2">
++            <h2 className="text-base font-bold text-slate-800">无人时段库存净增加</h2>
++            {state?.qualified && <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-700">已达到 5 分钟</span>}
++            {state?.snapshot_stale && <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-700">使用旧索引</span>}
++            {state?.presence_stale && <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-700">在线状态中断</span>}
++          </div>
++          <strong className="mt-1 block text-sm text-slate-700">{copy.title}</strong>
++          <p className="mt-1 text-xs leading-5 text-slate-500">{copy.detail} 该数据只表示库存正向净变化，不等同于据点生产量。</p>
++        </div>
++      </div>
++      <div className="grid min-w-[280px] grid-cols-3 gap-2">
++        <UnattendedMetric label="时长" value={formatDuration(state?.duration_seconds || 0)} />
++        <UnattendedMetric label="净增加" value={`+${formatNumber(state?.total_added || 0)}`} />
++        <UnattendedMetric label="世界" value={state?.world_id ? compactWorldID(state.world_id) : '—'} title={state?.world_id} />
++      </div>
++    </div>
++    {additions.length ? <div className="grid gap-2 p-4 sm:grid-cols-2 xl:grid-cols-4">
++      {additions.map((item) => <div key={item.item_id} className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-3">
++        <InventoryItemIcon icon={item.item_icon} name={item.item_name} />
++        <span className="min-w-0 flex-1"><strong className="block truncate text-xs text-slate-700">{item.item_name}</strong><small className="block truncate text-[10px] text-slate-400">{item.category}</small></span>
++        <b className="shrink-0 text-sm text-emerald-700">+{formatNumber(item.quantity)}</b>
++      </div>)}
++    </div> : <div className="flex items-center gap-2 px-5 py-4 text-xs text-slate-400">
++      <Boxes size={16} />{active ? '库存基线建立后，这里会显示相对基线增加的物品。' : '暂无可显示的完整无人时段库存增量。'}
++    </div>}
++  </section>;
++};
++
++const UnattendedMetric: React.FC<{ label: string; value: string; title?: string }> = ({ label, value, title }) => (
++  <div className="rounded-xl border border-white/80 bg-white/80 px-3 py-2 shadow-sm" title={title}>
++    <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">{label}</span>
++    <strong className="mt-1 block truncate text-xs text-slate-700">{value}</strong>
++  </div>
++);
++
+ const InventoryRow: React.FC<{ item: GlobalInventoryItem; open: boolean; onToggle: () => void }> = ({ item, open, onToggle }) => (
+   <article className="border-b border-slate-100 last:border-b-0">
+     <button type="button" onClick={onToggle} aria-expanded={open} className="grid w-full grid-cols-[minmax(0,1fr)_120px_120px_42px] items-center gap-3 px-5 py-4 text-left hover:bg-slate-50">
+@@ -158,3 +227,15 @@ const InventoryEmpty: React.FC<{ icon: React.ReactNode; title: string; detail: s
+ );
+ 
+ const formatNumber = (value: number) => new Intl.NumberFormat('zh-CN').format(Number(value) || 0);
++
++const formatDuration = (seconds: number) => {
++  const value = Math.max(0, Math.floor(Number(seconds) || 0));
++  const hours = Math.floor(value / 3600);
++  const minutes = Math.floor((value % 3600) / 60);
++  const remaining = value % 60;
++  if (hours) return `${hours} 小时 ${minutes} 分`;
++  if (minutes) return `${minutes} 分 ${remaining} 秒`;
++  return `${remaining} 秒`;
++};
++
++const compactWorldID = (value: string) => value.length > 12 ? `${value.slice(0, 6)}…${value.slice(-4)}` : value;

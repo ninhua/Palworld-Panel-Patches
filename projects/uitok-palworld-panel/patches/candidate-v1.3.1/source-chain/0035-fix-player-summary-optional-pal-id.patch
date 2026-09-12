@@ -1,0 +1,34 @@
+diff --git a/frontend/src/pages/PlayerSummary.tsx b/frontend/src/pages/PlayerSummary.tsx
+index ea09ec87087cf09e828bdf56e9ac2057061e7bcb..e26e7a5d20d2c55193f8bc87a88224cc3cd2d13b 100644
+--- a/frontend/src/pages/PlayerSummary.tsx
++++ b/frontend/src/pages/PlayerSummary.tsx
+@@ -12,6 +12,8 @@ import type { Pal, Player } from '../types';
+ 
+ const normalizeID = (value?: string | null): string => String(value || '').trim().toLowerCase();
+ 
++const palIdentityKey = (pal: Pal): string => normalizeID(pal.instance_id || pal.id || pal.character_id);
++
+ type PlayerSnapshot = {
+   player: Player;
+   pals: Pal[];
+@@ -59,14 +61,18 @@ export const PlayerSummary: React.FC = () => {
+         const key = normalizeID(owner);
+         if (!key) continue;
+         const list = palsByOwner.get(key) || [];
+-        if (!list.some((candidate) => candidate.instance_id === pal.instance_id)) list.push(pal);
++        const palKey = palIdentityKey(pal);
++        if (!palKey || !list.some((candidate) => palIdentityKey(candidate) === palKey)) list.push(pal);
+         palsByOwner.set(key, list);
+       }
+     }
+     return (playersQuery.data?.items || []).map((player) => {
+       const owned = new Map<string, Pal>();
+       for (const id of [player.player_uid, player.steam_id, player.id]) {
+-        for (const pal of palsByOwner.get(normalizeID(id)) || []) owned.set(pal.instance_id, pal);
++        for (const pal of palsByOwner.get(normalizeID(id)) || []) {
++          const palKey = palIdentityKey(pal);
++          if (palKey) owned.set(palKey, pal);
++        }
+       }
+       return buildSnapshot(player, [...owned.values()]);
+     });
