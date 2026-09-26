@@ -1,0 +1,892 @@
+diff --git a/backend/internal/api/guild_detail.go b/backend/internal/api/guild_detail.go
+new file mode 100644
+index 0000000..d8c1c29
+--- /dev/null
++++ b/backend/internal/api/guild_detail.go
+@@ -0,0 +1,122 @@
++package api
++
++import (
++	"strings"
++
++	"github.com/gin-gonic/gin"
++
++	"palpanel/internal/saveindex"
++)
++
++func (s Server) guildDetailViews(c *gin.Context, index saveindex.Index, guild saveindex.Guild, online onlinePlayersResult) ([]gin.H, []gin.H, string, error) {
++	source, err := s.store.ActiveSaveSource(c.Request.Context())
++	if err != nil {
++		return nil, nil, "", err
++	}
++	annotations, err := s.loadPlayerAnnotations(c, source.ID)
++	if err != nil {
++		return nil, nil, "", err
++	}
++	customNames, err := s.loadBaseCustomNames(c, source.ID)
++	if err != nil {
++		return nil, nil, "", err
++	}
++	players := mergeSaveAndOnline(index.Players, online.Players)
++	return guildMemberDetailViews(guild, players, online, annotations), guildBaseDetailViews(guild, index.Bases, customNames), source.ID, nil
++}
++
++func guildMemberDetailViews(guild saveindex.Guild, players []saveindex.Player, online onlinePlayersResult, annotations map[string]playerAnnotation) []gin.H {
++	lookup := make(map[string]saveindex.Player, len(players)*2)
++	for _, player := range players {
++		for _, identifier := range []string{player.PlayerUID, player.SteamID} {
++			if key := identityKey(identifier); key != "" {
++				lookup[key] = player
++			}
++		}
++	}
++
++	out := make([]gin.H, 0, len(guild.Members)+1)
++	seen := make(map[string]struct{}, len(guild.Members)+1)
++	appendMember := func(member saveindex.GuildMember) {
++		key := identityKey(member.PlayerUID)
++		if key == "" {
++			return
++		}
++		if _, exists := seen[key]; exists {
++			return
++		}
++		seen[key] = struct{}{}
++
++		player, found := lookup[key]
++		var view gin.H
++		if found {
++			view = flattenPlayerWithAnnotation(player, online, annotationForPlayer(annotations, player))
++			view["last_online_time"] = firstNonEmpty(member.LastOnlineTime, player.LastOnlineTime)
++		} else {
++			view = gin.H{
++				"id":                    member.PlayerUID,
++				"player_uid":            member.PlayerUID,
++				"steam_id":              "",
++				"nickname":              firstNonEmpty(member.Nickname, member.PlayerUID),
++				"level":                 0,
++				"is_online":             false,
++				"last_online_time":      member.LastOnlineTime,
++				"note":                  "",
++				"tags":                  []string{},
++				"has_annotation":        false,
++				"annotation_updated_at": "",
++			}
++		}
++		view["is_owner"] = strings.EqualFold(strings.TrimSpace(guild.OwnerPlayerUID), strings.TrimSpace(member.PlayerUID))
++		out = append(out, view)
++	}
++
++	for _, member := range guild.Members {
++		appendMember(member)
++	}
++	ownerKey := identityKey(guild.OwnerPlayerUID)
++	if ownerKey != "" {
++		if _, exists := seen[ownerKey]; !exists {
++			owner := saveindex.GuildMember{PlayerUID: guild.OwnerPlayerUID}
++			if player, found := lookup[ownerKey]; found {
++				owner.Nickname = player.Nickname
++				owner.LastOnlineTime = player.LastOnlineTime
++			}
++			appendMember(owner)
++		}
++	}
++	return out
++}
++
++func guildBaseDetailViews(guild saveindex.Guild, bases []saveindex.Base, customNames map[string]string) []gin.H {
++	lookup := make(map[string]saveindex.Base, len(bases))
++	for _, base := range bases {
++		lookup[identityKey(base.ID)] = base
++	}
++	out := make([]gin.H, 0, len(guild.BaseIDs))
++	seen := make(map[string]struct{}, len(guild.BaseIDs))
++	appendBase := func(base saveindex.Base) {
++		key := identityKey(base.ID)
++		if key == "" {
++			return
++		}
++		if _, exists := seen[key]; exists {
++			return
++		}
++		seen[key] = struct{}{}
++		view := flattenBaseWithCustomName(base, customNames[base.ID])
++		view["workers_count"] = len(base.Workers)
++		out = append(out, view)
++	}
++	for _, baseID := range guild.BaseIDs {
++		if base, found := lookup[identityKey(baseID)]; found {
++			appendBase(base)
++		}
++	}
++	for _, base := range bases {
++		if strings.EqualFold(strings.TrimSpace(base.GuildID), strings.TrimSpace(guild.ID)) {
++			appendBase(base)
++		}
++	}
++	return out
++}
+diff --git a/backend/internal/api/guild_detail_test.go b/backend/internal/api/guild_detail_test.go
+new file mode 100644
+index 0000000..7cf7a85
+--- /dev/null
++++ b/backend/internal/api/guild_detail_test.go
+@@ -0,0 +1,60 @@
++package api
++
++import (
++	"testing"
++
++	"palpanel/internal/saveindex"
++)
++
++func TestGuildMemberDetailViewsIncludeAnnotationsAndOwner(t *testing.T) {
++	guild := saveindex.Guild{
++		ID:             "guild-1",
++		OwnerPlayerUID: "uid-owner",
++		Members: []saveindex.GuildMember{
++			{PlayerUID: "uid-owner", Nickname: "Owner", LastOnlineTime: "2026-07-20T00:00:00Z"},
++			{PlayerUID: "uid-member", Nickname: "Member"},
++		},
++	}
++	players := []saveindex.Player{
++		{PlayerUID: "uid-owner", SteamID: "steam-owner", Nickname: "Owner", Level: 50, IsOnline: true},
++		{PlayerUID: "uid-member", SteamID: "steam-member", Nickname: "Member", Level: 31},
++	}
++	annotations := map[string]playerAnnotation{
++		"uid-member": {Note: "负责采矿", Tags: []string{"矿工", "活跃"}, UpdatedAt: "2026-07-24T00:00:00Z"},
++	}
++
++	views := guildMemberDetailViews(guild, players, onlinePlayersResult{}, annotations)
++	if len(views) != 2 {
++		t.Fatalf("member views = %#v", views)
++	}
++	if views[0]["is_owner"] != true || views[0]["steam_id"] != "steam-owner" || views[0]["level"] != 50 {
++		t.Fatalf("owner view = %#v", views[0])
++	}
++	if views[1]["note"] != "负责采矿" || views[1]["has_annotation"] != true {
++		t.Fatalf("annotated member view = %#v", views[1])
++	}
++	tags, _ := views[1]["tags"].([]string)
++	if len(tags) != 2 || tags[0] != "矿工" {
++		t.Fatalf("member tags = %#v", views[1]["tags"])
++	}
++}
++
++func TestGuildBaseDetailViewsIncludeCustomNamesAndImplicitGuildBases(t *testing.T) {
++	guild := saveindex.Guild{ID: "guild-1", BaseIDs: []string{"base-1"}}
++	bases := []saveindex.Base{
++		{ID: "base-1", Name: "新規生成拠点テンプレート名0(仮)", GuildID: "guild-1", StructuresCount: 12, Workers: []saveindex.Worker{{InstanceID: "pal-1"}}},
++		{ID: "base-2", Name: "新規生成拠点テンプレート名1(仮)", GuildID: "guild-1", StructuresCount: 8},
++		{ID: "other", Name: "Other", GuildID: "guild-2"},
++	}
++
++	views := guildBaseDetailViews(guild, bases, map[string]string{"base-1": "北境制造中心"})
++	if len(views) != 2 {
++		t.Fatalf("base views = %#v", views)
++	}
++	if views[0]["name"] != "北境制造中心" || views[0]["has_custom_name"] != true || views[0]["workers_count"] != 1 {
++		t.Fatalf("custom base view = %#v", views[0])
++	}
++	if views[1]["id"] != "base-2" {
++		t.Fatalf("implicit guild base missing: %#v", views)
++	}
++}
+diff --git a/backend/internal/api/patch_info.go b/backend/internal/api/patch_info.go
+index 106626d..d2f15d2 100644
+--- a/backend/internal/api/patch_info.go
++++ b/backend/internal/api/patch_info.go
+@@ -10,11 +10,11 @@ const (
+ 	patchSourceRepository = "uitok/palworld-panel"
+ 	patchSourceRef        = "dev"
+ 	patchTargetVersion    = "v1.2.2"
+-	patchVersion          = "0.4.0-dev.1"
++	patchVersion          = "0.5.0-dev.1"
+ 	patchRepository       = "ninhua/Palworld-Panel-Patches"
+ )
+ 
+-var patchFeatures = []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes"}
++var patchFeatures = []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser"}
+ 
+ func (s Server) patchInfo(c *gin.Context) {
+ 	info := buildinfo.Current()
+diff --git a/backend/internal/api/patch_info_test.go b/backend/internal/api/patch_info_test.go
+index 55cc0a1..83a55aa 100644
+--- a/backend/internal/api/patch_info_test.go
++++ b/backend/internal/api/patch_info_test.go
+@@ -77,7 +77,7 @@ func TestPatchInfo(t *testing.T) {
+ 	for _, feature := range response.Data.Patch.Features {
+ 		features[feature] = true
+ 	}
+-	for _, expected := range []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes"} {
++	for _, expected := range []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser"} {
+ 		if !features[expected] {
+ 			t.Fatalf("missing feature %q in %#v", expected, response.Data.Patch.Features)
+ 		}
+diff --git a/backend/internal/api/save_index.go b/backend/internal/api/save_index.go
+index 5dc6d8f..94f310c 100644
+--- a/backend/internal/api/save_index.go
++++ b/backend/internal/api/save_index.go
+@@ -199,11 +199,23 @@ func (s Server) getSaveGuild(c *gin.Context) {
+ 	}
+ 	guilds := append([]saveindex.Guild(nil), index.Guilds...)
+ 	online := s.onlinePlayers(c)
++	status = statusWithOnlineState(status, online)
+ 	applyGuildOnlineCounts(guilds, mergeSaveAndOnline(index.Players, online.Players))
+ 	id := c.Param("id")
+ 	for _, guild := range guilds {
+ 		if matchesID(id, guild.ID, guild.OwnerPlayerUID, guild.Name, pallocalize.GuildName(guild.Name)) {
+-			ok(c, gin.H{"guild": localizeGuild(guild), "status": status})
++			members, bases, sourceID, detailErr := s.guildDetailViews(c, index, guild, online)
++			if detailErr != nil {
++				fail(c, http.StatusInternalServerError, "guild_detail_read_failed", detailErr.Error())
++				return
++			}
++			ok(c, gin.H{
++				"guild":     localizeGuild(guild),
++				"members":   members,
++				"bases":     bases,
++				"status":    status,
++				"source_id": sourceID,
++			})
+ 			return
+ 		}
+ 	}
+diff --git a/docs/openapi.yaml b/docs/openapi.yaml
+index 1838e76..cd14f17 100644
+--- a/docs/openapi.yaml
++++ b/docs/openapi.yaml
+@@ -135,6 +135,11 @@ x-player-inventory: &playerInventory
+   content:
+     application/json:
+       schema: {$ref: '#/components/schemas/PlayerInventoryEnvelope'}
++x-guild-detail: &guildDetail
++  description: Enriched guild detail with member annotations and linked bases.
++  content:
++    application/json:
++      schema: {$ref: '#/components/schemas/GuildDetailEnvelope'}
+ x-mod-config-adapters: &modConfigAdapters
+   description: Registered typed Mod configuration adapters and their opaque files.
+   content:
+@@ -1147,7 +1152,7 @@ paths:
+     get: {operationId: listGuilds, tags: [world], x-palpanel-permission: read, responses: *readResponses}
+   /guilds/{id}:
+     parameters: [*idParameter]
+-    get: {operationId: getGuild, tags: [world], x-palpanel-permission: read, responses: *readResponses}
++    get: {operationId: getGuild, tags: [world], x-palpanel-permission: read, responses: {'200': *guildDetail, '401': *error, '404': *error, '500': *error}}
+   /bases:
+     get: {operationId: listBases, tags: [world], x-palpanel-permission: read, responses: *readResponses}
+   /bases/{id}:
+@@ -1288,6 +1293,69 @@ components:
+         container_type: {type: string}
+         container_name: {type: string}
+         slots: {type: array, items: {$ref: '#/components/schemas/SaveInventorySlot'}}
++    GuildMemberSummary:
++      type: object
++      required: [player_uid, nickname]
++      properties:
++        player_uid: {type: string}
++        nickname: {type: string}
++        last_online_time: {type: string}
++    Guild:
++      type: object
++      required: [id, name, owner_player_uid, members, base_ids, online_member_count]
++      properties:
++        id: {type: string}
++        name: {type: string}
++        owner_player_uid: {type: string}
++        members: {type: array, items: {$ref: '#/components/schemas/GuildMemberSummary'}}
++        base_ids: {type: array, items: {type: string}}
++        online_member_count: {type: integer, minimum: 0}
++    GuildMemberDetail:
++      type: object
++      required: [id, player_uid, steam_id, nickname, level, is_online, last_online_time, is_owner, note, tags, has_annotation]
++      properties:
++        id: {type: string}
++        player_uid: {type: string}
++        steam_id: {type: string}
++        nickname: {type: string}
++        level: {type: integer, minimum: 0}
++        is_online: {type: boolean}
++        last_online_time: {type: string}
++        is_owner: {type: boolean}
++        note: {type: string, maxLength: 500}
++        tags: {type: array, maxItems: 8, items: {type: string, maxLength: 24}}
++        has_annotation: {type: boolean}
++        annotation_updated_at: {type: string}
++    GuildBaseDetail:
++      type: object
++      required: [id, name, raw_name, custom_name, has_custom_name, x, y, z, structures_count, workers_count, status]
++      properties:
++        id: {type: string}
++        name: {type: string}
++        raw_name: {type: string}
++        custom_name: {type: string}
++        has_custom_name: {type: boolean}
++        x: {type: number}
++        y: {type: number}
++        z: {type: number}
++        structures_count: {type: integer, minimum: 0}
++        workers_count: {type: integer, minimum: 0}
++        status: {type: string}
++    GuildDetailResult:
++      type: object
++      required: [guild, members, bases, status, source_id]
++      properties:
++        guild: {$ref: '#/components/schemas/Guild'}
++        members: {type: array, items: {$ref: '#/components/schemas/GuildMemberDetail'}}
++        bases: {type: array, items: {$ref: '#/components/schemas/GuildBaseDetail'}}
++        status: {$ref: '#/components/schemas/SaveIndexStatus'}
++        source_id: {type: string}
++    GuildDetailEnvelope:
++      type: object
++      required: [ok, data]
++      properties:
++        ok: {type: boolean, const: true}
++        data: {$ref: '#/components/schemas/GuildDetailResult'}
+     ListSummary:
+       type: object
+       required: [total, limit, offset, returned, page]
+@@ -2534,7 +2602,7 @@ components:
+           type: object
+           required: [version, repository, features]
+           properties:
+-            version: {type: string, const: 0.4.0-dev.1}
++            version: {type: string, const: 0.5.0-dev.1}
+             repository: {type: string, const: ninhua/Palworld-Panel-Patches}
+             features:
+               type: array
+diff --git a/frontend/src/api/generated/contracts.ts b/frontend/src/api/generated/contracts.ts
+index 0015a5c..eca727f 100644
+--- a/frontend/src/api/generated/contracts.ts
++++ b/frontend/src/api/generated/contracts.ts
+@@ -181,6 +181,57 @@ export interface components {
+       };
+       "ok": false;
+     };
++    "Guild": {
++      "base_ids": Array<string>;
++      "id": string;
++      "members": Array<components["schemas"]["GuildMemberSummary"]>;
++      "name": string;
++      "online_member_count": number;
++      "owner_player_uid": string;
++    };
++    "GuildBaseDetail": {
++      "custom_name": string;
++      "has_custom_name": boolean;
++      "id": string;
++      "name": string;
++      "raw_name": string;
++      "status": string;
++      "structures_count": number;
++      "workers_count": number;
++      "x": number;
++      "y": number;
++      "z": number;
++    };
++    "GuildDetailEnvelope": {
++      "data": components["schemas"]["GuildDetailResult"];
++      "ok": true;
++    };
++    "GuildDetailResult": {
++      "bases": Array<components["schemas"]["GuildBaseDetail"]>;
++      "guild": components["schemas"]["Guild"];
++      "members": Array<components["schemas"]["GuildMemberDetail"]>;
++      "source_id": string;
++      "status": components["schemas"]["SaveIndexStatus"];
++    };
++    "GuildMemberDetail": {
++      "annotation_updated_at"?: string;
++      "has_annotation": boolean;
++      "id": string;
++      "is_online": boolean;
++      "is_owner": boolean;
++      "last_online_time": string;
++      "level": number;
++      "nickname": string;
++      "note": string;
++      "player_uid": string;
++      "steam_id": string;
++      "tags": Array<string>;
++    };
++    "GuildMemberSummary": {
++      "last_online_time"?: string;
++      "nickname": string;
++      "player_uid": string;
++    };
+     "ImportCandidate": {
+       "action": "new" | "update" | "unknown";
+       "existing_mod_id"?: string;
+@@ -772,7 +823,7 @@ export interface components {
+       "patch": {
+         "features": Array<string>;
+         "repository": "ninhua/Palworld-Panel-Patches";
+-        "version": "0.4.0-dev.1";
++        "version": "0.5.0-dev.1";
+       };
+       "upstream": {
+         "commit": string;
+diff --git a/frontend/src/api/guilds.test.ts b/frontend/src/api/guilds.test.ts
+new file mode 100644
+index 0000000..a7b51d2
+--- /dev/null
++++ b/frontend/src/api/guilds.test.ts
+@@ -0,0 +1,38 @@
++import { afterEach, describe, expect, it, vi } from 'vitest';
++import type { AxiosResponse } from 'axios';
++import { apiClient } from './client';
++import { guildsApi } from './guilds';
++
++afterEach(() => vi.restoreAllMocks());
++
++describe('guild detail requests', () => {
++  it('maps enriched members, annotations, bases, and encodes the guild id', async () => {
++    const get = vi.spyOn(apiClient, 'get').mockResolvedValue({
++      data: {
++        ok: true,
++        data: {
++          guild: { id: 'guild/1', name: 'Builders', owner_player_uid: 'uid-owner', members: [], base_ids: ['base-1'], online_member_count: 1 },
++          members: [{
++            id: 'steam-owner', player_uid: 'uid-owner', steam_id: 'steam-owner', nickname: 'Alice', level: 50,
++            is_online: true, last_online_time: '2026-07-24T00:00:00Z', is_owner: true,
++            note: '负责建筑', tags: ['建筑师'], has_annotation: true,
++          }],
++          bases: [{
++            id: 'base-1', name: '北境制造中心', raw_name: 'raw', custom_name: '北境制造中心', has_custom_name: true,
++            x: 10, y: 20, z: 30, structures_count: 12, workers_count: 8, status: 'Safe',
++          }],
++          status: { enabled: true, state: 'ready', stale: false, source_path: '', updated_at: '', duration_ms: 0, warnings: [], counts: { players: 1, guilds: 1, bases: 1, pals: 0, containers: 0, map_entities: 0 } },
++          source_id: 'server',
++        },
++      },
++      status: 200,
++    } as AxiosResponse);
++
++    const detail = await guildsApi.getGuild('guild/1');
++
++    expect(get).toHaveBeenCalledWith('/guilds/guild%2F1');
++    expect(detail.members[0]).toMatchObject({ nickname: 'Alice', is_owner: true, note: '负责建筑', tags: ['建筑师'] });
++    expect(detail.bases[0]).toMatchObject({ name: '北境制造中心', workers_count: 8, x: 10 });
++    expect(detail.source_id).toBe('server');
++  });
++});
+diff --git a/frontend/src/api/guilds.ts b/frontend/src/api/guilds.ts
+index ef50ddb..fb4764c 100644
+--- a/frontend/src/api/guilds.ts
++++ b/frontend/src/api/guilds.ts
+@@ -1,17 +1,27 @@
+ import { apiClient, handleRequest } from './client';
+ import { emptySummary, entityListQuery, mapSummary } from './entityList';
+ import { emptySaveIndexStatus, mapSaveIndexStatus } from './saveIndex';
+-import type { EntityListParams, EntityListResponse, Guild } from '../types';
++import type {
++  EntityListParams,
++  EntityListResponse,
++  Guild,
++  GuildBaseDetail,
++  GuildDetailResponse,
++  GuildMemberDetail,
++} from '../types';
++
++const asRecord = (raw: unknown): Record<string, unknown> =>
++  raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+ 
+ const mapGuild = (raw: unknown): Guild => {
+-  const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
++  const data = asRecord(raw);
+   return {
+     id: String(data.id || data.owner_player_uid || data.name || ''),
+     name: String(data.name || 'Unknown Guild'),
+     owner_player_uid: String(data.owner_player_uid || ''),
+     members: Array.isArray(data.members)
+       ? data.members.map((item) => {
+-          const member = (item && typeof item === 'object' ? item : {}) as Record<string, unknown>;
++          const member = asRecord(item);
+           return {
+             player_uid: String(member.player_uid || ''),
+             nickname: String(member.nickname || member.player_name || ''),
+@@ -25,13 +35,13 @@ const mapGuild = (raw: unknown): Guild => {
+ };
+ 
+ const mapGuilds = (raw: unknown): Guild[] => {
+-  const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
++  const data = asRecord(raw);
+   const list = Array.isArray(raw) ? raw : Array.isArray(data.guilds) ? data.guilds : [];
+   return list.map(mapGuild);
+ };
+ 
+ const mapGuildsList = (raw: unknown): EntityListResponse<Guild> => {
+-  const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
++  const data = asRecord(raw);
+   const items = mapGuilds(raw);
+   return {
+     items,
+@@ -40,6 +50,60 @@ const mapGuildsList = (raw: unknown): EntityListResponse<Guild> => {
+   };
+ };
+ 
++const mapGuildMemberDetail = (raw: unknown): GuildMemberDetail => {
++  const data = asRecord(raw);
++  return {
++    id: String(data.id || data.steam_id || data.player_uid || ''),
++    player_uid: String(data.player_uid || ''),
++    steam_id: String(data.steam_id || ''),
++    nickname: String(data.nickname || data.player_uid || 'Unknown Player'),
++    level: Number(data.level || 0),
++    is_online: Boolean(data.is_online),
++    last_online_time: String(data.last_online_time || ''),
++    is_owner: Boolean(data.is_owner),
++    note: String(data.note || ''),
++    tags: Array.isArray(data.tags) ? data.tags.map(String) : [],
++    has_annotation: Boolean(data.has_annotation),
++  };
++};
++
++const mapGuildBaseDetail = (raw: unknown): GuildBaseDetail => {
++  const data = asRecord(raw);
++  const location = asRecord(data.location);
++  return {
++    id: String(data.id || ''),
++    name: String(data.name || data.raw_name || data.id || 'Unknown Base'),
++    raw_name: String(data.raw_name || ''),
++    custom_name: String(data.custom_name || ''),
++    has_custom_name: Boolean(data.has_custom_name),
++    x: Number(data.x ?? location.x ?? 0),
++    y: Number(data.y ?? location.y ?? 0),
++    z: Number(data.z ?? location.z ?? 0),
++    structures_count: Number(data.structures_count || 0),
++    workers_count: Number(data.workers_count ?? data.pals_count ?? 0),
++    status: String(data.status || ''),
++  };
++};
++
++const emptyGuildDetail: GuildDetailResponse = {
++  guild: mapGuild({}),
++  members: [],
++  bases: [],
++  status: emptySaveIndexStatus,
++  source_id: '',
++};
++
++const mapGuildDetail = (raw: unknown): GuildDetailResponse => {
++  const data = asRecord(raw);
++  return {
++    guild: mapGuild(data.guild),
++    members: Array.isArray(data.members) ? data.members.map(mapGuildMemberDetail) : [],
++    bases: Array.isArray(data.bases) ? data.bases.map(mapGuildBaseDetail) : [],
++    status: data.status ? mapSaveIndexStatus(data.status) : emptySaveIndexStatus,
++    source_id: String(data.source_id || ''),
++  };
++};
++
+ export const guildsApi = {
+   getGuildsList: (params: EntityListParams = {}) =>
+     handleRequest<unknown, EntityListResponse<Guild>>(
+@@ -56,4 +120,11 @@ export const guildsApi = {
+       map: mapGuilds,
+       quiet: true,
+     }),
++
++  getGuild: (identifier: string) =>
++    handleRequest<unknown, GuildDetailResponse>(
++      () => apiClient.get(`/guilds/${encodeURIComponent(identifier)}`),
++      emptyGuildDetail,
++      { map: mapGuildDetail, quiet: true },
++    ),
+ };
+diff --git a/frontend/src/pages/Guilds.tsx b/frontend/src/pages/Guilds.tsx
+index e31b8f6..f0b37da 100644
+--- a/frontend/src/pages/Guilds.tsx
++++ b/frontend/src/pages/Guilds.tsx
+@@ -1,11 +1,22 @@
+ import React, { useEffect, useState } from 'react';
+ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+-import { AlertCircle, RefreshCw, Users } from 'lucide-react';
++import {
++  AlertCircle,
++  Building2,
++  Crown,
++  Eye,
++  FileText,
++  MapPin,
++  RefreshCw,
++  Tag,
++  Users,
++  X,
++} from 'lucide-react';
+ import { getErrorMessage } from '../api/client';
+ import { guildsApi } from '../api/guilds';
+ import { saveIndexApi } from '../api/saveIndex';
+ import { useServerStore } from '../store/useServerStore';
+-import type { Guild } from '../types';
++import type { Guild, GuildDetailResponse, GuildMemberDetail } from '../types';
+ import { DataTable } from '../components/ui/DataTable';
+ import { SaveIndexStatusBar } from '../components/ui/SaveIndexStatusBar';
+ import { SaveDataTabs } from '../components/ui/SaveDataTabs';
+@@ -18,6 +29,7 @@ export const Guilds: React.FC = () => {
+   const queryClient = useQueryClient();
+   const [searchText, setSearchText] = useState('');
+   const [page, setPage] = useState(1);
++  const [selectedGuildID, setSelectedGuildID] = useState<string | null>(null);
+   const [actionError, setActionError] = useState<string | null>(null);
+   const debouncedSearch = useDebouncedValue(searchText, 250);
+ 
+@@ -36,11 +48,18 @@ export const Guilds: React.FC = () => {
+     placeholderData: (previous) => previous,
+   });
+ 
++  const detailQuery = useQuery({
++    queryKey: ['guild-detail', selectedGuildID, refreshKey],
++    queryFn: () => guildsApi.getGuild(selectedGuildID || ''),
++    enabled: Boolean(selectedGuildID),
++  });
++
+   const rebuildMutation = useMutation({
+     mutationFn: saveIndexApi.rebuild,
+     onSuccess: () => {
+       setActionError(null);
+       void queryClient.invalidateQueries({ queryKey: ['guilds'] });
++      void queryClient.invalidateQueries({ queryKey: ['guild-detail'] });
+     },
+     onError: (rebuildError) => {
+       setActionError(getErrorMessage(rebuildError));
+@@ -93,6 +112,7 @@ export const Guilds: React.FC = () => {
+               { key: 'online', label: '在线' },
+               { key: 'bases', label: '基地' },
+               { key: 'owner', label: '会长 UID' },
++              { key: 'actions', label: '详情', align: 'right' },
+             ]}
+             data={guilds}
+             searchText={searchText}
+@@ -107,7 +127,7 @@ export const Guilds: React.FC = () => {
+             }}
+             virtualized
+             emptyText={error ? '存档索引不可用' : '暂无公会'}
+-            renderCard={(guild) => <GuildCard key={guild.id} guild={guild} />}
++            renderCard={(guild) => <GuildCard key={guild.id} guild={guild} onDetail={() => setSelectedGuildID(guild.id)} />}
+             renderRow={(guild) => (
+               <tr key={guild.id} className="hover:bg-slate-50/50">
+                 <td className="px-6 py-4 text-xs font-bold text-slate-700">{guild.name}</td>
+@@ -115,11 +135,30 @@ export const Guilds: React.FC = () => {
+                 <td className="px-6 py-4 text-xs font-semibold text-emerald-600">{guild.online_member_count} 人</td>
+                 <td className="px-6 py-4 text-xs font-semibold text-slate-600">{guild.base_ids.length} 个</td>
+                 <td className="px-6 py-4 font-mono text-[10px] text-slate-400">{guild.owner_player_uid || '-'}</td>
++                <td className="px-6 py-4 text-right">
++                  <button
++                    type="button"
++                    onClick={() => setSelectedGuildID(guild.id)}
++                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-bold text-slate-600 hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700"
++                  >
++                    <Eye size={12} />查看
++                  </button>
++                </td>
+               </tr>
+             )}
+           />
+         )}
+       </section>
++
++      {selectedGuildID && (
++        <GuildDetailDrawer
++          data={detailQuery.data}
++          loading={detailQuery.isLoading || detailQuery.isFetching}
++          error={detailQuery.error ? getErrorMessage(detailQuery.error) : null}
++          onRetry={() => void detailQuery.refetch()}
++          onClose={() => setSelectedGuildID(null)}
++        />
++      )}
+     </div>
+   );
+ };
+@@ -133,7 +172,7 @@ const Summary: React.FC<{ label: string; value: number }> = ({ label, value }) =
+   </div>
+ );
+ 
+-const GuildCard: React.FC<{ guild: Guild }> = ({ guild }) => (
++const GuildCard: React.FC<{ guild: Guild; onDetail: () => void }> = ({ guild, onDetail }) => (
+   <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+     <p className="truncate text-sm font-bold text-slate-800">{guild.name}</p>
+     <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] font-semibold text-slate-500">
+@@ -142,5 +181,134 @@ const GuildCard: React.FC<{ guild: Guild }> = ({ guild }) => (
+       <span>基地: {guild.base_ids.length}</span>
+       <span className="truncate font-mono">会长: {guild.owner_player_uid || '-'}</span>
+     </div>
++    <button type="button" onClick={onDetail} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-sky-200 bg-sky-50 py-2 text-xs font-bold text-sky-700">
++      <Eye size={13} />查看公会详情
++    </button>
++  </div>
++);
++
++const GuildDetailDrawer: React.FC<{
++  data?: GuildDetailResponse;
++  loading: boolean;
++  error: string | null;
++  onRetry: () => void;
++  onClose: () => void;
++}> = ({ data, loading, error, onRetry, onClose }) => {
++  const guild = data?.guild;
++  const members = data?.members ?? [];
++  const bases = data?.bases ?? [];
++  const owner = members.find((member) => member.is_owner);
++
++  return (
++    <div className="fixed inset-0 z-40 flex justify-end bg-slate-900/20 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-6">
++      <aside className="flex h-full w-full max-w-2xl flex-col rounded-2xl border border-slate-100 bg-white shadow-2xl">
++        <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
++          <div className="min-w-0">
++            <p className="truncate text-sm font-bold text-slate-800">{guild?.name || '公会详情'}</p>
++            <p className="mt-1 truncate font-mono text-[10px] text-slate-400">{guild?.id || '-'}</p>
++          </div>
++          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50" aria-label="关闭公会详情">
++            <X size={14} />
++          </button>
++        </div>
++
++        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
++          {data?.status.stale && (
++            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800">
++              当前显示的是缓存存档索引，成员与基地信息可能稍有延迟。
++            </div>
++          )}
++          {error ? (
++            <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-4 text-xs font-semibold text-rose-700">
++              <p>{error}</p>
++              <button type="button" onClick={onRetry} className="mt-3 inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-white px-3 py-2 text-[11px] font-bold">
++                <RefreshCw size={13} />重试
++              </button>
++            </div>
++          ) : loading && !data ? (
++            <div className="py-16 text-center text-xs font-semibold text-slate-400">
++              <RefreshCw size={15} className="mr-2 inline animate-spin text-sky-500" />正在读取公会详情...
++            </div>
++          ) : (
++            <>
++              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
++                <DetailSummary label="成员" value={members.length} />
++                <DetailSummary label="在线" value={members.filter((member) => member.is_online).length} />
++                <DetailSummary label="基地" value={bases.length} />
++                <DetailSummary label="有备注" value={members.filter((member) => member.has_annotation).length} />
++              </div>
++
++              <section className="mt-5 rounded-2xl border border-amber-100 bg-amber-50/50 p-4">
++                <p className="flex items-center gap-2 text-xs font-bold text-slate-700"><Crown size={14} className="text-amber-500" />公会会长</p>
++                <p className="mt-2 text-sm font-black text-slate-800">{owner?.nickname || guild?.owner_player_uid || '未知'}</p>
++                <p className="mt-1 break-all font-mono text-[10px] text-slate-400">{owner?.steam_id || owner?.player_uid || guild?.owner_player_uid || '-'}</p>
++              </section>
++
++              <section className="mt-5">
++                <h3 className="flex items-center gap-2 text-xs font-bold text-slate-700"><Users size={14} className="text-sky-500" />成员列表</h3>
++                <div className="mt-3 space-y-2">
++                  {members.length === 0 ? (
++                    <EmptyText>该公会没有可读取的成员详情</EmptyText>
++                  ) : members.map((member) => <GuildMemberCard key={member.id || member.player_uid} member={member} />)}
++                </div>
++              </section>
++
++              <section className="mt-6">
++                <h3 className="flex items-center gap-2 text-xs font-bold text-slate-700"><Building2 size={14} className="text-violet-500" />公会基地</h3>
++                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
++                  {bases.length === 0 ? (
++                    <div className="sm:col-span-2"><EmptyText>该公会没有可读取的基地详情</EmptyText></div>
++                  ) : bases.map((base) => (
++                    <article key={base.id} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
++                      <p className="truncate text-xs font-bold text-slate-700">{base.name}</p>
++                      {base.has_custom_name && <p className="mt-1 truncate text-[9px] font-semibold text-violet-500">面板自定义名称</p>}
++                      <p className="mt-3 flex items-center gap-1.5 font-mono text-[10px] text-slate-500"><MapPin size={11} />{base.x.toFixed(0)}, {base.y.toFixed(0)}, {base.z.toFixed(0)}</p>
++                      <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] font-semibold text-slate-500">
++                        <span>建筑: {base.structures_count}</span>
++                        <span>工作帕鲁: {base.workers_count}</span>
++                      </div>
++                    </article>
++                  ))}
++                </div>
++              </section>
++            </>
++          )}
++        </div>
++      </aside>
++    </div>
++  );
++};
++
++const GuildMemberCard: React.FC<{ member: GuildMemberDetail }> = ({ member }) => (
++  <article className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
++    <div className="flex items-start justify-between gap-3">
++      <div className="min-w-0">
++        <div className="flex items-center gap-2">
++          <span className={`h-2 w-2 shrink-0 rounded-full ${member.is_online ? 'bg-emerald-500' : 'bg-slate-300'}`} />
++          <p className="truncate text-xs font-bold text-slate-700">{member.nickname}</p>
++          {member.is_owner && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-black text-amber-700">会长</span>}
++        </div>
++        <p className="mt-1 truncate font-mono text-[9px] text-slate-400">{member.steam_id || member.player_uid || '-'}</p>
++      </div>
++      <span className="shrink-0 text-[10px] font-bold text-slate-500">Lv.{member.level}</span>
++    </div>
++    {member.tags.length > 0 && (
++      <div className="mt-3 flex flex-wrap gap-1.5">
++        {member.tags.map((tag) => <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-1 text-[9px] font-bold text-violet-700"><Tag size={9} />{tag}</span>)}
++      </div>
++    )}
++    {member.note && <p className="mt-3 flex gap-2 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-[10px] font-semibold leading-5 text-amber-800"><FileText size={12} className="mt-1 shrink-0" />{member.note}</p>}
++    <p className="mt-3 text-[9px] font-semibold text-slate-400">最后在线: {member.last_online_time || '-'}</p>
++  </article>
++);
++
++const DetailSummary: React.FC<{ label: string; value: number }> = ({ label, value }) => (
++  <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-center">
++    <p className="text-lg font-black text-slate-800">{value}</p>
++    <p className="mt-1 text-[9px] font-bold text-slate-400">{label}</p>
+   </div>
+ );
++
++const EmptyText: React.FC<React.PropsWithChildren> = ({ children }) => (
++  <div className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-xs font-semibold text-slate-400">{children}</div>
++);
+diff --git a/frontend/src/types/index.ts b/frontend/src/types/index.ts
+index 309c905..034f28d 100644
+--- a/frontend/src/types/index.ts
++++ b/frontend/src/types/index.ts
+@@ -1009,6 +1009,42 @@ export interface Guild {
+   online_member_count: number;
+ }
+ 
++export interface GuildMemberDetail {
++  id: string;
++  player_uid: string;
++  steam_id: string;
++  nickname: string;
++  level: number;
++  is_online: boolean;
++  last_online_time: string;
++  is_owner: boolean;
++  note: string;
++  tags: string[];
++  has_annotation: boolean;
++}
++
++export interface GuildBaseDetail {
++  id: string;
++  name: string;
++  raw_name: string;
++  custom_name: string;
++  has_custom_name: boolean;
++  x: number;
++  y: number;
++  z: number;
++  structures_count: number;
++  workers_count: number;
++  status: string;
++}
++
++export interface GuildDetailResponse {
++  guild: Guild;
++  members: GuildMemberDetail[];
++  bases: GuildBaseDetail[];
++  status: SaveIndexStatus;
++  source_id: string;
++}
++
+ export interface SaveIndexCounts {
+   players: number;
+   guilds: number;

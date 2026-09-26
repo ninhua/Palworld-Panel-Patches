@@ -1,0 +1,78 @@
+diff --git a/backend/internal/api/player_annotations.go b/backend/internal/api/player_annotations.go
+index 1f3095399cdea8fe2ba6b9b034733ce8aef64a2c..ad17a3769fd620455aaee70c8fec502583ad0b30 100644
+--- a/backend/internal/api/player_annotations.go
++++ b/backend/internal/api/player_annotations.go
+@@ -97,24 +97,36 @@ func (s Server) deletePlayerAnnotation(c *gin.Context) {
+ }
+ 
+ func (s Server) resolvePlayerAnnotationTarget(c *gin.Context) (saveindex.Player, string, bool) {
+-	index, status, view, _, valid, err := s.currentPlayerIndex(c)
++	index, status, view, overlay, valid, err := s.currentPlayerIndex(c)
+ 	if !valid {
+ 		return saveindex.Player{}, "", false
+ 	}
++	var online onlinePlayersResult
++	if overlay {
++		online = s.onlinePlayers(c)
++		status = statusWithOnlineState(status, online)
++	}
+ 	if err != nil && !status.Stale && status.State != "disabled" {
+ 		fail(c, http.StatusServiceUnavailable, "save_index_unavailable", err.Error())
+ 		return saveindex.Player{}, "", false
+ 	}
+-	id := c.Param("id")
+-	for _, player := range index.Players {
+-		if matchesID(id, player.PlayerUID, player.SteamID) {
+-			return player, view.SourceID, true
+-		}
++	players := playersForView(index.Players, online, overlay)
++	if player, found := findPlayerAnnotationTarget(c.Param("id"), players); found {
++		return player, view.SourceID, true
+ 	}
+ 	fail(c, http.StatusNotFound, "player_not_found", "player not found")
+ 	return saveindex.Player{}, "", false
+ }
+ 
++func findPlayerAnnotationTarget(id string, players []saveindex.Player) (saveindex.Player, bool) {
++	for _, player := range players {
++		if matchesID(id, player.PlayerUID, player.SteamID) {
++			return player, true
++		}
++	}
++	return saveindex.Player{}, false
++}
++
+ func normalizePlayerAnnotation(input playerAnnotationInput) (playerAnnotation, error) {
+ 	note := strings.TrimSpace(strings.ReplaceAll(input.Note, "\r\n", "\n"))
+ 	if !utf8.ValidString(note) || utf8.RuneCountInString(note) > playerNoteMaxRunes {
+diff --git a/backend/internal/api/player_annotations_test.go b/backend/internal/api/player_annotations_test.go
+index 4c9bd3f61c9c30c9a067546c81420a79ba42c18c..7b0d87cacd52fd15a40c02f67c7922b87bbe047d 100644
+--- a/backend/internal/api/player_annotations_test.go
++++ b/backend/internal/api/player_annotations_test.go
+@@ -93,6 +93,26 @@ func TestPlayerAnnotationFlattenAndSearch(t *testing.T) {
+ 	}
+ }
+ 
++func TestPlayerAnnotationTargetIncludesOnlineOnlyPlayer(t *testing.T) {
++	online := onlinePlayersResult{Players: map[string]onlinePlayer{
++		normalizedPlayerKey("steam-online"): {
++			SteamID:          "steam-online",
++			Nickname:         "Online Only",
++			OnlineStateKnown: true,
++			IsOnline:         true,
++			RESTOnline:       true,
++		},
++	}}
++	players := playersForView(nil, online, true)
++	player, found := findPlayerAnnotationTarget("steam-online", players)
++	if !found {
++		t.Fatal("online-only player must be available to annotation routes")
++	}
++	if player.SteamID != "steam-online" || !player.IsOnline {
++		t.Fatalf("resolved player = %#v", player)
++	}
++}
++
+ func TestPlayerAnnotationRoutesRequirePlayersWrite(t *testing.T) {
+ 	gin.SetMode(gin.TestMode)
+ 	router := gin.New()
