@@ -1,0 +1,662 @@
+diff --git a/backend/internal/api/starter_gift.go b/backend/internal/api/starter_gift.go
+index 6499df39a4227b704166b7aa74583d8fbaf9acb5..107c4291800d863e8cbbeda862180e23deb1aa4f 100644
+--- a/backend/internal/api/starter_gift.go
++++ b/backend/internal/api/starter_gift.go
+@@ -21,17 +21,31 @@ func init() {
+ 	patchFeatures = append(patchFeatures, "new-player-starter-gift")
+ }
+ 
+-const maxStarterGiftTemplateJSONBytes int64 = 1 << 20
++const (
++	maxStarterGiftTemplateJSONBytes      int64 = 1 << 20
++	maxStarterGiftTemplateIndexJSONBytes int64 = 4 << 20
++	maxStarterGiftTemplateIndexes              = 64
++	maxStarterGiftTemplateIndexEntries         = 20000
++)
+ 
+ type starterGiftTemplateInfo struct {
+-	Name       string `json:"name"`
+-	PalID      string `json:"pal_id,omitempty"`
+-	PalName    string `json:"pal_name,omitempty"`
+-	Nickname   string `json:"nickname,omitempty"`
+-	Level      int    `json:"level,omitempty"`
+-	ModifiedAt string `json:"modified_at,omitempty"`
+-	Size       int64  `json:"size,omitempty"`
+-	ParseError string `json:"parse_error,omitempty"`
++	Name        string   `json:"name"`
++	PalID       string   `json:"pal_id,omitempty"`
++	PalName     string   `json:"pal_name,omitempty"`
++	EnglishName string   `json:"english_name,omitempty"`
++	Category    string   `json:"category,omitempty"`
++	IndexNames  []string `json:"index_names,omitempty"`
++	Nickname    string   `json:"nickname,omitempty"`
++	Level       int      `json:"level,omitempty"`
++	ModifiedAt  string   `json:"modified_at,omitempty"`
++	Size        int64    `json:"size,omitempty"`
++	ParseError  string   `json:"parse_error,omitempty"`
++}
++
++type starterGiftTemplateIndexInfo struct {
++	Name  string `json:"name"`
++	Label string `json:"label"`
++	Count int    `json:"count"`
+ }
+ 
+ type starterGiftTemplateDocument struct {
+@@ -40,54 +54,205 @@ type starterGiftTemplateDocument struct {
+ 	Level    int    `json:"Level"`
+ }
+ 
+-func starterGiftTemplateCatalog(serverDir string, names []string) []starterGiftTemplateInfo {
++type starterGiftTemplateIndexEntryDocument struct {
++	CategoryCN     string `json:"分类"`
++	Category       string `json:"category"`
++	TemplateNameCN string `json:"模板名"`
++	TemplateName   string `json:"template_name"`
++	FileNameCN     string `json:"文件名"`
++	FileName       string `json:"file_name"`
++	ChineseNameCN  string `json:"中文名"`
++	ChineseName    string `json:"pal_name"`
++	PalID          string `json:"PalID"`
++	EnglishNameCN  string `json:"英文名"`
++	EnglishName    string `json:"english_name"`
++}
++
++type starterGiftTemplateIndexEntry struct {
++	Category     string
++	TemplateName string
++	FileName     string
++	ChineseName  string
++	PalID        string
++	EnglishName  string
++}
++
++type starterGiftTemplateIndexMatch struct {
++	IndexName string
++	Entry     starterGiftTemplateIndexEntry
++}
++
++type starterGiftTemplateIndexes struct {
++	Infos     []starterGiftTemplateIndexInfo
++	FileNames map[string]bool
++	Matches   map[string][]starterGiftTemplateIndexMatch
++}
++
++func starterGiftTemplateCatalog(serverDir string, names []string) ([]starterGiftTemplateInfo, []starterGiftTemplateIndexInfo) {
++	indexes := readStarterGiftTemplateIndexes(serverDir)
+ 	items := make([]starterGiftTemplateInfo, 0, len(names))
+ 	for _, name := range names {
+-		items = append(items, readStarterGiftTemplateInfo(serverDir, name))
++		fileName, err := starterGiftTemplateFileName(strings.TrimSpace(name))
++		if err == nil && indexes.FileNames[starterGiftTemplateLookupKey(fileName)] {
++			continue
++		}
++		items = append(items, readStarterGiftTemplateInfo(serverDir, name, indexes))
+ 	}
+-	return items
++	return items, indexes.Infos
+ }
+ 
+-func readStarterGiftTemplateInfo(serverDir, name string) starterGiftTemplateInfo {
+-	name = strings.TrimSpace(name)
+-	result := starterGiftTemplateInfo{Name: name}
+-	fileName, err := starterGiftTemplateFileName(name)
+-	if err != nil {
+-		result.ParseError = err.Error()
+-		return result
++func readStarterGiftTemplateIndexes(serverDir string) starterGiftTemplateIndexes {
++	result := starterGiftTemplateIndexes{
++		FileNames: map[string]bool{},
++		Matches:   map[string][]starterGiftTemplateIndexMatch{},
+ 	}
+ 	templateDir := filepath.Join(serverDir, "Pal", "Binaries", "Win64", "PalDefender", "Pals", "Templates")
+-	path := filepath.Join(templateDir, fileName)
+-	info, err := os.Lstat(path)
++	entries, err := os.ReadDir(templateDir)
+ 	if err != nil {
+-		result.ParseError = "template file is unavailable"
+ 		return result
+ 	}
+-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+-		result.ParseError = "template path is not a regular file"
+-		return result
++	for _, entry := range entries {
++		if len(result.Infos) >= maxStarterGiftTemplateIndexes || !starterGiftTemplateIndexCandidate(entry.Name()) {
++			continue
++		}
++		path := filepath.Join(templateDir, entry.Name())
++		raw, _, err := readStarterGiftRegularJSON(path, maxStarterGiftTemplateIndexJSONBytes)
++		if err != nil {
++			continue
++		}
++		label, indexed := parseStarterGiftTemplateIndex(raw)
++		if len(indexed) == 0 {
++			continue
++		}
++		if len(indexed) > maxStarterGiftTemplateIndexEntries {
++			indexed = indexed[:maxStarterGiftTemplateIndexEntries]
++		}
++		if label == "" {
++			label = strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
++		}
++		result.Infos = append(result.Infos, starterGiftTemplateIndexInfo{Name: entry.Name(), Label: label, Count: len(indexed)})
++		result.FileNames[starterGiftTemplateLookupKey(entry.Name())] = true
++		for _, indexedEntry := range indexed {
++			match := starterGiftTemplateIndexMatch{IndexName: entry.Name(), Entry: indexedEntry}
++			for _, value := range []string{indexedEntry.FileName, indexedEntry.TemplateName} {
++				for _, key := range starterGiftTemplateLookupKeys(value) {
++					result.Matches[key] = append(result.Matches[key], match)
++				}
++			}
++		}
+ 	}
+-	result.ModifiedAt = info.ModTime().UTC().Format(time.RFC3339)
+-	result.Size = info.Size()
+-	if info.Size() > maxStarterGiftTemplateJSONBytes {
+-		result.ParseError = fmt.Sprintf("template JSON exceeds %d bytes", maxStarterGiftTemplateJSONBytes)
+-		return result
++	return result
++}
++
++func starterGiftTemplateIndexCandidate(name string) bool {
++	if !strings.EqualFold(filepath.Ext(name), ".json") {
++		return false
+ 	}
+-	file, err := os.Open(path)
+-	if err != nil {
+-		result.ParseError = "template file cannot be opened"
+-		return result
++	lower := strings.ToLower(name)
++	for _, marker := range []string{"index", "catalog", "list", "索引", "清单", "常用", "毕业"} {
++		if strings.Contains(lower, marker) {
++			return true
++		}
+ 	}
+-	defer file.Close()
+-	raw, err := io.ReadAll(io.LimitReader(file, maxStarterGiftTemplateJSONBytes+1))
++	return false
++}
++
++func parseStarterGiftTemplateIndex(raw []byte) (string, []starterGiftTemplateIndexEntry) {
++	var root map[string]json.RawMessage
++	if err := json.Unmarshal(raw, &root); err == nil && root != nil {
++		label := firstStarterGiftIndexString(root, "名称", "标题", "label", "name")
++		for _, key := range []string{"模板", "清单", "列表", "templates", "items"} {
++			payload, found := root[key]
++			if !found {
++				continue
++			}
++			if entries := decodeStarterGiftTemplateIndexEntries(payload); len(entries) > 0 {
++				return label, entries
++			}
++		}
++	}
++	return "", decodeStarterGiftTemplateIndexEntries(raw)
++}
++
++func firstStarterGiftIndexString(root map[string]json.RawMessage, keys ...string) string {
++	for _, key := range keys {
++		var value string
++		if raw, ok := root[key]; ok && json.Unmarshal(raw, &value) == nil && strings.TrimSpace(value) != "" {
++			return strings.TrimSpace(value)
++		}
++	}
++	return ""
++}
++
++func decodeStarterGiftTemplateIndexEntries(raw []byte) []starterGiftTemplateIndexEntry {
++	var documents []starterGiftTemplateIndexEntryDocument
++	if err := json.Unmarshal(raw, &documents); err != nil {
++		return nil
++	}
++	entries := make([]starterGiftTemplateIndexEntry, 0, len(documents))
++	for _, document := range documents {
++		entry := starterGiftTemplateIndexEntry{
++			Category:     starterGiftFirstNonEmpty(document.CategoryCN, document.Category),
++			TemplateName: starterGiftFirstNonEmpty(document.TemplateNameCN, document.TemplateName),
++			FileName:     starterGiftFirstNonEmpty(document.FileNameCN, document.FileName),
++			ChineseName:  starterGiftFirstNonEmpty(document.ChineseNameCN, document.ChineseName),
++			PalID:        strings.TrimSpace(document.PalID),
++			EnglishName:  starterGiftFirstNonEmpty(document.EnglishNameCN, document.EnglishName),
++		}
++		if entry.FileName == "" && entry.TemplateName == "" {
++			continue
++		}
++		entries = append(entries, entry)
++	}
++	return entries
++}
++
++func starterGiftFirstNonEmpty(values ...string) string {
++	for _, value := range values {
++		if trimmed := strings.TrimSpace(value); trimmed != "" {
++			return trimmed
++		}
++	}
++	return ""
++}
++
++func starterGiftTemplateLookupKey(value string) string {
++	keys := starterGiftTemplateLookupKeys(value)
++	if len(keys) == 0 {
++		return ""
++	}
++	return keys[0]
++}
++
++func starterGiftTemplateLookupKeys(value string) []string {
++	value = strings.TrimSpace(value)
++	if value == "" || filepath.Base(value) != value || strings.ContainsAny(value, `/\\`) {
++		return nil
++	}
++	lower := strings.ToLower(value)
++	withoutExtension := strings.TrimSuffix(lower, ".json")
++	if lower == withoutExtension {
++		return []string{lower, lower + ".json"}
++	}
++	return []string{lower, withoutExtension}
++}
++
++func readStarterGiftTemplateInfo(serverDir, name string, indexes starterGiftTemplateIndexes) starterGiftTemplateInfo {
++	name = strings.TrimSpace(name)
++	result := starterGiftTemplateInfo{Name: name}
++	fileName, err := starterGiftTemplateFileName(name)
+ 	if err != nil {
+-		result.ParseError = "template JSON cannot be read"
++		result.ParseError = err.Error()
+ 		return result
+ 	}
+-	if int64(len(raw)) > maxStarterGiftTemplateJSONBytes {
+-		result.ParseError = fmt.Sprintf("template JSON exceeds %d bytes", maxStarterGiftTemplateJSONBytes)
++	templateDir := filepath.Join(serverDir, "Pal", "Binaries", "Win64", "PalDefender", "Pals", "Templates")
++	raw, info, err := readStarterGiftRegularJSON(filepath.Join(templateDir, fileName), maxStarterGiftTemplateJSONBytes)
++	if err != nil {
++		result.ParseError = err.Error()
+ 		return result
+ 	}
++	result.ModifiedAt = info.ModTime().UTC().Format(time.RFC3339)
++	result.Size = info.Size()
+ 	var document starterGiftTemplateDocument
+ 	if err := json.Unmarshal(raw, &document); err != nil {
+ 		result.ParseError = "invalid template JSON: " + err.Error()
+@@ -100,13 +265,54 @@ func readStarterGiftTemplateInfo(serverDir, name string) starterGiftTemplateInfo
+ 		result.ParseError = "template JSON does not contain PalID"
+ 		return result
+ 	}
+-	result.PalName = strings.TrimSpace(pallocalize.PalName(result.PalID))
+-	if result.PalName == "" {
+-		result.PalName = result.PalID
++	seenIndexes := map[string]bool{}
++	for _, key := range starterGiftTemplateLookupKeys(fileName) {
++		for _, match := range indexes.Matches[key] {
++			if seenIndexes[match.IndexName] {
++				continue
++			}
++			seenIndexes[match.IndexName] = true
++			result.IndexNames = append(result.IndexNames, match.IndexName)
++			if result.PalName == "" {
++				result.PalName = match.Entry.ChineseName
++			}
++			if result.EnglishName == "" {
++				result.EnglishName = match.Entry.EnglishName
++			}
++			if result.Category == "" {
++				result.Category = match.Entry.Category
++			}
++		}
+ 	}
+ 	return result
+ }
+ 
++func readStarterGiftRegularJSON(path string, maxBytes int64) ([]byte, os.FileInfo, error) {
++	info, err := os.Lstat(path)
++	if err != nil {
++		return nil, nil, fmt.Errorf("JSON file is unavailable")
++	}
++	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
++		return nil, nil, fmt.Errorf("JSON path is not a regular file")
++	}
++	if info.Size() > maxBytes {
++		return nil, nil, fmt.Errorf("JSON exceeds %d bytes", maxBytes)
++	}
++	file, err := os.Open(path)
++	if err != nil {
++		return nil, nil, fmt.Errorf("JSON file cannot be opened")
++	}
++	defer file.Close()
++	raw, err := io.ReadAll(io.LimitReader(file, maxBytes+1))
++	if err != nil {
++		return nil, nil, fmt.Errorf("JSON cannot be read")
++	}
++	if int64(len(raw)) > maxBytes {
++		return nil, nil, fmt.Errorf("JSON exceeds %d bytes", maxBytes)
++	}
++	return raw, info, nil
++}
++
+ func starterGiftTemplateFileName(name string) (string, error) {
+ 	if name == "" {
+ 		return "", fmt.Errorf("template name is empty")
+@@ -197,8 +403,13 @@ func (s Server) canonicalizeStarterGiftTemplates(c *gin.Context, config *starter
+ 		fail(c, http.StatusConflict, "starter_gift_templates_unavailable", err.Error())
+ 		return false
+ 	}
++	indexes := readStarterGiftTemplateIndexes(s.cfg.ServerDirectory())
+ 	available := make(map[string]string, len(templates))
+ 	for _, template := range templates {
++		fileName, fileErr := starterGiftTemplateFileName(strings.TrimSpace(template.Name))
++		if fileErr == nil && indexes.FileNames[starterGiftTemplateLookupKey(fileName)] {
++			continue
++		}
+ 		key := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(template.Name), ".json"))
+ 		if key != "" {
+ 			available[key] = template.Name
+@@ -254,12 +465,14 @@ func (s Server) starterGiftResponse(snapshot startergift.Snapshot) gin.H {
+ 	for _, template := range templates {
+ 		templateNames = append(templateNames, template.Name)
+ 	}
++	templateCatalog, templateIndexes := starterGiftTemplateCatalog(s.cfg.ServerDirectory(), templateNames)
+ 	response := gin.H{
+-		"scope":        snapshot.Scope,
+-		"config":       snapshot.Config,
+-		"grants":       snapshot.Grants,
+-		"templates":    starterGiftTemplateCatalog(s.cfg.ServerDirectory(), templateNames),
+-		"item_catalog": pallocalize.SearchItems("", 5000),
++		"scope":            snapshot.Scope,
++		"config":           snapshot.Config,
++		"grants":           snapshot.Grants,
++		"templates":        templateCatalog,
++		"template_indexes": templateIndexes,
++		"item_catalog":     pallocalize.SearchItems("", 5000),
+ 	}
+ 	if templateErr != nil {
+ 		response["template_error"] = templateErr.Error()
+diff --git a/backend/internal/api/starter_gift_template_test.go b/backend/internal/api/starter_gift_template_test.go
+index 58f53f845db4339c2b9218191e3e9c975972ad64..6808651aca1ed1368dc9104618a99408021c4cb7 100644
+--- a/backend/internal/api/starter_gift_template_test.go
++++ b/backend/internal/api/starter_gift_template_test.go
+@@ -3,27 +3,34 @@ package api
+ import (
+ 	"os"
+ 	"path/filepath"
++	"reflect"
+ 	"strings"
+ 	"testing"
+ )
+ 
+-func TestReadStarterGiftTemplateInfoUsesJSONPalID(t *testing.T) {
++func starterGiftTestTemplateDir(t *testing.T) (string, string) {
++	t.Helper()
+ 	serverDir := t.TempDir()
+ 	templateDir := filepath.Join(serverDir, "Pal", "Binaries", "Win64", "PalDefender", "Pals", "Templates")
+ 	if err := os.MkdirAll(templateDir, 0o755); err != nil {
+ 		t.Fatal(err)
+ 	}
++	return serverDir, templateDir
++}
++
++func TestReadStarterGiftTemplateInfoUsesJSONPalID(t *testing.T) {
++	serverDir, templateDir := starterGiftTestTemplateDir(t)
+ 	path := filepath.Join(templateDir, "BATTLE_MisleadingFilename.json")
+ 	if err := os.WriteFile(path, []byte(`{"PalID":"WeaselDragon","Nickname":"Starter Chillet","Level":12}`), 0o644); err != nil {
+ 		t.Fatal(err)
+ 	}
+ 
+-	info := readStarterGiftTemplateInfo(serverDir, "BATTLE_MisleadingFilename.json")
++	info := readStarterGiftTemplateInfo(serverDir, "BATTLE_MisleadingFilename.json", readStarterGiftTemplateIndexes(serverDir))
+ 	if info.PalID != "WeaselDragon" {
+ 		t.Fatalf("PalID = %q, want WeaselDragon", info.PalID)
+ 	}
+-	if info.PalName == "" {
+-		t.Fatal("localized Pal name is empty")
++	if info.PalName != "" {
++		t.Fatalf("PalName = %q without an index, want empty so the UI falls back to the filename", info.PalName)
+ 	}
+ 	if info.Nickname != "Starter Chillet" || info.Level != 12 {
+ 		t.Fatalf("template metadata = %#v", info)
+@@ -33,17 +40,51 @@ func TestReadStarterGiftTemplateInfoUsesJSONPalID(t *testing.T) {
+ 	}
+ }
+ 
+-func TestReadStarterGiftTemplateInfoReportsMissingPalID(t *testing.T) {
+-	serverDir := t.TempDir()
+-	templateDir := filepath.Join(serverDir, "Pal", "Binaries", "Win64", "PalDefender", "Pals", "Templates")
+-	if err := os.MkdirAll(templateDir, 0o755); err != nil {
++func TestStarterGiftTemplateCatalogUsesChineseIndexAndMemberships(t *testing.T) {
++	serverDir, templateDir := starterGiftTestTemplateDir(t)
++	if err := os.WriteFile(filepath.Join(templateDir, "BATTLE__Anubis.json"), []byte(`{"PalID":"Anubis","Level":60}`), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	translation := `{
++		"名称":"模板中英文对照索引",
++		"模板":[{"分类":"战斗","模板名":"BATTLE__Anubis","文件名":"BATTLE__Anubis.json","中文名":"阿努比斯","PalID":"Anubis","英文名":"Anubis"}]
++	}`
++	if err := os.WriteFile(filepath.Join(templateDir, "模板中英文对照索引.json"), []byte(translation), 0o644); err != nil {
+ 		t.Fatal(err)
+ 	}
++	graduate := `{"清单":[{"文件名":"BATTLE__Anubis.json","中文名":"阿努比斯","分类":"战斗"}]}`
++	if err := os.WriteFile(filepath.Join(templateDir, "常用毕业帕鲁清单.json"), []byte(graduate), 0o644); err != nil {
++		t.Fatal(err)
++	}
++
++	catalog, indexes := starterGiftTemplateCatalog(serverDir, []string{
++		"BATTLE__Anubis.json",
++		"模板中英文对照索引.json",
++		"常用毕业帕鲁清单.json",
++	})
++	if len(catalog) != 1 {
++		t.Fatalf("catalog = %#v, want one template and no index files", catalog)
++	}
++	info := catalog[0]
++	if info.PalID != "Anubis" || info.PalName != "阿努比斯" || info.EnglishName != "Anubis" || info.Category != "战斗" {
++		t.Fatalf("indexed template metadata = %#v", info)
++	}
++	wantMemberships := []string{"常用毕业帕鲁清单.json", "模板中英文对照索引.json"}
++	if !reflect.DeepEqual(info.IndexNames, wantMemberships) {
++		t.Fatalf("index memberships = %#v, want %#v", info.IndexNames, wantMemberships)
++	}
++	if len(indexes) != 2 || indexes[0].Name != "常用毕业帕鲁清单.json" || indexes[1].Name != "模板中英文对照索引.json" {
++		t.Fatalf("index catalog = %#v", indexes)
++	}
++}
++
++func TestReadStarterGiftTemplateInfoReportsMissingPalID(t *testing.T) {
++	serverDir, templateDir := starterGiftTestTemplateDir(t)
+ 	if err := os.WriteFile(filepath.Join(templateDir, "missing.json"), []byte(`{"Level":5}`), 0o644); err != nil {
+ 		t.Fatal(err)
+ 	}
+ 
+-	info := readStarterGiftTemplateInfo(serverDir, "missing.json")
++	info := readStarterGiftTemplateInfo(serverDir, "missing.json", readStarterGiftTemplateIndexes(serverDir))
+ 	if !strings.Contains(info.ParseError, "PalID") {
+ 		t.Fatalf("parse error = %q", info.ParseError)
+ 	}
+diff --git a/docs/openapi.yaml b/docs/openapi.yaml
+index 7685c564c227c1d313ed1c9b702c58aa6ef4e0ea..b82171e3914816010272af349877d98add36eb36 100644
+--- a/docs/openapi.yaml
++++ b/docs/openapi.yaml
+@@ -8,11 +8,22 @@ components:
+         name: {type: string}
+         pal_id: {type: string}
+         pal_name: {type: string}
++        english_name: {type: string}
++        category: {type: string}
++        index_names: {type: array, items: {type: string}}
+         nickname: {type: string}
+         level: {type: integer, minimum: 1}
+         modified_at: {type: string, format: date-time}
+         size: {type: integer, format: int64, minimum: 0}
+         parse_error: {type: string}
++    StarterGiftTemplateIndexInfo:
++      type: object
++      required: [name, label, count]
++      additionalProperties: false
++      properties:
++        name: {type: string}
++        label: {type: string}
++        count: {type: integer, minimum: 0}
+     StarterGiftSnapshot:
+       type: object
+       required: [config, grants, templates, item_catalog]
+@@ -21,5 +32,6 @@ components:
+         config: {$ref: '#/components/schemas/StarterGiftConfig'}
+         grants: {type: array, items: {$ref: '#/components/schemas/StarterGiftGrant'}}
+         templates: {type: array, items: {$ref: '#/components/schemas/StarterGiftTemplateInfo'}}
++        template_indexes: {type: array, items: {$ref: '#/components/schemas/StarterGiftTemplateIndexInfo'}}
+         item_catalog: {type: array, items: {$ref: '#/components/schemas/PalDefenderItemCatalogEntry'}}
+         template_error: {type: string}
+diff --git a/frontend/src/api/starterGift.ts b/frontend/src/api/starterGift.ts
+index 61559495b895d534ddbc937c59a7548e6d4b0545..75fca3dd56e3afbad6affac7f1527faed10d3875 100644
+--- a/frontend/src/api/starterGift.ts
++++ b/frontend/src/api/starterGift.ts
+@@ -30,18 +30,23 @@ export interface PalTemplateInfo {
+   name: string;
+   pal_id?: string;
+   pal_name?: string;
++  english_name?: string;
++  category?: string;
++  index_names: string[];
+   nickname?: string;
+   level?: number;
+   modified_at?: string;
+   size?: number;
+   parse_error?: string;
+ }
++export interface PalTemplateIndexInfo { name: string; label: string; count: number }
+ export interface StarterGiftScope { id: string; world_id: string; world_path?: string }
+ export interface StarterGiftSnapshot {
+   scope: StarterGiftScope;
+   config: StarterGiftConfig;
+   grants: StarterGiftGrant[];
+   templates: PalTemplateInfo[];
++  template_indexes: PalTemplateIndexInfo[];
+   item_catalog: StarterGiftCatalogItem[];
+   template_error?: string;
+ }
+@@ -101,6 +106,9 @@ const mapSnapshot = (raw: unknown): StarterGiftSnapshot => {
+         name: String(template.name || ''),
+         pal_id: template.pal_id ? String(template.pal_id) : undefined,
+         pal_name: template.pal_name ? String(template.pal_name) : undefined,
++        english_name: template.english_name ? String(template.english_name) : undefined,
++        category: template.category ? String(template.category) : undefined,
++        index_names: (Array.isArray(template.index_names) ? template.index_names : []).map(String),
+         nickname: template.nickname ? String(template.nickname) : undefined,
+         level: template.level == null ? undefined : Number(template.level),
+         modified_at: template.modified_at ? String(template.modified_at) : undefined,
+@@ -108,6 +116,14 @@ const mapSnapshot = (raw: unknown): StarterGiftSnapshot => {
+         parse_error: template.parse_error ? String(template.parse_error) : undefined,
+       };
+     }).filter((template) => template.name),
++    template_indexes: (Array.isArray(data.template_indexes) ? data.template_indexes : []).map((rawIndex) => {
++      const index = (rawIndex && typeof rawIndex === 'object' ? rawIndex : {}) as Record<string, unknown>;
++      return {
++        name: String(index.name || ''),
++        label: String(index.label || index.name || ''),
++        count: Number(index.count || 0),
++      };
++    }).filter((index) => index.name),
+     item_catalog: (Array.isArray(data.item_catalog) ? data.item_catalog : []).map((rawItem) => {
+       const item = (rawItem && typeof rawItem === 'object' ? rawItem : {}) as Record<string, unknown>;
+       return { id: String(item.id || ''), name: String(item.name || item.id || ''), icon: item.icon ? String(item.icon) : undefined };
+diff --git a/frontend/src/pages/StarterGift.tsx b/frontend/src/pages/StarterGift.tsx
+index 3a11319dea3acc803c2be80b1d7033ccd39665b8..26022d77243b26b1f1d5367ecdf20ade8166cff5 100644
+--- a/frontend/src/pages/StarterGift.tsx
++++ b/frontend/src/pages/StarterGift.tsx
+@@ -88,10 +88,12 @@ const statusClass = (status: string) => ({
+ }[status] || 'border-slate-200 bg-slate-50 text-slate-600');
+ 
+ const templateDisplayName = (template: PalTemplateInfo) =>
+-  template.pal_name?.trim() || template.pal_id?.trim() || '未知帕鲁';
++  template.pal_name?.trim() || template.name;
++
++const templateCategoryName = (template: PalTemplateInfo) => template.category?.trim() || '未分类';
+ 
+ const templateSearchText = (template: PalTemplateInfo) =>
+-  `${template.pal_name || ''} ${template.pal_id || ''} ${template.nickname || ''} ${template.name}`.toLowerCase();
++  `${template.pal_name || ''} ${template.english_name || ''} ${template.pal_id || ''} ${template.nickname || ''} ${template.category || ''} ${template.index_names.join(' ')} ${template.name}`.toLowerCase();
+ 
+ const ItemIcon: React.FC<{ item: StarterGiftCatalogItem; className?: string }> = ({ item, className = '' }) => {
+   const source = item.icon ? `/assets/items/${encodeURIComponent(item.icon)}.webp` : '';
+@@ -121,6 +123,8 @@ export const StarterGift: React.FC = () => {
+   const [itemCategory, setItemCategory] = useState<ItemCategory>('all');
+   const [onlySelectedItems, setOnlySelectedItems] = useState(false);
+   const [templateSearch, setTemplateSearch] = useState('');
++  const [templateIndex, setTemplateIndex] = useState('all');
++  const [templateCategory, setTemplateCategory] = useState('all');
+   const [onlySelectedTemplates, setOnlySelectedTemplates] = useState(false);
+   const [busy, setBusy] = useState(false);
+   const [notice, setNotice] = useState('');
+@@ -164,19 +168,26 @@ export const StarterGift: React.FC = () => {
+   }, [snapshot, itemCategory, itemSearch, onlySelectedItems, selectedItemIDs]);
+ 
+   const templates = useMemo(() => (snapshot?.templates || []).filter((item) => item.name), [snapshot]);
++  const templateIndexes = useMemo(() => snapshot?.template_indexes || [], [snapshot]);
++  const templateIndexLabels = useMemo(() => new Map(templateIndexes.map((index) => [index.name, index.label || index.name])), [templateIndexes]);
++  const templateCategories = useMemo(() => Array.from(new Set(templates.map(templateCategoryName))).sort((left, right) => left.localeCompare(right, 'zh-CN')), [templates]);
+   const selectedTemplates = useMemo(() => new Set(config.pal_templates), [config.pal_templates]);
+   const visibleTemplates = useMemo(() => {
+     const query = templateSearch.trim().toLowerCase();
+     return templates
+       .filter((template) => {
++        if (templateIndex !== 'all' && !template.index_names.includes(templateIndex)) return false;
++        if (templateCategory !== 'all' && templateCategoryName(template) !== templateCategory) return false;
+         if (onlySelectedTemplates && !selectedTemplates.has(template.name)) return false;
+         return !query || templateSearchText(template).includes(query);
+       })
+       .sort((left, right) => {
++        const byCategory = templateCategoryName(left).localeCompare(templateCategoryName(right), 'zh-CN');
++        if (byCategory) return byCategory;
+         const byPal = templateDisplayName(left).localeCompare(templateDisplayName(right), 'zh-CN');
+         return byPal || left.name.localeCompare(right.name, 'zh-CN');
+       });
+-  }, [templates, templateSearch, onlySelectedTemplates, selectedTemplates]);
++  }, [templates, templateIndex, templateCategory, templateSearch, onlySelectedTemplates, selectedTemplates]);
+ 
+   const grantCounts = useMemo(() => {
+     const grants = snapshot?.grants || [];
+@@ -354,7 +365,17 @@ export const StarterGift: React.FC = () => {
+         {activeTab === 'templates' && <div className="mt-5 min-w-0">
+           {snapshot?.template_error && <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800"><AlertTriangle className="mt-0.5 shrink-0" size={15} />模板读取失败：{snapshot.template_error}</div>}
+           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+-            <label className="relative block min-w-0 flex-1"><span className="sr-only">搜索模板</span><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} /><input className="pp-input pp-input--icon w-full" value={templateSearch} onChange={(event) => setTemplateSearch(event.target.value)} placeholder="搜索帕鲁名称或模板文件名" /></label>
++            <div className="grid min-w-0 flex-1 gap-2 md:grid-cols-[minmax(0,1fr)_13rem_11rem]">
++              <label className="relative block min-w-0"><span className="sr-only">搜索模板</span><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} /><input className="pp-input pp-input--icon w-full" value={templateSearch} onChange={(event) => setTemplateSearch(event.target.value)} placeholder="搜索分类、中文名、英文名、PalID 或文件名" /></label>
++              <select className="pp-input" aria-label="按模板索引筛选" value={templateIndex} onChange={(event) => setTemplateIndex(event.target.value)}>
++                <option value="all">全部索引</option>
++                {templateIndexes.map((index) => <option key={index.name} value={index.name}>{index.label}（{index.count}）</option>)}
++              </select>
++              <select className="pp-input" aria-label="按模板分类筛选" value={templateCategory} onChange={(event) => setTemplateCategory(event.target.value)}>
++                <option value="all">全部分类</option>
++                {templateCategories.map((category) => <option key={category} value={category}>{category}</option>)}
++              </select>
++            </div>
+             <div className="flex flex-wrap gap-2">
+               <button type="button" className={`pp-button ${onlySelectedTemplates ? 'accent' : ''}`} onClick={() => setOnlySelectedTemplates((value) => !value)}>{onlySelectedTemplates ? <CheckSquare size={14} /> : <Square size={14} />}只看已选</button>
+               <button type="button" className="pp-button" disabled={visibleTemplates.length === 0} onClick={() => setVisibleTemplatesSelected(true)}><CheckSquare size={14} />全选当前（{visibleTemplates.length}）</button>
+@@ -362,18 +383,23 @@ export const StarterGift: React.FC = () => {
+               <button type="button" className="pp-button" disabled={config.pal_templates.length === 0} onClick={() => setConfig({ ...config, pal_templates: [] })}><Trash2 size={14} />清空</button>
+             </div>
+           </div>
++          <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500">
++            {templateIndexes.length > 0 ? <><span>已加载 {templateIndexes.length} 个模板索引</span><span className="text-slate-300">·</span><span>名称与分类优先读取索引；PalID 始终读取模板 JSON</span></> : <span>未检测到索引文件，模板名称按文件名显示。</span>}
++          </div>
+           <div className="mt-4 grid max-h-[42rem] gap-2 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50/50 p-2 md:grid-cols-2 2xl:grid-cols-3" role="listbox" aria-label="帕鲁模板" aria-multiselectable="true">
+             {visibleTemplates.map((template) => {
+               const checked = selectedTemplates.has(template.name);
+               const displayName = templateDisplayName(template);
++              const category = templateCategoryName(template);
+               return <button type="button" role="option" aria-selected={checked} key={template.name} className={`flex min-w-0 items-center gap-3 rounded-2xl border p-3 text-left ${checked ? 'border-violet-300 bg-violet-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`} onClick={() => setConfig((current) => ({ ...current, pal_templates: checked ? current.pal_templates.filter((item) => item !== template.name) : [...current.pal_templates, template.name] }))}>
+                 {checked ? <CheckSquare className="shrink-0 text-violet-600" size={18} /> : <Square className="shrink-0 text-slate-400" size={18} />}
+                 <PalIcon characterID={template.pal_id || ''} name={displayName} className="h-14 w-14 rounded-xl border border-slate-200" />
+                 <span className="min-w-0">
+-                  <strong className="block truncate text-sm font-black text-slate-800">{displayName}</strong>
+-                  <span className="mt-1 block truncate font-mono text-[10px] text-slate-400">{template.pal_id || 'PalID 未读取'} · {template.name}</span>
++                  <strong className="block truncate text-sm font-black text-slate-800">{category} · {displayName}</strong>
++                  <span className="mt-1 block truncate font-mono text-[10px] text-slate-400">{template.pal_id || 'PalID 未读取'}{template.english_name ? ` · ${template.english_name}` : ''} · {template.name}</span>
+                   <span className="mt-1 flex flex-wrap gap-1.5">
+-                    <span className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-700">PalDefender 模板</span>
++                    {template.index_names.slice(0, 2).map((indexName) => <span key={indexName} className="inline-flex max-w-40 truncate rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-700">{templateIndexLabels.get(indexName) || indexName}</span>)}
++                    {template.index_names.length === 0 && <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">未命中索引</span>}
+                     {template.level != null && template.level > 0 && <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">Lv.{template.level}</span>}
+                     {template.nickname && <span className="inline-flex max-w-36 truncate rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">{template.nickname}</span>}
+                     {template.parse_error && <span className="inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700" title={template.parse_error}>模板解析失败</span>}
