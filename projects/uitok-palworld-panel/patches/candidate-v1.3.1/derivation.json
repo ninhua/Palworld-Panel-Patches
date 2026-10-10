@@ -1,0 +1,10 @@
+{
+  "schema_version": 2,
+  "mode": "previous-stable-release",
+  "source_track": null,
+  "derived_from_release": "uitok-stable-v1.3.0-p0.8.18",
+  "derived_from_target_version": "v1.3.0",
+  "derived_from_patch_version": "0.8.18",
+  "derived_source_asset": "uitok-palworld-panel_stable-v1.3.0_patch-0.8.18_source.tar.gz",
+  "release_patch_version": "0.8.18"
+}
