@@ -1,0 +1,918 @@
+diff --git a/backend/internal/api/base_feed_boxes.go b/backend/internal/api/base_feed_boxes.go
+new file mode 100644
+index 0000000..902f2a9
+--- /dev/null
++++ b/backend/internal/api/base_feed_boxes.go
+@@ -0,0 +1,160 @@
++package api
++
++import (
++	"net/http"
++	"sort"
++	"strings"
++
++	"github.com/gin-gonic/gin"
++
++	"palpanel/internal/pallocalize"
++	"palpanel/internal/saveindex"
++)
++
++type baseFeedBoxSlot struct {
++	Slot       int      `json:"slot"`
++	ItemID     string   `json:"item_id"`
++	ItemName   string   `json:"item_name"`
++	ItemIcon   string   `json:"item_icon"`
++	Count      int      `json:"count"`
++	Durability *float64 `json:"durability"`
++}
++
++type baseFeedBoxView struct {
++	ContainerID   string            `json:"container_id"`
++	ContainerType string            `json:"container_type"`
++	ContainerName string            `json:"container_name"`
++	Slots         []baseFeedBoxSlot `json:"slots"`
++}
++
++type baseFeedItemSummary struct {
++	ItemID   string `json:"item_id"`
++	ItemName string `json:"item_name"`
++	ItemIcon string `json:"item_icon"`
++	Count    int    `json:"count"`
++	BoxCount int    `json:"box_count"`
++}
++
++type baseFeedBoxSummary struct {
++	BoxCount      int `json:"box_count"`
++	EmptyBoxCount int `json:"empty_box_count"`
++	OccupiedSlots int `json:"occupied_slots"`
++	TotalItems    int `json:"total_items"`
++	ItemTypes     int `json:"item_types"`
++}
++
++func (s Server) getSaveBaseFeedBoxes(c *gin.Context) {
++	index, status, err := s.currentSaveIndex(c)
++	if err != nil && !status.Stale && status.State != "disabled" {
++		fail(c, http.StatusServiceUnavailable, "save_index_unavailable", err.Error())
++		return
++	}
++	customNames, sourceID, namesErr := s.activeBaseCustomNames(c)
++	if namesErr != nil {
++		fail(c, http.StatusInternalServerError, "base_custom_names_read_failed", namesErr.Error())
++		return
++	}
++
++	id := c.Param("id")
++	for _, base := range index.Bases {
++		customName := customNames[base.ID]
++		if !matchesID(id, base.ID, base.Name, pallocalize.BaseName(base.Name), customName) {
++			continue
++		}
++		boxes, items, summary := baseFeedBoxViews(baseContainers(index, base.ID), index.MapEntities)
++		ok(c, gin.H{
++			"base":       flattenBaseWithCustomName(base, customName),
++			"feed_boxes": boxes,
++			"items":      items,
++			"summary":    summary,
++			"status":     status,
++			"source_id":  sourceID,
++		})
++		return
++	}
++	fail(c, http.StatusNotFound, "base_not_found", "base not found")
++}
++
++func baseFeedBoxViews(containers []saveindex.Container, entities []saveindex.MapEntity) ([]baseFeedBoxView, []baseFeedItemSummary, baseFeedBoxSummary) {
++	entityByID := make(map[string]saveindex.MapEntity, len(entities))
++	for _, entity := range entities {
++		entityByID[normalizeQuery(entity.ID)] = entity
++	}
++
++	boxes := make([]baseFeedBoxView, 0)
++	itemTotals := make(map[string]*baseFeedItemSummary)
++	itemBoxes := make(map[string]map[string]struct{})
++	summary := baseFeedBoxSummary{}
++
++	for _, container := range containers {
++		containerType, containerName := baseStorageContainerIdentity(container, entityByID)
++		if !isFeedBoxContainerType(containerType) {
++			continue
++		}
++		box := baseFeedBoxView{
++			ContainerID:   container.ContainerID,
++			ContainerType: containerType,
++			ContainerName: containerName,
++			Slots:         []baseFeedBoxSlot{},
++		}
++		for _, slot := range container.Slots {
++			itemID := strings.TrimSpace(slot.ItemID)
++			if itemID == "" || slot.Count <= 0 {
++				continue
++			}
++			view := baseFeedBoxSlot{
++				Slot:       slot.Slot,
++				ItemID:     itemID,
++				ItemName:   pallocalize.ItemName(itemID),
++				ItemIcon:   pallocalize.ItemIcon(itemID),
++				Count:      slot.Count,
++				Durability: slot.Durability,
++			}
++			box.Slots = append(box.Slots, view)
++			summary.OccupiedSlots++
++			summary.TotalItems += slot.Count
++
++			key := normalizeQuery(itemID)
++			total := itemTotals[key]
++			if total == nil {
++				total = &baseFeedItemSummary{ItemID: itemID, ItemName: view.ItemName, ItemIcon: view.ItemIcon}
++				itemTotals[key] = total
++				itemBoxes[key] = make(map[string]struct{})
++			}
++			total.Count += slot.Count
++			itemBoxes[key][normalizeQuery(container.ContainerID)] = struct{}{}
++		}
++		sort.Slice(box.Slots, func(i, j int) bool { return box.Slots[i].Slot < box.Slots[j].Slot })
++		if len(box.Slots) == 0 {
++			summary.EmptyBoxCount++
++		}
++		boxes = append(boxes, box)
++	}
++
++	sort.Slice(boxes, func(i, j int) bool {
++		left := strings.ToLower(boxes[i].ContainerName + "\x00" + boxes[i].ContainerID)
++		right := strings.ToLower(boxes[j].ContainerName + "\x00" + boxes[j].ContainerID)
++		return left < right
++	})
++
++	items := make([]baseFeedItemSummary, 0, len(itemTotals))
++	for key, total := range itemTotals {
++		total.BoxCount = len(itemBoxes[key])
++		items = append(items, *total)
++	}
++	sort.Slice(items, func(i, j int) bool {
++		if items[i].Count != items[j].Count {
++			return items[i].Count > items[j].Count
++		}
++		return strings.ToLower(items[i].ItemName+items[i].ItemID) < strings.ToLower(items[j].ItemName+items[j].ItemID)
++	})
++
++	summary.BoxCount = len(boxes)
++	summary.ItemTypes = len(items)
++	return boxes, items, summary
++}
++
++func isFeedBoxContainerType(containerType string) bool {
++	normalized := normalizeQuery(containerType)
++	return normalized == "palfoodbox" || normalized == "coolerpalfoodbox" || strings.Contains(normalized, "palfoodbox")
++}
+diff --git a/backend/internal/api/base_feed_boxes_test.go b/backend/internal/api/base_feed_boxes_test.go
+new file mode 100644
+index 0000000..f232c01
+--- /dev/null
++++ b/backend/internal/api/base_feed_boxes_test.go
+@@ -0,0 +1,80 @@
++package api
++
++import (
++	"testing"
++
++	"palpanel/internal/saveindex"
++)
++
++func TestBaseFeedBoxViewsFiltersAndAggregatesFeedBoxes(t *testing.T) {
++	containers := []saveindex.Container{
++		{
++			ContainerID: "feed-1",
++			OwnerType:   "map_object",
++			OwnerID:     "object-feed-1",
++			Slots: []saveindex.Slot{
++				{Slot: 0, ItemID: "Baked_Berries", Count: 30},
++				{Slot: 1, ItemID: "Baked_Berries", Count: 20},
++				{Slot: 2, ItemID: "", Count: 0},
++			},
++		},
++		{
++			ContainerID: "feed-2",
++			OwnerType:   "map_object",
++			OwnerID:     "object-feed-2",
++			Slots: []saveindex.Slot{
++				{Slot: 0, ItemID: "Baked_Berries", Count: 10},
++				{Slot: 1, ItemID: "Mushroom", Count: 5},
++			},
++		},
++		{
++			ContainerID: "chest-1",
++			OwnerType:   "map_object",
++			OwnerID:     "object-chest-1",
++			Slots:       []saveindex.Slot{{Slot: 0, ItemID: "Wood", Count: 999}},
++		},
++	}
++	entities := []saveindex.MapEntity{
++		{Type: "map_object", ID: "object-feed-1", Label: "PalFoodBox"},
++		{Type: "map_object", ID: "object-feed-2", Label: "CoolerPalFoodBox"},
++		{Type: "map_object", ID: "object-chest-1", Label: "Infra_ItemChest_Grade_01"},
++	}
++
++	boxes, items, summary := baseFeedBoxViews(containers, entities)
++	if len(boxes) != 2 {
++		t.Fatalf("feed boxes = %d, want 2", len(boxes))
++	}
++	if summary.BoxCount != 2 || summary.EmptyBoxCount != 0 || summary.OccupiedSlots != 4 || summary.TotalItems != 65 || summary.ItemTypes != 2 {
++		t.Fatalf("unexpected summary: %#v", summary)
++	}
++	if len(items) != 2 || items[0].ItemID != "Baked_Berries" || items[0].Count != 60 || items[0].BoxCount != 2 {
++		t.Fatalf("unexpected aggregate items: %#v", items)
++	}
++	if boxes[0].ContainerName == "" || boxes[1].ContainerName == "" {
++		t.Fatalf("container names were not resolved: %#v", boxes)
++	}
++}
++
++func TestBaseFeedBoxViewsKeepsEmptyFeedBoxes(t *testing.T) {
++	boxes, items, summary := baseFeedBoxViews(
++		[]saveindex.Container{{ContainerID: "feed-empty", OwnerType: "map_object", OwnerID: "object-feed", Slots: nil}},
++		[]saveindex.MapEntity{{Type: "map_object", ID: "object-feed", Label: "PalFoodBox"}},
++	)
++	if len(boxes) != 1 || len(boxes[0].Slots) != 0 || len(items) != 0 {
++		t.Fatalf("unexpected empty feed box response: boxes=%#v items=%#v", boxes, items)
++	}
++	if summary.BoxCount != 1 || summary.EmptyBoxCount != 1 || summary.TotalItems != 0 || summary.ItemTypes != 0 {
++		t.Fatalf("unexpected empty summary: %#v", summary)
++	}
++}
++
++func TestIsFeedBoxContainerType(t *testing.T) {
++	for _, value := range []string{"PalFoodBox", "CoolerPalFoodBox", "BP_PalFoodBox_C"} {
++		if !isFeedBoxContainerType(value) {
++			t.Fatalf("%q should be recognized as a feed box", value)
++		}
++	}
++	if isFeedBoxContainerType("Refrigerator") || isFeedBoxContainerType("Infra_ItemChest_Grade_01") {
++		t.Fatal("non-feed storage was recognized as a feed box")
++	}
++}
+diff --git a/backend/internal/api/patch_info.go b/backend/internal/api/patch_info.go
+index f2c2edc..77c1db6 100644
+--- a/backend/internal/api/patch_info.go
++++ b/backend/internal/api/patch_info.go
+@@ -10,11 +10,11 @@ const (
+ 	patchSourceRepository = "uitok/palworld-panel"
+ 	patchSourceRef        = "dev"
+ 	patchTargetVersion    = "v1.2.2"
+-	patchVersion          = "0.6.0-dev.1"
++	patchVersion          = "0.7.0-dev.1"
+ 	patchRepository       = "ninhua/Palworld-Panel-Patches"
+ )
+ 
+-var patchFeatures = []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser"}
++var patchFeatures = []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary"}
+ 
+ func (s Server) patchInfo(c *gin.Context) {
+ 	info := buildinfo.Current()
+diff --git a/backend/internal/api/patch_info_test.go b/backend/internal/api/patch_info_test.go
+index a86f5d7..b08d3b2 100644
+--- a/backend/internal/api/patch_info_test.go
++++ b/backend/internal/api/patch_info_test.go
+@@ -77,7 +77,7 @@ func TestPatchInfo(t *testing.T) {
+ 	for _, feature := range response.Data.Patch.Features {
+ 		features[feature] = true
+ 	}
+-	for _, expected := range []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser"} {
++	for _, expected := range []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser", "base-feed-box-summary"} {
+ 		if !features[expected] {
+ 			t.Fatalf("missing feature %q in %#v", expected, response.Data.Patch.Features)
+ 		}
+diff --git a/backend/internal/api/router_contract_test.go b/backend/internal/api/router_contract_test.go
+index a6ca2c6..1c1c7b8 100644
+--- a/backend/internal/api/router_contract_test.go
++++ b/backend/internal/api/router_contract_test.go
+@@ -165,6 +165,7 @@ func TestNewContractRoutes(t *testing.T) {
+ 		"GET /api/bases/:id",
+ 		"GET /api/bases/:id/storage",
+ 		"GET /api/bases/:id/workers",
++		"GET /api/bases/:id/feed-boxes",
+ 		"GET /api/pals",
+ 		"GET /api/pals/:id",
+ 		"GET /api/map/entities",
+diff --git a/backend/internal/api/routes.go b/backend/internal/api/routes.go
+index a232958..9f0ba03 100644
+--- a/backend/internal/api/routes.go
++++ b/backend/internal/api/routes.go
+@@ -242,6 +242,7 @@ func (s Server) registerWorldRoutes(api *gin.RouterGroup) {
+ 	api.DELETE("/bases/:id/name", Require(PermServerControl), s.deleteBaseCustomName)
+ 	api.GET("/bases/:id/storage", s.getSaveBaseStorage)
+ 	api.GET("/bases/:id/workers", s.getSaveBaseWorkers)
++	api.GET("/bases/:id/feed-boxes", s.getSaveBaseFeedBoxes)
+ 	api.GET("/pals", s.listSavePals)
+ 	api.GET("/pals/:id", s.getSavePal)
+ 	api.GET("/map/entities", s.listMapEntities)
+diff --git a/backend/internal/api/save_index.go b/backend/internal/api/save_index.go
+index 94f310c..8e9e4eb 100644
+--- a/backend/internal/api/save_index.go
++++ b/backend/internal/api/save_index.go
+@@ -270,6 +270,10 @@ func (s Server) getSaveBaseStorage(c *gin.Context) {
+ }
+ 
+ func baseStorageContainers(index saveindex.Index, id string) []gin.H {
++	return flattenBaseStorageContainers(baseContainers(index, id), index.MapEntities)
++}
++
++func baseContainers(index saveindex.Index, id string) []saveindex.Container {
+ 	linkedContainerIDs := make(map[string]struct{})
+ 	matchedBaseIDs := make(map[string]struct{})
+ 	for _, base := range index.Bases {
+@@ -298,7 +302,7 @@ func baseStorageContainers(index saveindex.Index, id string) []gin.H {
+ 		seen[containerID] = struct{}{}
+ 		items = append(items, container)
+ 	}
+-	return flattenBaseStorageContainers(items, index.MapEntities)
++	return items
+ }
+ 
+ func flattenBaseStorageContainers(containers []saveindex.Container, entities []saveindex.MapEntity) []gin.H {
+diff --git a/docs/openapi.yaml b/docs/openapi.yaml
+index 550d630..92a826a 100644
+--- a/docs/openapi.yaml
++++ b/docs/openapi.yaml
+@@ -1168,6 +1168,9 @@ paths:
+   /bases/{id}/workers:
+     parameters: [*idParameter]
+     get: {operationId: getBaseWorkers, tags: [world], x-palpanel-permission: read, responses: *readResponses}
++  /bases/{id}/feed-boxes:
++    parameters: [*idParameter]
++    get: {operationId: getBaseFeedBoxes, tags: [world], x-palpanel-permission: read, responses: *readResponses}
+   /pals:
+     get: {operationId: listPals, tags: [world], x-palpanel-permission: read, responses: *readResponses}
+   /pals/{id}:
+@@ -1296,6 +1299,48 @@ components:
+         container_type: {type: string}
+         container_name: {type: string}
+         slots: {type: array, items: {$ref: '#/components/schemas/SaveInventorySlot'}}
++    BaseFeedBox:
++      type: object
++      required: [container_id, container_type, container_name, slots]
++      properties:
++        container_id: {type: string}
++        container_type: {type: string}
++        container_name: {type: string}
++        slots: {type: array, items: {$ref: '#/components/schemas/SaveInventorySlot'}}
++    BaseFeedBoxSummary:
++      type: object
++      required: [box_count, empty_box_count, occupied_slots, total_items, item_types]
++      properties:
++        box_count: {type: integer, minimum: 0}
++        empty_box_count: {type: integer, minimum: 0}
++        occupied_slots: {type: integer, minimum: 0}
++        total_items: {type: integer, minimum: 0}
++        item_types: {type: integer, minimum: 0}
++    BaseFeedBoxesEnvelope:
++      type: object
++      required: [ok, data]
++      properties:
++        ok: {type: boolean, const: true}
++        data: {$ref: '#/components/schemas/BaseFeedBoxesResult'}
++    BaseFeedBoxesResult:
++      type: object
++      required: [base, feed_boxes, items, summary, status, source_id]
++      properties:
++        base: {$ref: '#/components/schemas/BaseWorkerBase'}
++        feed_boxes: {type: array, items: {$ref: '#/components/schemas/BaseFeedBox'}}
++        items: {type: array, items: {$ref: '#/components/schemas/BaseFeedItemSummary'}}
++        summary: {$ref: '#/components/schemas/BaseFeedBoxSummary'}
++        status: {$ref: '#/components/schemas/SaveIndexStatus'}
++        source_id: {type: string}
++    BaseFeedItemSummary:
++      type: object
++      required: [item_id, item_name, item_icon, count, box_count]
++      properties:
++        item_id: {type: string}
++        item_name: {type: string}
++        item_icon: {type: string}
++        count: {type: integer, minimum: 0}
++        box_count: {type: integer, minimum: 0}
+     BaseWorkerBase:
+       type: object
+       required: [id, name, raw_name, custom_name, has_custom_name, guild_id, guild_name, x, y, z]
+@@ -2660,7 +2705,7 @@ components:
+           type: object
+           required: [version, repository, features]
+           properties:
+-            version: {type: string, const: 0.5.0-dev.1}
++            version: {type: string, const: 0.7.0-dev.1}
+             repository: {type: string, const: ninhua/Palworld-Panel-Patches}
+             features:
+               type: array
+diff --git a/frontend/src/api/bases.test.ts b/frontend/src/api/bases.test.ts
+index 25bd4b1..14798d7 100644
+--- a/frontend/src/api/bases.test.ts
++++ b/frontend/src/api/bases.test.ts
+@@ -107,6 +107,37 @@ describe('base feature api', () => {
+     });
+     expect(storage.status.state).toBe('ready');
+   });
++  it('loads and maps base feed box summaries', async () => {
++    const get = vi.spyOn(apiClient, 'get').mockResolvedValue({
++      data: {
++        ok: true,
++        data: {
++          base: { id: 'base-1', name: '北境制造中心', guild_name: 'Guild' },
++          feed_boxes: [
++            {
++              container_id: 'feed-1',
++              container_type: 'PalFoodBox',
++              container_name: '饲料箱',
++              slots: [{ slot: 0, item_id: 'Baked_Berries', item_name: '烤野莓', item_icon: 'baked_berries', count: 60, durability: null }],
++            },
++          ],
++          items: [{ item_id: 'Baked_Berries', item_name: '烤野莓', item_icon: 'baked_berries', count: 60, box_count: 1 }],
++          summary: { box_count: 1, empty_box_count: 0, occupied_slots: 1, total_items: 60, item_types: 1 },
++          status: { enabled: true, state: 'ready', stale: false, source_path: '/save', updated_at: '', duration_ms: 1, warnings: [], counts: { players: 1, guilds: 1, bases: 1, pals: 1, containers: 1, map_entities: 1 } },
++          source_id: 'server',
++        },
++      },
++    });
++
++    const result = await basesApi.getFeedBoxes('base / 1');
++
++    expect(get).toHaveBeenCalledWith('/bases/base%20%2F%201/feed-boxes');
++    expect(result.base.name).toBe('北境制造中心');
++    expect(result.feed_boxes[0]).toMatchObject({ container_name: '饲料箱', container_type: 'PalFoodBox' });
++    expect(result.items[0]).toMatchObject({ item_name: '烤野莓', count: 60, box_count: 1 });
++    expect(result.summary).toMatchObject({ box_count: 1, total_items: 60, item_types: 1 });
++  });
++
+   it('loads and maps base workers with indexed pal details', async () => {
+     const get = vi.spyOn(apiClient, 'get').mockResolvedValue({
+       data: {
+diff --git a/frontend/src/api/bases.ts b/frontend/src/api/bases.ts
+index 2cc2a3e..cf02c1f 100644
+--- a/frontend/src/api/bases.ts
++++ b/frontend/src/api/bases.ts
+@@ -3,6 +3,9 @@ import { emptySummary, entityListQuery, mapSummary } from './entityList';
+ import { emptySaveIndexStatus, mapSaveIndexStatus } from './saveIndex';
+ import type {
+   Base,
++  BaseFeedBox,
++  BaseFeedBoxesResponse,
++  BaseFeedItemSummary,
+   BaseStorageContainer,
+   BaseStorageResponse,
+   BaseWorker,
+@@ -70,6 +73,37 @@ const mapBaseStorageContainers = (raw: unknown): BaseStorageContainer[] => {
+ };
+ 
+ 
++const mapFeedBox = (raw: unknown): BaseFeedBox => {
++  const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
++  const slots = mapBaseStorageContainers({
++    containers: [{
++      container_id: String(data.container_id || ''),
++      container_type: String(data.container_type || ''),
++      container_name: String(data.container_name || '饲料箱'),
++      owner_type: 'map_object',
++      owner_id: '',
++      slots: Array.isArray(data.slots) ? data.slots : [],
++    }],
++  });
++  return {
++    container_id: String(data.container_id || ''),
++    container_type: String(data.container_type || ''),
++    container_name: String(data.container_name || '饲料箱'),
++    slots: slots[0]?.slots ?? [],
++  };
++};
++
++const mapFeedItemSummary = (raw: unknown): BaseFeedItemSummary => {
++  const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
++  return {
++    item_id: String(data.item_id || ''),
++    item_name: String(data.item_name || data.item_id || '未知物品'),
++    item_icon: String(data.item_icon || ''),
++    count: Number(data.count || 0),
++    box_count: Number(data.box_count || 0),
++  };
++};
++
+ const mapBaseWorker = (raw: unknown): BaseWorker => {
+   const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+   return {
+@@ -158,6 +192,41 @@ export const basesApi = {
+       },
+     ),
+ 
++  getFeedBoxes: (baseId: string) =>
++    handleRequest<unknown, BaseFeedBoxesResponse>(
++      () => apiClient.get(`/bases/${encodeURIComponent(baseId)}/feed-boxes`),
++      {
++        base: mapBase({}),
++        feed_boxes: [],
++        items: [],
++        summary: { box_count: 0, empty_box_count: 0, occupied_slots: 0, total_items: 0, item_types: 0 },
++        status: emptySaveIndexStatus,
++        source_id: '',
++      },
++      {
++        map: (raw) => {
++          const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
++          const summary = (data.summary && typeof data.summary === 'object' ? data.summary : {}) as Record<string, unknown>;
++          return {
++            base: mapBase(data.base),
++            feed_boxes: Array.isArray(data.feed_boxes) ? data.feed_boxes.map(mapFeedBox).filter((box) => box.container_id) : [],
++            items: Array.isArray(data.items) ? data.items.map(mapFeedItemSummary).filter((item) => item.item_id) : [],
++            summary: {
++              box_count: Number(summary.box_count || 0),
++              empty_box_count: Number(summary.empty_box_count || 0),
++              occupied_slots: Number(summary.occupied_slots || 0),
++              total_items: Number(summary.total_items || 0),
++              item_types: Number(summary.item_types || 0),
++            },
++            status: data.status ? mapSaveIndexStatus(data.status) : emptySaveIndexStatus,
++            source_id: String(data.source_id || ''),
++          };
++        },
++        quiet: true,
++        fallbackOnError: false,
++      },
++    ),
++
+   getStorage: (baseId: string) =>
+     handleRequest<unknown, BaseStorageResponse>(
+       () => apiClient.get(`/bases/${encodeURIComponent(baseId)}/storage`),
+diff --git a/frontend/src/api/generated/contracts.ts b/frontend/src/api/generated/contracts.ts
+index 6ed3f56..3fd5c5e 100644
+--- a/frontend/src/api/generated/contracts.ts
++++ b/frontend/src/api/generated/contracts.ts
+@@ -90,6 +90,38 @@ export interface components {
+       "data": components["schemas"]["AuthStatus"];
+       "ok": true;
+     };
++    "BaseFeedBox": {
++      "container_id": string;
++      "container_name": string;
++      "container_type": string;
++      "slots": Array<components["schemas"]["SaveInventorySlot"]>;
++    };
++    "BaseFeedBoxSummary": {
++      "box_count": number;
++      "empty_box_count": number;
++      "item_types": number;
++      "occupied_slots": number;
++      "total_items": number;
++    };
++    "BaseFeedBoxesEnvelope": {
++      "data": components["schemas"]["BaseFeedBoxesResult"];
++      "ok": true;
++    };
++    "BaseFeedBoxesResult": {
++      "base": components["schemas"]["BaseWorkerBase"];
++      "feed_boxes": Array<components["schemas"]["BaseFeedBox"]>;
++      "items": Array<components["schemas"]["BaseFeedItemSummary"]>;
++      "source_id": string;
++      "status": components["schemas"]["SaveIndexStatus"];
++      "summary": components["schemas"]["BaseFeedBoxSummary"];
++    };
++    "BaseFeedItemSummary": {
++      "box_count": number;
++      "count": number;
++      "item_icon": string;
++      "item_id": string;
++      "item_name": string;
++    };
+     "BaseWorkerBase": {
+       "custom_name": string;
+       "guild_id": string;
+@@ -868,7 +900,7 @@ export interface components {
+       "patch": {
+         "features": Array<string>;
+         "repository": "ninhua/Palworld-Panel-Patches";
+-        "version": "0.5.0-dev.1";
++        "version": "0.7.0-dev.1";
+       };
+       "upstream": {
+         "commit": string;
+diff --git a/frontend/src/pages/Bases.tsx b/frontend/src/pages/Bases.tsx
+index e383ecb..6dc9b7a 100644
+--- a/frontend/src/pages/Bases.tsx
++++ b/frontend/src/pages/Bases.tsx
+@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
+ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+ import {
+   AlertCircle,
++  Apple,
+   Cat,
+   Copy,
+   MapPin,
+@@ -20,7 +21,7 @@ import { getErrorMessage } from '../api/client';
+ import { basesApi } from '../api/bases';
+ import { saveIndexApi } from '../api/saveIndex';
+ import { useServerStore } from '../store/useServerStore';
+-import type { Base, BaseStorageResponse, BaseWorkersResponse } from '../types';
++import type { Base, BaseFeedBoxesResponse, BaseStorageResponse, BaseWorkersResponse } from '../types';
+ import { DataTable } from '../components/ui/DataTable';
+ import { StatusBadge } from '../components/ui/StatusBadge';
+ import { SaveIndexStatusBar } from '../components/ui/SaveIndexStatusBar';
+@@ -41,6 +42,8 @@ export const Bases: React.FC = () => {
+   const [storageSearch, setStorageSearch] = useState('');
+   const [workersBase, setWorkersBase] = useState<Base | null>(null);
+   const [workerSearch, setWorkerSearch] = useState('');
++  const [feedBase, setFeedBase] = useState<Base | null>(null);
++  const [feedSearch, setFeedSearch] = useState('');
+   const debouncedSearch = useDebouncedValue(searchText, 250);
+ 
+   useEffect(() => {
+@@ -70,6 +73,12 @@ export const Bases: React.FC = () => {
+     enabled: Boolean(workersBase?.id),
+   });
+ 
++  const feedQuery = useQuery({
++    queryKey: ['base-feed-boxes', feedBase?.id],
++    queryFn: () => basesApi.getFeedBoxes(feedBase!.id),
++    enabled: Boolean(feedBase?.id),
++  });
++
+   useEffect(() => {
+     setStorageSearch('');
+   }, [storageBase?.id]);
+@@ -78,6 +87,10 @@ export const Bases: React.FC = () => {
+     setWorkerSearch('');
+   }, [workersBase?.id]);
+ 
++  useEffect(() => {
++    setFeedSearch('');
++  }, [feedBase?.id]);
++
+   const rebuildMutation = useMutation({
+     mutationFn: saveIndexApi.rebuild,
+     onSuccess: () => {
+@@ -215,6 +228,7 @@ export const Bases: React.FC = () => {
+                 onResetName={() => clearBaseName(base)}
+                 onStorage={() => setStorageBase(base)}
+                 onWorkers={() => setWorkersBase(base)}
++                onFeed={() => setFeedBase(base)}
+                 onClean={() => unsupported(basesApi.cleanStructures(base.id))}
+                 onBackup={() => unsupported(basesApi.backupBase(base.id))}
+               />
+@@ -270,6 +284,9 @@ export const Bases: React.FC = () => {
+                     <button type="button" onClick={() => setWorkersBase(base)} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50" aria-label="查看基地工作帕鲁">
+                       <Cat size={14} />
+                     </button>
++                    <button type="button" onClick={() => setFeedBase(base)} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50" aria-label="查看基地饲料箱">
++                      <Apple size={14} />
++                    </button>
+                     <button type="button" onClick={() => unsupported(basesApi.cleanStructures(base.id))} className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-bold text-slate-500 hover:bg-slate-50">
+                       清理
+                     </button>
+@@ -280,6 +297,18 @@ export const Bases: React.FC = () => {
+           />
+         )}
+       </section>
++      {feedBase && (
++        <BaseFeedBoxDrawer
++          base={feedBase}
++          data={feedQuery.data}
++          loading={feedQuery.isLoading || feedQuery.isFetching}
++          error={feedQuery.error ? getErrorMessage(feedQuery.error) : null}
++          searchText={feedSearch}
++          onSearchChange={setFeedSearch}
++          onRetry={() => void feedQuery.refetch()}
++          onClose={() => setFeedBase(null)}
++        />
++      )}
+       {workersBase && (
+         <BaseWorkerDrawer
+           base={workersBase}
+@@ -332,9 +361,10 @@ const BaseCard: React.FC<{
+   onResetName: () => void;
+   onStorage: () => void;
+   onWorkers: () => void;
++  onFeed: () => void;
+   onClean: () => void;
+   onBackup: () => void;
+-}> = ({ base, onCopy, onRename, onResetName, onStorage, onWorkers, onClean, onBackup }) => (
++}> = ({ base, onCopy, onRename, onResetName, onStorage, onWorkers, onFeed, onClean, onBackup }) => (
+   <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+     <div className="flex items-start justify-between gap-3">
+       <div className="min-w-0">
+@@ -373,6 +403,9 @@ const BaseCard: React.FC<{
+       <button type="button" onClick={onWorkers} className="rounded-xl border border-sky-200 bg-sky-50 py-2 text-xs font-bold text-sky-700">
+         工作帕鲁
+       </button>
++      <button type="button" onClick={onFeed} className="rounded-xl border border-amber-200 bg-amber-50 py-2 text-xs font-bold text-amber-700">
++        饲料箱
++      </button>
+       <button type="button" onClick={onClean} className="rounded-xl border border-slate-200 py-2 text-xs font-bold text-slate-600">
+         清理
+       </button>
+@@ -383,6 +416,170 @@ const BaseCard: React.FC<{
+   </div>
+ );
+ 
++const BaseFeedBoxDrawer: React.FC<{
++  base: Base;
++  data?: BaseFeedBoxesResponse;
++  loading: boolean;
++  error: string | null;
++  searchText: string;
++  onSearchChange: (value: string) => void;
++  onRetry: () => void;
++  onClose: () => void;
++}> = ({ base, data, loading, error, searchText, onSearchChange, onRetry, onClose }) => {
++  const boxes = data?.feed_boxes ?? [];
++  const items = data?.items ?? [];
++  const summary = data?.summary ?? { box_count: 0, empty_box_count: 0, occupied_slots: 0, total_items: 0, item_types: 0 };
++  const query = searchText.trim().toLocaleLowerCase();
++  const visibleItems = items.filter((item) => !query || [item.item_name, item.item_id].some((value) => value.toLocaleLowerCase().includes(query)));
++  const visibleBoxes = boxes
++    .map((box) => {
++      const boxMatches = Boolean(query) && [box.container_name, box.container_type, box.container_id]
++        .some((value) => value.toLocaleLowerCase().includes(query));
++      return {
++        ...box,
++        slots: box.slots.filter((slot) => !query || boxMatches || [slot.item_name, slot.item_id]
++          .some((value) => value.toLocaleLowerCase().includes(query))),
++      };
++    })
++    .filter((box) => !query || box.slots.length > 0 || [box.container_name, box.container_type, box.container_id]
++      .some((value) => value.toLocaleLowerCase().includes(query)));
++
++  return (
++    <div className="fixed inset-0 z-40 flex justify-end bg-slate-900/20 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-6">
++      <aside className="flex h-full w-full max-w-3xl flex-col rounded-2xl border border-slate-100 bg-white shadow-2xl">
++        <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
++          <div className="min-w-0">
++            <p className="truncate text-sm font-bold text-slate-800">{data?.base.name || base.name} · 饲料箱摘要</p>
++            <p className="mt-1 truncate font-mono text-[10px] text-slate-400">{base.id}</p>
++          </div>
++          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50" aria-label="关闭饲料箱摘要">
++            <X size={14} />
++          </button>
++        </div>
++
++        <div className="border-b border-slate-100 px-5 py-4">
++          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
++            <StorageSummary label="饲料箱" value={summary.box_count} />
++            <StorageSummary label="空箱" value={summary.empty_box_count} />
++            <StorageSummary label="占用格" value={summary.occupied_slots} />
++            <StorageSummary label="物品种类" value={summary.item_types} />
++            <StorageSummary label="物品总数" value={summary.total_items} />
++          </div>
++          <label className="relative mt-4 block">
++            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
++            <input
++              type="search"
++              value={searchText}
++              onChange={(event) => onSearchChange(event.target.value)}
++              placeholder="搜索物品、饲料箱名称或内部 ID"
++              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-xs font-semibold text-slate-700 outline-none focus:border-amber-300 focus:bg-white"
++            />
++          </label>
++        </div>
++
++        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
++          {data?.status.stale ? (
++            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800">
++              当前显示的是缓存存档索引，饲料箱内容可能稍有延迟。
++            </div>
++          ) : null}
++          {error ? (
++            <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-4 text-xs font-semibold text-rose-700">
++              <p>{error}</p>
++              <button type="button" onClick={onRetry} className="mt-3 inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-white px-3 py-2 text-[11px] font-bold">
++                <RefreshCw size={13} />
++                重试
++              </button>
++            </div>
++          ) : loading && !data ? (
++            <div className="py-16 text-center text-xs font-semibold text-slate-400">
++              <RefreshCw size={15} className="mr-2 inline animate-spin text-amber-500" />
++              正在读取基地饲料箱...
++            </div>
++          ) : boxes.length === 0 ? (
++            <div className="py-16 text-center text-xs font-semibold text-slate-400">
++              <Apple size={18} className="mx-auto mb-3 text-slate-300" />
++              该基地没有可识别的饲料箱
++            </div>
++          ) : query && visibleItems.length === 0 && visibleBoxes.length === 0 ? (
++            <div className="py-16 text-center text-xs font-semibold text-slate-400">没有匹配的物品或饲料箱</div>
++          ) : (
++            <div className="space-y-5">
++              {visibleItems.length > 0 ? (
++                <section>
++                  <div className="mb-3 flex items-center gap-2">
++                    <Apple size={15} className="text-amber-500" />
++                    <h3 className="text-xs font-black text-slate-700">合并库存</h3>
++                  </div>
++                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
++                    {visibleItems.map((item) => (
++                      <article key={item.item_id} className="rounded-xl border border-amber-100 bg-amber-50/40 px-3 py-3">
++                        <div className="flex items-start justify-between gap-3">
++                          <div className="flex min-w-0 items-center gap-3">
++                            <StorageItemIcon icon={item.item_icon} name={item.item_name} />
++                            <div className="min-w-0">
++                              <p className="truncate text-xs font-bold text-slate-700">{item.item_name}</p>
++                              <p className="mt-1 truncate font-mono text-[9px] text-slate-400" title={item.item_id}>{item.item_id}</p>
++                              <p className="mt-1 text-[9px] font-semibold text-slate-400">分布于 {item.box_count} 个饲料箱</p>
++                            </div>
++                          </div>
++                          <span className="shrink-0 rounded-lg border border-amber-200 bg-white px-2 py-1 text-xs font-black text-amber-700">×{item.count}</span>
++                        </div>
++                      </article>
++                    ))}
++                  </div>
++                </section>
++              ) : null}
++
++              <section>
++                <div className="mb-3 flex items-center gap-2">
++                  <PackageOpen size={15} className="text-sky-500" />
++                  <h3 className="text-xs font-black text-slate-700">按饲料箱查看</h3>
++                </div>
++                <div className="space-y-3">
++                  {visibleBoxes.map((box, index) => (
++                    <article key={box.container_id} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
++                      <div className="flex items-start justify-between gap-3">
++                        <div className="min-w-0">
++                          <p className="truncate text-xs font-bold text-slate-700">{box.container_name || `饲料箱 ${index + 1}`}</p>
++                          <p className="mt-1 truncate font-mono text-[9px] text-slate-400" title={box.container_type}>{box.container_type}</p>
++                        </div>
++                        <span className="rounded-lg border border-slate-100 bg-white px-2 py-1 text-[9px] font-bold text-slate-500">{box.slots.length} 格</span>
++                      </div>
++                      {box.slots.length === 0 ? (
++                        <p className="mt-4 rounded-xl border border-dashed border-slate-200 bg-white px-3 py-4 text-center text-[10px] font-semibold text-slate-400">该饲料箱为空</p>
++                      ) : (
++                        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
++                          {box.slots.map((slot) => (
++                            <div key={`${box.container_id}:${slot.slot}`} className="rounded-xl border border-slate-100 bg-white px-3 py-2.5">
++                              <div className="flex items-start justify-between gap-3">
++                                <div className="flex min-w-0 items-center gap-3">
++                                  <StorageItemIcon icon={slot.item_icon} name={slot.item_name} />
++                                  <div className="min-w-0">
++                                    <p className="truncate text-xs font-bold text-slate-700">{slot.item_name}</p>
++                                    <p className="mt-1 truncate font-mono text-[9px] text-slate-400" title={slot.item_id}>{slot.item_id}</p>
++                                  </div>
++                                </div>
++                                <span className="shrink-0 rounded-lg border border-sky-100 bg-sky-50 px-2 py-1 text-xs font-black text-sky-700">×{slot.count}</span>
++                              </div>
++                              <p className="mt-2 text-[9px] font-semibold text-slate-400">槽位 {slot.slot}</p>
++                            </div>
++                          ))}
++                        </div>
++                      )}
++                      <p className="mt-3 truncate font-mono text-[8px] text-slate-300" title={box.container_id}>{box.container_id}</p>
++                    </article>
++                  ))}
++                </div>
++              </section>
++            </div>
++          )}
++        </div>
++      </aside>
++    </div>
++  );
++};
++
+ const BaseWorkerDrawer: React.FC<{
+   base: Base;
+   data?: BaseWorkersResponse;
+diff --git a/frontend/src/types/index.ts b/frontend/src/types/index.ts
+index 744ac4c..41c0c4f 100644
+--- a/frontend/src/types/index.ts
++++ b/frontend/src/types/index.ts
+@@ -968,6 +968,38 @@ export interface BaseStorageResponse {
+   status: SaveIndexStatus;
+ }
+ 
++export interface BaseFeedBox {
++  container_id: string;
++  container_type: string;
++  container_name: string;
++  slots: BaseStorageSlot[];
++}
++
++export interface BaseFeedItemSummary {
++  item_id: string;
++  item_name: string;
++  item_icon: string;
++  count: number;
++  box_count: number;
++}
++
++export interface BaseFeedBoxSummary {
++  box_count: number;
++  empty_box_count: number;
++  occupied_slots: number;
++  total_items: number;
++  item_types: number;
++}
++
++export interface BaseFeedBoxesResponse {
++  base: Base;
++  feed_boxes: BaseFeedBox[];
++  items: BaseFeedItemSummary[];
++  summary: BaseFeedBoxSummary;
++  status: SaveIndexStatus;
++  source_id: string;
++}
++
+ export interface BaseWorker {
+   instance_id: string;
+   character_id: string;

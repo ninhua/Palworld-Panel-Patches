@@ -1,0 +1,22 @@
+diff --git a/frontend/src/pages/StarterGift.tsx b/frontend/src/pages/StarterGift.tsx
+index 558f9b8..ecc55cc 100644
+--- a/frontend/src/pages/StarterGift.tsx
++++ b/frontend/src/pages/StarterGift.tsx
+@@ -162,7 +162,7 @@ export const StarterGift: React.FC = () => {
+         if (onlySelectedItems && !selectedItemIDs.has(item.id)) return false;
+         return !query || `${item.id} ${item.name}`.toLowerCase().includes(query);
+       })
+-      .sort((left, right) => Number(selectedItemIDs.has(right.id)) - Number(selectedItemIDs.has(left.id)) || left.name.localeCompare(right.name, 'zh-CN'));
++      .sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'));
+   }, [snapshot, itemCategory, itemSearch, onlySelectedItems, selectedItemIDs]);
+ 
+   const templateNames = useMemo(() => (snapshot?.templates || []).map((item) => item.name).filter(Boolean), [snapshot]);
+@@ -174,7 +174,7 @@ export const StarterGift: React.FC = () => {
+         if (onlySelectedTemplates && !selectedTemplates.has(name)) return false;
+         return !query || `${name} ${templateDisplayName(name)}`.toLowerCase().includes(query);
+       })
+-      .sort((left, right) => Number(selectedTemplates.has(right)) - Number(selectedTemplates.has(left)) || templateDisplayName(left).localeCompare(templateDisplayName(right), 'zh-CN'));
++      .sort((left, right) => templateDisplayName(left).localeCompare(templateDisplayName(right), 'zh-CN'));
+   }, [templateNames, templateSearch, onlySelectedTemplates, selectedTemplates]);
+ 
+   const grantCounts = useMemo(() => {
