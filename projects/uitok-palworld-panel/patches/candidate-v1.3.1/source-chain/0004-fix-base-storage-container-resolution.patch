@@ -1,0 +1,162 @@
+diff --git a/backend/internal/api/base_storage_test.go b/backend/internal/api/base_storage_test.go
+new file mode 100644
+index 0000000..261534e
+--- /dev/null
++++ b/backend/internal/api/base_storage_test.go
+@@ -0,0 +1,69 @@
++package api
++
++import (
++	"testing"
++
++	"palpanel/internal/saveindex"
++)
++
++func TestBaseStorageContainersIncludesMapObjectContainersLinkedByBase(t *testing.T) {
++	index := saveindex.Index{
++		Bases: []saveindex.Base{{
++			ID:         "base-1",
++			Name:       "Base 1",
++			Containers: []string{"container-map-object", "container-direct"},
++		}},
++		Containers: []saveindex.Container{
++			{
++				ContainerID: "container-map-object",
++				OwnerType:   "map_object",
++				OwnerID:     "map-object-1",
++				Slots:       []saveindex.Slot{{Slot: 0, ItemID: "Stone", Count: 20}},
++			},
++			{
++				ContainerID: "container-direct",
++				OwnerType:   "base",
++				OwnerID:     "base-1",
++				Slots:       []saveindex.Slot{{Slot: 1, ItemID: "Wood", Count: 10}},
++			},
++			{
++				ContainerID: "other-container",
++				OwnerType:   "map_object",
++				OwnerID:     "map-object-2",
++				Slots:       []saveindex.Slot{{Slot: 0, ItemID: "Fiber", Count: 5}},
++			},
++		},
++	}
++
++	containers := baseStorageContainers(index, "base-1")
++	if len(containers) != 2 {
++		t.Fatalf("baseStorageContainers returned %d containers, want 2: %#v", len(containers), containers)
++	}
++
++	ids := map[string]bool{}
++	for _, container := range containers {
++		ids[container["container_id"].(string)] = true
++	}
++	if !ids["container-map-object"] || !ids["container-direct"] {
++		t.Fatalf("unexpected container IDs: %#v", ids)
++	}
++	if ids["other-container"] {
++		t.Fatalf("unrelated container included: %#v", ids)
++	}
++}
++
++func TestBaseStorageContainersKeepsDirectOwnerFallback(t *testing.T) {
++	index := saveindex.Index{
++		Containers: []saveindex.Container{{
++			ContainerID: "legacy-container",
++			OwnerType:   "base",
++			OwnerID:     "base-legacy",
++			Slots:       []saveindex.Slot{{Slot: 0, ItemID: "Stone", Count: 1}},
++		}},
++	}
++
++	containers := baseStorageContainers(index, "base-legacy")
++	if len(containers) != 1 {
++		t.Fatalf("baseStorageContainers returned %d containers, want 1", len(containers))
++	}
++}
+diff --git a/backend/internal/api/patch_info.go b/backend/internal/api/patch_info.go
+index e62a96c..a14b805 100644
+--- a/backend/internal/api/patch_info.go
++++ b/backend/internal/api/patch_info.go
+@@ -10,7 +10,7 @@ const (
+ 	patchSourceRepository = "uitok/palworld-panel"
+ 	patchSourceRef        = "dev"
+ 	patchTargetVersion    = "v1.2.2"
+-	patchVersion          = "0.3.0-dev.1"
++	patchVersion          = "0.3.1-dev.1"
+ 	patchRepository       = "ninhua/Palworld-Panel-Patches"
+ )
+ 
+diff --git a/backend/internal/api/save_index.go b/backend/internal/api/save_index.go
+index 5626dfc..afcc005 100644
+--- a/backend/internal/api/save_index.go
++++ b/backend/internal/api/save_index.go
+@@ -244,14 +244,39 @@ func (s Server) getSaveBaseStorage(c *gin.Context) {
+ 		fail(c, http.StatusServiceUnavailable, "save_index_unavailable", err.Error())
+ 		return
+ 	}
+-	id := c.Param("id")
++	ok(c, gin.H{"containers": baseStorageContainers(index, c.Param("id")), "status": status})
++}
++
++func baseStorageContainers(index saveindex.Index, id string) []gin.H {
++	linkedContainerIDs := make(map[string]struct{})
++	matchedBaseIDs := make(map[string]struct{})
++	for _, base := range index.Bases {
++		if !matchesID(id, base.ID, base.Name, pallocalize.BaseName(base.Name)) {
++			continue
++		}
++		matchedBaseIDs[normalizeQuery(base.ID)] = struct{}{}
++		for _, containerID := range base.Containers {
++			linkedContainerIDs[normalizeQuery(containerID)] = struct{}{}
++		}
++	}
++
+ 	items := make([]saveindex.Container, 0)
++	seen := make(map[string]struct{})
+ 	for _, container := range index.Containers {
+-		if container.OwnerType == "base" && matchesID(id, container.OwnerID) {
+-			items = append(items, container)
++		containerID := normalizeQuery(container.ContainerID)
++		_, linkedToBase := linkedContainerIDs[containerID]
++		_, ownedByMatchedBase := matchedBaseIDs[normalizeQuery(container.OwnerID)]
++		ownedByRequestedBase := container.OwnerType == "base" && matchesID(id, container.OwnerID)
++		if !linkedToBase && !(container.OwnerType == "base" && ownedByMatchedBase) && !ownedByRequestedBase {
++			continue
++		}
++		if _, duplicate := seen[containerID]; duplicate {
++			continue
+ 		}
++		seen[containerID] = struct{}{}
++		items = append(items, container)
+ 	}
+-	ok(c, gin.H{"containers": flattenContainers(items), "status": status})
++	return flattenContainers(items)
+ }
+ 
+ func (s Server) listSavePals(c *gin.Context) {
+diff --git a/docs/openapi.yaml b/docs/openapi.yaml
+index f98d322..da43083 100644
+--- a/docs/openapi.yaml
++++ b/docs/openapi.yaml
+@@ -2508,7 +2508,7 @@ components:
+           type: object
+           required: [version, repository, features]
+           properties:
+-            version: {type: string, const: 0.3.0-dev.1}
++            version: {type: string, const: 0.3.1-dev.1}
+             repository: {type: string, const: ninhua/Palworld-Panel-Patches}
+             features:
+               type: array
+diff --git a/frontend/src/api/generated/contracts.ts b/frontend/src/api/generated/contracts.ts
+index f5c97c2..e0b6479 100644
+--- a/frontend/src/api/generated/contracts.ts
++++ b/frontend/src/api/generated/contracts.ts
+@@ -772,7 +772,7 @@ export interface components {
+       "patch": {
+         "features": Array<string>;
+         "repository": "ninhua/Palworld-Panel-Patches";
+-        "version": "0.3.0-dev.1";
++        "version": "0.3.1-dev.1";
+       };
+       "upstream": {
+         "commit": string;
