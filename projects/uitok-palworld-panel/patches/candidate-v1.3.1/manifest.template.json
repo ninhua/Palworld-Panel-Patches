@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "project": "uitok-palworld-panel",
+  "patch_version": "0.8.18",
+  "patch_type": "source-build",
+  "upstream": {
+    "repository": "uitok/palworld-panel",
+    "version": "v1.3.0",
+    "commit": "3c8d698abf1d9c4e271e3e62dcc736960f27e8eb"
+  },
+  "compatibility": {
+    "mode": "exact",
+    "target_version": "v1.3.0",
+    "verified": true,
+    "notes": "Verified by per-patch migration and a clean-room merged-patch rebuild against the official stable tag."
+  },
+  "platforms": [
+    "linux-amd64"
+  ],
+  "files": {
+    "bin/palpanel": {
+      "original_sha256": "fe92a0564f3e5aead26ff61449e804a95cd31df9273bc95c5184b1557c645cec",
+      "patched_sha256": "018d1bcb9eee9b1ed4c389abf3b3814b4bc70987a3f10e4f6157f88d32789f2a"
+    }
+  },
+  "features": [
+    "patch-info-api",
+    "base-custom-names",
+    "base-storage-browser",
+    "player-notes",
+    "guild-detail-browser",
+    "base-worker-browser",
+    "base-feed-box-summary",
+    "insecure-endpoint-support",
+    "panel-patch-hot-update",
+    "audit-log-response-display",
+    "player-presence-history",
+    "host-save-migrator",
+    "global-inventory-browser",
+    "new-player-starter-gift",
+    "unattended-inventory-delta",
+    "player-summary",
+    "pal-inventory-advanced-filters",
+    "api-catalog"
+  ],
+  "notes": "The official Release binary supplies original_sha256. Installation matching is exact PalPanel version plus package checksums and required feature containment; source commit is traceability only."
+}

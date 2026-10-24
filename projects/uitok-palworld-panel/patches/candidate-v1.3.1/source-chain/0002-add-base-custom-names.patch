@@ -1,0 +1,747 @@
+diff --git a/backend/internal/api/base_custom_names.go b/backend/internal/api/base_custom_names.go
+new file mode 100644
+index 0000000..6474350
+--- /dev/null
++++ b/backend/internal/api/base_custom_names.go
+@@ -0,0 +1,169 @@
++package api
++
++import (
++	"encoding/json"
++	"net/http"
++	"strings"
++	"sync"
++	"unicode/utf8"
++
++	"github.com/gin-gonic/gin"
++
++	"palpanel/internal/db"
++	"palpanel/internal/pallocalize"
++	"palpanel/internal/saveindex"
++)
++
++const (
++	baseCustomNamesKeyPrefix = "base_custom_names:v1:"
++	baseCustomNameMaxRunes   = 64
++)
++
++var baseCustomNamesMu sync.Mutex
++
++type baseCustomNameInput struct {
++	Name string `json:"name"`
++}
++
++func (s Server) putBaseCustomName(c *gin.Context) {
++	var input baseCustomNameInput
++	if err := c.ShouldBindJSON(&input); err != nil {
++		fail(c, http.StatusBadRequest, "base_custom_name_invalid", "a JSON name is required")
++		return
++	}
++	name := strings.TrimSpace(input.Name)
++	if name == "" {
++		fail(c, http.StatusBadRequest, "base_custom_name_required", "base custom name is required")
++		return
++	}
++	if !utf8.ValidString(name) || utf8.RuneCountInString(name) > baseCustomNameMaxRunes {
++		fail(c, http.StatusBadRequest, "base_custom_name_too_long", "base custom name must not exceed 64 characters")
++		return
++	}
++
++	base, source, found := s.resolveActiveBase(c)
++	if !found {
++		return
++	}
++	baseCustomNamesMu.Lock()
++	defer baseCustomNamesMu.Unlock()
++	names, err := s.loadBaseCustomNames(c, source.ID)
++	if err != nil {
++		fail(c, http.StatusInternalServerError, "base_custom_names_read_failed", err.Error())
++		return
++	}
++	names[base.ID] = name
++	if err := s.saveBaseCustomNames(c, source.ID, names); err != nil {
++		fail(c, http.StatusInternalServerError, "base_custom_name_save_failed", err.Error())
++		return
++	}
++	okResponse := flattenBaseWithCustomName(base, name)
++	okResponse["source_id"] = source.ID
++	ok(c, gin.H{"base": okResponse})
++}
++
++func (s Server) deleteBaseCustomName(c *gin.Context) {
++	base, source, found := s.resolveActiveBase(c)
++	if !found {
++		return
++	}
++	baseCustomNamesMu.Lock()
++	defer baseCustomNamesMu.Unlock()
++	names, err := s.loadBaseCustomNames(c, source.ID)
++	if err != nil {
++		fail(c, http.StatusInternalServerError, "base_custom_names_read_failed", err.Error())
++		return
++	}
++	delete(names, base.ID)
++	if err := s.saveBaseCustomNames(c, source.ID, names); err != nil {
++		fail(c, http.StatusInternalServerError, "base_custom_name_delete_failed", err.Error())
++		return
++	}
++	view := flattenBaseWithCustomName(base, "")
++	view["source_id"] = source.ID
++	ok(c, gin.H{"base": view, "deleted": true})
++}
++
++func (s Server) resolveActiveBase(c *gin.Context) (saveindex.Base, db.SaveSource, bool) {
++	source, err := s.store.ActiveSaveSource(c.Request.Context())
++	if err != nil {
++		fail(c, http.StatusInternalServerError, "save_source_read_failed", err.Error())
++		return saveindex.Base{}, db.SaveSource{}, false
++	}
++	index, status, indexErr := s.currentSaveIndex(c)
++	if indexErr != nil && !status.Stale && status.State != "disabled" {
++		fail(c, http.StatusServiceUnavailable, "save_index_unavailable", indexErr.Error())
++		return saveindex.Base{}, db.SaveSource{}, false
++	}
++	id := c.Param("id")
++	for _, base := range index.Bases {
++		if matchesID(id, base.ID) {
++			return base, source, true
++		}
++	}
++	fail(c, http.StatusNotFound, "base_not_found", "base not found")
++	return saveindex.Base{}, db.SaveSource{}, false
++}
++
++func (s Server) activeBaseCustomNames(c *gin.Context) (map[string]string, string, error) {
++	source, err := s.store.ActiveSaveSource(c.Request.Context())
++	if err != nil {
++		return nil, "", err
++	}
++	names, err := s.loadBaseCustomNames(c, source.ID)
++	return names, source.ID, err
++}
++
++func (s Server) loadBaseCustomNames(c *gin.Context, sourceID string) (map[string]string, error) {
++	raw, found, err := s.store.GetKV(c.Request.Context(), baseCustomNamesKey(sourceID))
++	if err != nil {
++		return nil, err
++	}
++	names := map[string]string{}
++	if !found || strings.TrimSpace(raw) == "" {
++		return names, nil
++	}
++	if err := json.Unmarshal([]byte(raw), &names); err != nil {
++		return nil, err
++	}
++	return names, nil
++}
++
++func (s Server) saveBaseCustomNames(c *gin.Context, sourceID string, names map[string]string) error {
++	key := baseCustomNamesKey(sourceID)
++	if len(names) == 0 {
++		return s.store.DeleteKV(c.Request.Context(), key)
++	}
++	encoded, err := json.Marshal(names)
++	if err != nil {
++		return err
++	}
++	return s.store.SetKV(c.Request.Context(), key, string(encoded))
++}
++
++func baseCustomNamesKey(sourceID string) string {
++	return baseCustomNamesKeyPrefix + sourceID
++}
++
++func flattenBaseWithCustomName(base saveindex.Base, customName string) gin.H {
++	view := flattenBase(base)
++	customName = strings.TrimSpace(customName)
++	view["custom_name"] = customName
++	view["has_custom_name"] = customName != ""
++	if customName != "" {
++		view["name"] = customName
++	}
++	return view
++}
++
++func baseSearchNames(base saveindex.Base, customName string) []string {
++	return []string{
++		base.ID,
++		base.Name,
++		pallocalize.BaseName(base.Name),
++		customName,
++		base.GuildName,
++		pallocalize.GuildName(base.GuildName),
++		base.GuildID,
++	}
++}
+diff --git a/backend/internal/api/base_custom_names_test.go b/backend/internal/api/base_custom_names_test.go
+new file mode 100644
+index 0000000..0543917
+--- /dev/null
++++ b/backend/internal/api/base_custom_names_test.go
+@@ -0,0 +1,124 @@
++package api
++
++import (
++	"net/http"
++	"net/http/httptest"
++	"path/filepath"
++	"strings"
++	"testing"
++
++	"github.com/gin-gonic/gin"
++
++	"palpanel/internal/db"
++	"palpanel/internal/saveindex"
++)
++
++func TestFlattenAndFilterBaseCustomNames(t *testing.T) {
++	base := saveindex.Base{ID: "base-1", Name: "新規生成拠点テンプレート名0(仮)", GuildName: "Guild"}
++	view := flattenBaseWithCustomName(base, "北境制造中心")
++	if view["name"] != "北境制造中心" || view["raw_name"] != base.Name {
++		t.Fatalf("custom base name view = %#v", view)
++	}
++	if view["custom_name"] != "北境制造中心" || view["has_custom_name"] != true {
++		t.Fatalf("custom base name metadata = %#v", view)
++	}
++
++	gin.SetMode(gin.TestMode)
++	recorder := httptest.NewRecorder()
++	context, _ := gin.CreateTestContext(recorder)
++	context.Request = httptest.NewRequest(http.MethodGet, "/api/bases?q=北境", nil)
++	got := filterBases([]saveindex.Base{base}, map[string]string{base.ID: "北境制造中心"}, context)
++	if len(got) != 1 || got[0].ID != base.ID {
++		t.Fatalf("custom base name should be searchable: %#v", got)
++	}
++}
++
++func TestBaseCustomNamesAreIsolatedBySaveSource(t *testing.T) {
++	gin.SetMode(gin.TestMode)
++	store, err := db.Open(filepath.Join(t.TempDir(), "panel.db"))
++	if err != nil {
++		t.Fatalf("db.Open: %v", err)
++	}
++	t.Cleanup(func() { _ = store.Close() })
++
++	server := Server{store: store}
++	context, _ := gin.CreateTestContext(httptest.NewRecorder())
++	context.Request = httptest.NewRequest("PUT", "/api/bases/base-1/name", nil)
++
++	if err := server.saveBaseCustomNames(context, "server", map[string]string{"base-1": "主世界基地"}); err != nil {
++		t.Fatalf("save server names: %v", err)
++	}
++	if err := server.saveBaseCustomNames(context, "imported-world", map[string]string{"base-1": "导入世界基地"}); err != nil {
++		t.Fatalf("save imported names: %v", err)
++	}
++
++	serverNames, err := server.loadBaseCustomNames(context, "server")
++	if err != nil || serverNames["base-1"] != "主世界基地" {
++		t.Fatalf("server names = %#v, %v", serverNames, err)
++	}
++	importedNames, err := server.loadBaseCustomNames(context, "imported-world")
++	if err != nil || importedNames["base-1"] != "导入世界基地" {
++		t.Fatalf("imported names = %#v, %v", importedNames, err)
++	}
++}
++
++func TestBaseCustomNamesDeleteEmptyCollection(t *testing.T) {
++	gin.SetMode(gin.TestMode)
++	store, err := db.Open(filepath.Join(t.TempDir(), "panel.db"))
++	if err != nil {
++		t.Fatalf("db.Open: %v", err)
++	}
++	t.Cleanup(func() { _ = store.Close() })
++
++	server := Server{store: store}
++	context, _ := gin.CreateTestContext(httptest.NewRecorder())
++	context.Request = httptest.NewRequest("DELETE", "/api/bases/base-1/name", nil)
++	if err := server.saveBaseCustomNames(context, "server", map[string]string{"base-1": "Alias"}); err != nil {
++		t.Fatalf("save names: %v", err)
++	}
++	if err := server.saveBaseCustomNames(context, "server", map[string]string{}); err != nil {
++		t.Fatalf("delete names: %v", err)
++	}
++	if _, found, err := store.GetKV(context.Request.Context(), baseCustomNamesKey("server")); err != nil || found {
++		t.Fatalf("empty alias collection must delete KV entry: found=%v err=%v", found, err)
++	}
++}
++
++func TestBaseCustomNameValidationStopsBeforeStorage(t *testing.T) {
++	gin.SetMode(gin.TestMode)
++	router := gin.New()
++	server := Server{}
++	router.PUT("/api/bases/:id/name", server.putBaseCustomName)
++
++	for _, body := range []string{`{"name":"   "}`, `{"name":"` + strings.Repeat("界", 65) + `"}`} {
++		request := httptest.NewRequest("PUT", "/api/bases/base-1/name", strings.NewReader(body))
++		request.Header.Set("Content-Type", "application/json")
++		recorder := httptest.NewRecorder()
++		router.ServeHTTP(recorder, request)
++		if recorder.Code != http.StatusBadRequest {
++			t.Fatalf("invalid name returned %d: %s", recorder.Code, recorder.Body.String())
++		}
++	}
++}
++
++func TestBaseCustomNameRoutesRequireServerControl(t *testing.T) {
++	gin.SetMode(gin.TestMode)
++	router := gin.New()
++	router.Use(func(c *gin.Context) {
++		c.Set(principalKey, Principal{Name: "viewer", Role: RoleViewer})
++		c.Next()
++	})
++	server := Server{}
++	router.PUT("/api/bases/:id/name", Require(PermServerControl), server.putBaseCustomName)
++	router.DELETE("/api/bases/:id/name", Require(PermServerControl), server.deleteBaseCustomName)
++
++	for _, method := range []string{http.MethodPut, http.MethodDelete} {
++		request := httptest.NewRequest(method, "/api/bases/base-1/name", strings.NewReader(`{"name":"Alias"}`))
++		request.Header.Set("Content-Type", "application/json")
++		recorder := httptest.NewRecorder()
++		router.ServeHTTP(recorder, request)
++		if recorder.Code != http.StatusForbidden {
++			t.Fatalf("%s base name route returned %d: %s", method, recorder.Code, recorder.Body.String())
++		}
++	}
++}
+diff --git a/backend/internal/api/patch_info.go b/backend/internal/api/patch_info.go
+index a0642c0..577dc56 100644
+--- a/backend/internal/api/patch_info.go
++++ b/backend/internal/api/patch_info.go
+@@ -10,11 +10,11 @@ const (
+ 	patchSourceRepository = "uitok/palworld-panel"
+ 	patchSourceRef        = "dev"
+ 	patchTargetVersion    = "v1.2.2"
+-	patchVersion          = "0.1.0-dev.1"
++	patchVersion          = "0.2.0-dev.1"
+ 	patchRepository       = "ninhua/Palworld-Panel-Patches"
+ )
+ 
+-var patchFeatures = []string{"patch-info-api"}
++var patchFeatures = []string{"patch-info-api", "base-custom-names"}
+ 
+ func (s Server) patchInfo(c *gin.Context) {
+ 	info := buildinfo.Current()
+diff --git a/backend/internal/api/patch_info_test.go b/backend/internal/api/patch_info_test.go
+index e95578c..8c03383 100644
+--- a/backend/internal/api/patch_info_test.go
++++ b/backend/internal/api/patch_info_test.go
+@@ -73,7 +73,7 @@ func TestPatchInfo(t *testing.T) {
+ 	if response.Data.Patch.Version != patchVersion || response.Data.Patch.Repository != patchRepository {
+ 		t.Fatalf("unexpected patch metadata: %+v", response.Data.Patch)
+ 	}
+-	if len(response.Data.Patch.Features) != 1 || response.Data.Patch.Features[0] != "patch-info-api" {
++	if len(response.Data.Patch.Features) != 2 || response.Data.Patch.Features[0] != "patch-info-api" || response.Data.Patch.Features[1] != "base-custom-names" {
+ 		t.Fatalf("unexpected features: %#v", response.Data.Patch.Features)
+ 	}
+ 	if response.Data.Build.Version != buildinfo.Version || response.Data.Build.BuildTime != buildinfo.BuildTime {
+diff --git a/backend/internal/api/routes.go b/backend/internal/api/routes.go
+index e24020f..b7fd787 100644
+--- a/backend/internal/api/routes.go
++++ b/backend/internal/api/routes.go
+@@ -238,6 +238,8 @@ func (s Server) registerWorldRoutes(api *gin.RouterGroup) {
+ 	api.GET("/guilds/:id", s.getSaveGuild)
+ 	api.GET("/bases", s.listSaveBases)
+ 	api.GET("/bases/:id", s.getSaveBase)
++	api.PUT("/bases/:id/name", Require(PermServerControl), s.putBaseCustomName)
++	api.DELETE("/bases/:id/name", Require(PermServerControl), s.deleteBaseCustomName)
+ 	api.GET("/bases/:id/storage", s.getSaveBaseStorage)
+ 	api.GET("/pals", s.listSavePals)
+ 	api.GET("/pals/:id", s.getSavePal)
+diff --git a/backend/internal/api/save_index.go b/backend/internal/api/save_index.go
+index e66dc80..5626dfc 100644
+--- a/backend/internal/api/save_index.go
++++ b/backend/internal/api/save_index.go
+@@ -205,10 +205,15 @@ func (s Server) listSaveBases(c *gin.Context) {
+ 	if err != nil && !status.Stale {
+ 		index = saveindex.EmptyIndex()
+ 	}
+-	bases := filterBases(index.Bases, c)
++	customNames, sourceID, namesErr := s.activeBaseCustomNames(c)
++	if namesErr != nil {
++		fail(c, http.StatusInternalServerError, "base_custom_names_read_failed", namesErr.Error())
++		return
++	}
++	bases := filterBases(index.Bases, customNames, c)
+ 	limit, offset := limitOffset(c)
+ 	paged, summary := paginate(bases, limit, offset)
+-	ok(c, gin.H{"bases": flattenBases(paged), "status": status, "summary": summary})
++	ok(c, gin.H{"bases": flattenBasesWithCustomNames(paged, customNames), "status": status, "summary": summary, "source_id": sourceID})
+ }
+ 
+ func (s Server) getSaveBase(c *gin.Context) {
+@@ -217,10 +222,16 @@ func (s Server) getSaveBase(c *gin.Context) {
+ 		fail(c, http.StatusServiceUnavailable, "save_index_unavailable", err.Error())
+ 		return
+ 	}
++	customNames, sourceID, namesErr := s.activeBaseCustomNames(c)
++	if namesErr != nil {
++		fail(c, http.StatusInternalServerError, "base_custom_names_read_failed", namesErr.Error())
++		return
++	}
+ 	id := c.Param("id")
+ 	for _, base := range index.Bases {
+-		if matchesID(id, base.ID, base.Name, pallocalize.BaseName(base.Name)) {
+-			ok(c, gin.H{"base": flattenBase(base), "status": status})
++		customName := customNames[base.ID]
++		if matchesID(id, base.ID, base.Name, pallocalize.BaseName(base.Name), customName) {
++			ok(c, gin.H{"base": flattenBaseWithCustomName(base, customName), "status": status, "source_id": sourceID})
+ 			return
+ 		}
+ 	}
+@@ -376,9 +387,13 @@ func onlinePlayerFor(online map[string]onlinePlayer, player saveindex.Player) on
+ }
+ 
+ func flattenBases(bases []saveindex.Base) []gin.H {
++	return flattenBasesWithCustomNames(bases, nil)
++}
++
++func flattenBasesWithCustomNames(bases []saveindex.Base, customNames map[string]string) []gin.H {
+ 	out := make([]gin.H, 0, len(bases))
+ 	for _, base := range bases {
+-		out = append(out, flattenBase(base))
++		out = append(out, flattenBaseWithCustomName(base, customNames[base.ID]))
+ 	}
+ 	return out
+ }
+@@ -1031,7 +1046,7 @@ func filterGuilds(guilds []saveindex.Guild, c *gin.Context) []saveindex.Guild {
+ 	return out
+ }
+ 
+-func filterBases(bases []saveindex.Base, c *gin.Context) []saveindex.Base {
++func filterBases(bases []saveindex.Base, customNames map[string]string, c *gin.Context) []saveindex.Base {
+ 	q := normalizeQuery(c.Query("q"))
+ 	guildID := normalizeQuery(c.Query("guild_id"))
+ 	out := make([]saveindex.Base, 0, len(bases))
+@@ -1039,7 +1054,7 @@ func filterBases(bases []saveindex.Base, c *gin.Context) []saveindex.Base {
+ 		if guildID != "" && normalizeQuery(base.GuildID) != guildID {
+ 			continue
+ 		}
+-		if q != "" && !containsAny(q, base.ID, base.Name, pallocalize.BaseName(base.Name), base.GuildName, pallocalize.GuildName(base.GuildName), base.GuildID) {
++		if q != "" && !containsAny(q, baseSearchNames(base, customNames[base.ID])...) {
+ 			continue
+ 		}
+ 		out = append(out, base)
+diff --git a/backend/internal/api/save_index_localization_test.go b/backend/internal/api/save_index_localization_test.go
+index 0d77ae8..f5357bd 100644
+--- a/backend/internal/api/save_index_localization_test.go
++++ b/backend/internal/api/save_index_localization_test.go
+@@ -278,7 +278,7 @@ func TestSaveIndexQueryHelpersAndFilters(t *testing.T) {
+ 	}
+ 	bases := []saveindex.Base{{ID: "base-1", Name: "Main", GuildID: "guild-1"}, {ID: "base-2", Name: "Other", GuildID: "guild-2"}}
+ 	context = newQueryContext("/api/bases?guild_id=guild-1&q=main")
+-	if got := filterBases(bases, context); len(got) != 1 || got[0].ID != "base-1" {
++	if got := filterBases(bases, nil, context); len(got) != 1 || got[0].ID != "base-1" {
+ 		t.Fatalf("filterBases = %#v", got)
+ 	}
+ 	pals := []saveindex.Pal{
+diff --git a/docs/openapi.yaml b/docs/openapi.yaml
+index 3ca7536..a8ca9a1 100644
+--- a/docs/openapi.yaml
++++ b/docs/openapi.yaml
+@@ -1140,6 +1140,10 @@ paths:
+   /bases/{id}:
+     parameters: [*idParameter]
+     get: {operationId: getBase, tags: [world], x-palpanel-permission: read, responses: *readResponses}
++  /bases/{id}/name:
++    parameters: [*idParameter]
++    put: {operationId: updateBaseCustomName, tags: [world], x-palpanel-permission: 'server:control', requestBody: *jsonRequest, responses: *writeResponses}
++    delete: {operationId: deleteBaseCustomName, tags: [world], x-palpanel-permission: 'server:control', responses: *writeResponses}
+   /bases/{id}/storage:
+     parameters: [*idParameter]
+     get: {operationId: getBaseStorage, tags: [world], x-palpanel-permission: read, responses: *readResponses}
+@@ -2504,7 +2508,7 @@ components:
+           type: object
+           required: [version, repository, features]
+           properties:
+-            version: {type: string, const: 0.1.0-dev.1}
++            version: {type: string, const: 0.2.0-dev.1}
+             repository: {type: string, const: ninhua/Palworld-Panel-Patches}
+             features:
+               type: array
+diff --git a/frontend/src/api/bases.test.ts b/frontend/src/api/bases.test.ts
+new file mode 100644
+index 0000000..8df2654
+--- /dev/null
++++ b/frontend/src/api/bases.test.ts
+@@ -0,0 +1,62 @@
++import { beforeEach, describe, expect, it, vi } from 'vitest';
++import { apiClient } from './client';
++import { basesApi } from './bases';
++
++describe('base custom names api', () => {
++  beforeEach(() => {
++    vi.restoreAllMocks();
++  });
++
++  it('updates a custom name and maps the returned base metadata', async () => {
++    const put = vi.spyOn(apiClient, 'put').mockResolvedValue({
++      data: {
++        ok: true,
++        data: {
++          base: {
++            id: 'base / 1',
++            name: '北境制造中心',
++            raw_name: '未命名据点',
++            custom_name: '北境制造中心',
++            has_custom_name: true,
++            guild_name: 'Guild',
++          },
++        },
++      },
++    });
++
++    const base = await basesApi.updateCustomName('base / 1', '北境制造中心');
++
++    expect(put).toHaveBeenCalledWith('/bases/base%20%2F%201/name', { name: '北境制造中心' });
++    expect(base).toMatchObject({
++      id: 'base / 1',
++      name: '北境制造中心',
++      raw_name: '未命名据点',
++      custom_name: '北境制造中心',
++      has_custom_name: true,
++    });
++  });
++
++  it('clears a custom name through the dedicated endpoint', async () => {
++    const remove = vi.spyOn(apiClient, 'delete').mockResolvedValue({
++      data: {
++        ok: true,
++        data: {
++          base: {
++            id: 'base-1',
++            name: '未命名据点',
++            raw_name: '未命名据点',
++            custom_name: '',
++            has_custom_name: false,
++          },
++          deleted: true,
++        },
++      },
++    });
++
++    const base = await basesApi.clearCustomName('base-1');
++
++    expect(remove).toHaveBeenCalledWith('/bases/base-1/name');
++    expect(base.has_custom_name).toBe(false);
++    expect(base.custom_name).toBe('');
++  });
++});
+diff --git a/frontend/src/api/bases.ts b/frontend/src/api/bases.ts
+index 37ba79f..92d6532 100644
+--- a/frontend/src/api/bases.ts
++++ b/frontend/src/api/bases.ts
+@@ -9,6 +9,9 @@ const mapBase = (raw: unknown): Base => {
+   return {
+     id: String(data.id || ''),
+     name: String(data.name || 'Unknown Base'),
++    raw_name: String(data.raw_name || ''),
++    custom_name: String(data.custom_name || ''),
++    has_custom_name: Boolean(data.has_custom_name),
+     guild_id: String(data.guild_id || ''),
+     guild_name: String(data.guild_name || data.guild || ''),
+     x: Number(data.x ?? location.x ?? 0),
+@@ -59,6 +62,32 @@ export const basesApi = {
+       quiet: true,
+     }),
+ 
++  updateCustomName: (baseId: string, name: string) =>
++    handleRequest<unknown, Base>(
++      () => apiClient.put(`/bases/${encodeURIComponent(baseId)}/name`, { name }),
++      mapBase({}),
++      {
++        fallbackOnError: false,
++        map: (raw) => {
++          const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
++          return mapBase(data.base ?? raw);
++        },
++      },
++    ),
++
++  clearCustomName: (baseId: string) =>
++    handleRequest<unknown, Base>(
++      () => apiClient.delete(`/bases/${encodeURIComponent(baseId)}/name`),
++      mapBase({}),
++      {
++        fallbackOnError: false,
++        map: (raw) => {
++          const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
++          return mapBase(data.base ?? raw);
++        },
++      },
++    ),
++
+   cleanStructures: (_baseId: string) => unsupported('当前后端未提供基地清理接口'),
+   backupBase: (_baseId: string) => unsupported('当前后端未提供单基地备份接口，请使用全服备份'),
+ };
+diff --git a/frontend/src/api/generated/contracts.ts b/frontend/src/api/generated/contracts.ts
+index 740a3e7..0da2ae1 100644
+--- a/frontend/src/api/generated/contracts.ts
++++ b/frontend/src/api/generated/contracts.ts
+@@ -772,7 +772,7 @@ export interface components {
+       "patch": {
+         "features": Array<string>;
+         "repository": "ninhua/Palworld-Panel-Patches";
+-        "version": "0.1.0-dev.1";
++        "version": "0.2.0-dev.1";
+       };
+       "upstream": {
+         "commit": string;
+diff --git a/frontend/src/pages/Bases.tsx b/frontend/src/pages/Bases.tsx
+index e098a5d..57dca6c 100644
+--- a/frontend/src/pages/Bases.tsx
++++ b/frontend/src/pages/Bases.tsx
+@@ -1,6 +1,6 @@
+ import React, { useEffect, useState } from 'react';
+ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+-import { AlertCircle, Copy, MapPin, ShieldAlert, Sparkles, Users } from 'lucide-react';
++import { AlertCircle, Copy, MapPin, Pencil, RotateCcw, ShieldAlert, Sparkles, Users } from 'lucide-react';
+ import { getErrorMessage } from '../api/client';
+ import { basesApi } from '../api/bases';
+ import { saveIndexApi } from '../api/saveIndex';
+@@ -51,6 +51,21 @@ export const Bases: React.FC = () => {
+     },
+   });
+ 
++
++  const nameMutation = useMutation({
++    mutationFn: ({ baseId, name }: { baseId: string; name: string | null }) =>
++      name === null ? basesApi.clearCustomName(baseId) : basesApi.updateCustomName(baseId, name),
++    onSuccess: (base) => {
++      setNotice(base.has_custom_name ? `基地名称已更新为：${base.name}` : '已恢复基地原名');
++      setActionError(null);
++      void queryClient.invalidateQueries({ queryKey: ['bases'] });
++    },
++    onError: (mutationError) => {
++      setNotice(null);
++      setActionError(getErrorMessage(mutationError));
++    },
++  });
++
+   const bases = basesQuery.data?.items ?? [];
+   const indexStatus = basesQuery.data?.status ?? null;
+   const summary = basesQuery.data?.summary;
+@@ -70,6 +85,25 @@ export const Bases: React.FC = () => {
+     setNotice(`已复制传送指令：${cmd}`);
+   };
+ 
++
++  const editBaseName = (base: Base) => {
++    const value = window.prompt('请输入基地自定义名称（最多 64 个字符）', base.custom_name || base.name);
++    if (value === null) return;
++    const name = value.trim();
++    if (!name) {
++      setActionError('自定义名称不能为空；需要恢复原名时请使用“恢复原名”。');
++      return;
++    }
++    if (name === base.custom_name) return;
++    nameMutation.mutate({ baseId: base.id, name });
++  };
++
++  const clearBaseName = (base: Base) => {
++    if (!base.has_custom_name) return;
++    if (!window.confirm(`确认恢复“${base.name}”的原始名称？`)) return;
++    nameMutation.mutate({ baseId: base.id, name: null });
++  };
++
+   const headers = [
+     { key: 'name', label: '基地 / 公会' },
+     { key: 'coordinates', label: '世界坐标' },
+@@ -137,6 +171,8 @@ export const Bases: React.FC = () => {
+                 key={base.id}
+                 base={base}
+                 onCopy={() => copyCoords(base)}
++                onRename={() => editBaseName(base)}
++                onResetName={() => clearBaseName(base)}
+                 onClean={() => unsupported(basesApi.cleanStructures(base.id))}
+                 onBackup={() => unsupported(basesApi.backupBase(base.id))}
+               />
+@@ -146,6 +182,9 @@ export const Bases: React.FC = () => {
+                 <td className="px-6 py-4">
+                   <div className="min-w-0">
+                     <p className="truncate text-xs font-bold text-slate-700">{base.name}</p>
++                    {base.has_custom_name && base.raw_name ? (
++                      <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-400">原名：{base.raw_name}</p>
++                    ) : null}
+                     <p className="mt-0.5 text-[10px] font-semibold text-slate-400">{base.guild_name}</p>
+                   </div>
+                 </td>
+@@ -175,6 +214,14 @@ export const Bases: React.FC = () => {
+                     <button type="button" onClick={() => copyCoords(base)} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50" aria-label="复制坐标">
+                       <Copy size={14} />
+                     </button>
++                    <button type="button" onClick={() => editBaseName(base)} disabled={nameMutation.isPending} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 disabled:opacity-50" aria-label="编辑基地名称">
++                      <Pencil size={14} />
++                    </button>
++                    {base.has_custom_name ? (
++                      <button type="button" onClick={() => clearBaseName(base)} disabled={nameMutation.isPending} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 disabled:opacity-50" aria-label="恢复基地原名">
++                        <RotateCcw size={14} />
++                      </button>
++                    ) : null}
+                     <button type="button" onClick={() => unsupported(basesApi.cleanStructures(base.id))} className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-bold text-slate-500 hover:bg-slate-50">
+                       清理
+                     </button>
+@@ -206,16 +253,21 @@ const Summary: React.FC<{ icon: React.ReactNode; label: string; value: string; d
+   </div>
+ );
+ 
+-const BaseCard: React.FC<{ base: Base; onCopy: () => void; onClean: () => void; onBackup: () => void }> = ({
+-  base,
+-  onCopy,
+-  onClean,
+-  onBackup,
+-}) => (
++const BaseCard: React.FC<{
++  base: Base;
++  onCopy: () => void;
++  onRename: () => void;
++  onResetName: () => void;
++  onClean: () => void;
++  onBackup: () => void;
++}> = ({ base, onCopy, onRename, onResetName, onClean, onBackup }) => (
+   <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+     <div className="flex items-start justify-between gap-3">
+       <div className="min-w-0">
+         <p className="truncate text-sm font-bold text-slate-800">{base.name}</p>
++        {base.has_custom_name && base.raw_name ? (
++          <p className="mt-1 truncate text-[10px] font-semibold text-slate-400">原名：{base.raw_name}</p>
++        ) : null}
+         <p className="mt-1 truncate text-[11px] font-semibold text-slate-400">{base.guild_name}</p>
+       </div>
+       <StatusBadge status={base.status} />
+@@ -228,10 +280,19 @@ const BaseCard: React.FC<{ base: Base; onCopy: () => void; onClean: () => void;
+       </span>
+       <span className="col-span-2 truncate">在线成员: {base.online_members.join(', ') || '无'}</span>
+     </div>
+-    <div className="mt-4 grid grid-cols-3 gap-2">
+-      <button type="button" onClick={onCopy} className="rounded-xl border border-slate-200 py-2 text-xs font-bold text-slate-600">
+-        复制
++    <div className="mt-4 grid grid-cols-2 gap-2">
++      <button type="button" onClick={onRename} className="rounded-xl border border-sky-200 bg-sky-50 py-2 text-xs font-bold text-sky-700">
++        编辑名称
+       </button>
++      {base.has_custom_name ? (
++        <button type="button" onClick={onResetName} className="rounded-xl border border-slate-200 py-2 text-xs font-bold text-slate-600">
++          恢复原名
++        </button>
++      ) : (
++        <button type="button" onClick={onCopy} className="rounded-xl border border-slate-200 py-2 text-xs font-bold text-slate-600">
++          复制坐标
++        </button>
++      )}
+       <button type="button" onClick={onClean} className="rounded-xl border border-slate-200 py-2 text-xs font-bold text-slate-600">
+         清理
+       </button>
+diff --git a/frontend/src/types/index.ts b/frontend/src/types/index.ts
+index 1561f34..67c1f69 100644
+--- a/frontend/src/types/index.ts
++++ b/frontend/src/types/index.ts
+@@ -944,6 +944,9 @@ export interface Pal {
+ export interface Base {
+   id: string;
+   name: string;
++  raw_name?: string;
++  custom_name?: string;
++  has_custom_name?: boolean;
+   guild_id?: string;
+   guild_name: string;
+   x: number;
