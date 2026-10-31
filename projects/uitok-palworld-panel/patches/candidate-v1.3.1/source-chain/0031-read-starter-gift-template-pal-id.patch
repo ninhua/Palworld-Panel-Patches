@@ -1,0 +1,377 @@
+diff --git a/backend/internal/api/starter_gift.go b/backend/internal/api/starter_gift.go
+index 07159b4..6499df3 100644
+--- a/backend/internal/api/starter_gift.go
++++ b/backend/internal/api/starter_gift.go
+@@ -1,8 +1,14 @@
+ package api
+ 
+ import (
++	"encoding/json"
++	"fmt"
++	"io"
+ 	"net/http"
++	"os"
++	"path/filepath"
+ 	"strings"
++	"time"
+ 
+ 	"github.com/gin-gonic/gin"
+ 
+@@ -15,6 +21,109 @@ func init() {
+ 	patchFeatures = append(patchFeatures, "new-player-starter-gift")
+ }
+ 
++const maxStarterGiftTemplateJSONBytes int64 = 1 << 20
++
++type starterGiftTemplateInfo struct {
++	Name       string `json:"name"`
++	PalID      string `json:"pal_id,omitempty"`
++	PalName    string `json:"pal_name,omitempty"`
++	Nickname   string `json:"nickname,omitempty"`
++	Level      int    `json:"level,omitempty"`
++	ModifiedAt string `json:"modified_at,omitempty"`
++	Size       int64  `json:"size,omitempty"`
++	ParseError string `json:"parse_error,omitempty"`
++}
++
++type starterGiftTemplateDocument struct {
++	PalID    string `json:"PalID"`
++	Nickname string `json:"Nickname"`
++	Level    int    `json:"Level"`
++}
++
++func starterGiftTemplateCatalog(serverDir string, names []string) []starterGiftTemplateInfo {
++	items := make([]starterGiftTemplateInfo, 0, len(names))
++	for _, name := range names {
++		items = append(items, readStarterGiftTemplateInfo(serverDir, name))
++	}
++	return items
++}
++
++func readStarterGiftTemplateInfo(serverDir, name string) starterGiftTemplateInfo {
++	name = strings.TrimSpace(name)
++	result := starterGiftTemplateInfo{Name: name}
++	fileName, err := starterGiftTemplateFileName(name)
++	if err != nil {
++		result.ParseError = err.Error()
++		return result
++	}
++	templateDir := filepath.Join(serverDir, "Pal", "Binaries", "Win64", "PalDefender", "Pals", "Templates")
++	path := filepath.Join(templateDir, fileName)
++	info, err := os.Lstat(path)
++	if err != nil {
++		result.ParseError = "template file is unavailable"
++		return result
++	}
++	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
++		result.ParseError = "template path is not a regular file"
++		return result
++	}
++	result.ModifiedAt = info.ModTime().UTC().Format(time.RFC3339)
++	result.Size = info.Size()
++	if info.Size() > maxStarterGiftTemplateJSONBytes {
++		result.ParseError = fmt.Sprintf("template JSON exceeds %d bytes", maxStarterGiftTemplateJSONBytes)
++		return result
++	}
++	file, err := os.Open(path)
++	if err != nil {
++		result.ParseError = "template file cannot be opened"
++		return result
++	}
++	defer file.Close()
++	raw, err := io.ReadAll(io.LimitReader(file, maxStarterGiftTemplateJSONBytes+1))
++	if err != nil {
++		result.ParseError = "template JSON cannot be read"
++		return result
++	}
++	if int64(len(raw)) > maxStarterGiftTemplateJSONBytes {
++		result.ParseError = fmt.Sprintf("template JSON exceeds %d bytes", maxStarterGiftTemplateJSONBytes)
++		return result
++	}
++	var document starterGiftTemplateDocument
++	if err := json.Unmarshal(raw, &document); err != nil {
++		result.ParseError = "invalid template JSON: " + err.Error()
++		return result
++	}
++	result.PalID = strings.TrimSpace(document.PalID)
++	result.Nickname = strings.TrimSpace(document.Nickname)
++	result.Level = document.Level
++	if result.PalID == "" {
++		result.ParseError = "template JSON does not contain PalID"
++		return result
++	}
++	result.PalName = strings.TrimSpace(pallocalize.PalName(result.PalID))
++	if result.PalName == "" {
++		result.PalName = result.PalID
++	}
++	return result
++}
++
++func starterGiftTemplateFileName(name string) (string, error) {
++	if name == "" {
++		return "", fmt.Errorf("template name is empty")
++	}
++	if filepath.Base(name) != name || strings.ContainsAny(name, `/\\`) {
++		return "", fmt.Errorf("template name is invalid")
++	}
++	fileName := name
++	if filepath.Ext(fileName) == "" {
++		fileName += ".json"
++	}
++	if !strings.EqualFold(filepath.Ext(fileName), ".json") {
++		return "", fmt.Errorf("template file must use the .json extension")
++	}
++	return fileName, nil
++}
++
+ func (s Server) currentStarterGiftScope() (playerpresence.Scope, error) {
+ 	return playerpresence.ResolveServerScope(s.cfg.ServerDirectory())
+ }
+@@ -141,11 +250,15 @@ func (s Server) forgetStarterGift(c *gin.Context) {
+ 
+ func (s Server) starterGiftResponse(snapshot startergift.Snapshot) gin.H {
+ 	templates, templateErr := s.defender.ListPalTemplates()
++	templateNames := make([]string, 0, len(templates))
++	for _, template := range templates {
++		templateNames = append(templateNames, template.Name)
++	}
+ 	response := gin.H{
+ 		"scope":        snapshot.Scope,
+ 		"config":       snapshot.Config,
+ 		"grants":       snapshot.Grants,
+-		"templates":    templates,
++		"templates":    starterGiftTemplateCatalog(s.cfg.ServerDirectory(), templateNames),
+ 		"item_catalog": pallocalize.SearchItems("", 5000),
+ 	}
+ 	if templateErr != nil {
+diff --git a/backend/internal/api/starter_gift_template_test.go b/backend/internal/api/starter_gift_template_test.go
+new file mode 100644
+index 0000000..58f53f8
+--- /dev/null
++++ b/backend/internal/api/starter_gift_template_test.go
+@@ -0,0 +1,64 @@
++package api
++
++import (
++	"os"
++	"path/filepath"
++	"strings"
++	"testing"
++)
++
++func TestReadStarterGiftTemplateInfoUsesJSONPalID(t *testing.T) {
++	serverDir := t.TempDir()
++	templateDir := filepath.Join(serverDir, "Pal", "Binaries", "Win64", "PalDefender", "Pals", "Templates")
++	if err := os.MkdirAll(templateDir, 0o755); err != nil {
++		t.Fatal(err)
++	}
++	path := filepath.Join(templateDir, "BATTLE_MisleadingFilename.json")
++	if err := os.WriteFile(path, []byte(`{"PalID":"WeaselDragon","Nickname":"Starter Chillet","Level":12}`), 0o644); err != nil {
++		t.Fatal(err)
++	}
++
++	info := readStarterGiftTemplateInfo(serverDir, "BATTLE_MisleadingFilename.json")
++	if info.PalID != "WeaselDragon" {
++		t.Fatalf("PalID = %q, want WeaselDragon", info.PalID)
++	}
++	if info.PalName == "" {
++		t.Fatal("localized Pal name is empty")
++	}
++	if info.Nickname != "Starter Chillet" || info.Level != 12 {
++		t.Fatalf("template metadata = %#v", info)
++	}
++	if info.ParseError != "" {
++		t.Fatalf("unexpected parse error: %s", info.ParseError)
++	}
++}
++
++func TestReadStarterGiftTemplateInfoReportsMissingPalID(t *testing.T) {
++	serverDir := t.TempDir()
++	templateDir := filepath.Join(serverDir, "Pal", "Binaries", "Win64", "PalDefender", "Pals", "Templates")
++	if err := os.MkdirAll(templateDir, 0o755); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(filepath.Join(templateDir, "missing.json"), []byte(`{"Level":5}`), 0o644); err != nil {
++		t.Fatal(err)
++	}
++
++	info := readStarterGiftTemplateInfo(serverDir, "missing.json")
++	if !strings.Contains(info.ParseError, "PalID") {
++		t.Fatalf("parse error = %q", info.ParseError)
++	}
++	if info.PalID != "" || info.PalName != "" {
++		t.Fatalf("unexpected Pal metadata: %#v", info)
++	}
++}
++
++func TestStarterGiftTemplateFileNameRejectsTraversal(t *testing.T) {
++	for _, name := range []string{"../Anubis.json", `folder\\Anubis.json`, "Anubis.txt"} {
++		if _, err := starterGiftTemplateFileName(name); err == nil {
++			t.Fatalf("starterGiftTemplateFileName(%q) unexpectedly succeeded", name)
++		}
++	}
++	if got, err := starterGiftTemplateFileName("Anubis"); err != nil || got != "Anubis.json" {
++		t.Fatalf("starterGiftTemplateFileName(Anubis) = %q, %v", got, err)
++	}
++}
+diff --git a/frontend/src/api/starterGift.ts b/frontend/src/api/starterGift.ts
+index c50c0a5..6155949 100644
+--- a/frontend/src/api/starterGift.ts
++++ b/frontend/src/api/starterGift.ts
+@@ -26,7 +26,16 @@ export interface StarterGiftGrant {
+   completed_at?: string;
+   last_error?: string;
+ }
+-export interface PalTemplateInfo { name: string; modified_at?: string; size?: number }
++export interface PalTemplateInfo {
++  name: string;
++  pal_id?: string;
++  pal_name?: string;
++  nickname?: string;
++  level?: number;
++  modified_at?: string;
++  size?: number;
++  parse_error?: string;
++}
+ export interface StarterGiftScope { id: string; world_id: string; world_path?: string }
+ export interface StarterGiftSnapshot {
+   scope: StarterGiftScope;
+@@ -90,8 +99,13 @@ const mapSnapshot = (raw: unknown): StarterGiftSnapshot => {
+       const template = (rawTemplate && typeof rawTemplate === 'object' ? rawTemplate : {}) as Record<string, unknown>;
+       return {
+         name: String(template.name || ''),
++        pal_id: template.pal_id ? String(template.pal_id) : undefined,
++        pal_name: template.pal_name ? String(template.pal_name) : undefined,
++        nickname: template.nickname ? String(template.nickname) : undefined,
++        level: template.level == null ? undefined : Number(template.level),
+         modified_at: template.modified_at ? String(template.modified_at) : undefined,
+         size: template.size == null ? undefined : Number(template.size),
++        parse_error: template.parse_error ? String(template.parse_error) : undefined,
+       };
+     }).filter((template) => template.name),
+     item_catalog: (Array.isArray(data.item_catalog) ? data.item_catalog : []).map((rawItem) => {
+diff --git a/frontend/src/pages/StarterGift.tsx b/frontend/src/pages/StarterGift.tsx
+index ecc55cc..3a11319 100644
+--- a/frontend/src/pages/StarterGift.tsx
++++ b/frontend/src/pages/StarterGift.tsx
+@@ -7,6 +7,7 @@ import {
+ import { getErrorMessage } from '../api/client';
+ import {
+   starterGiftApi,
++  type PalTemplateInfo,
+   type StarterGiftCatalogItem,
+   type StarterGiftConfig,
+   type StarterGiftSnapshot,
+@@ -86,13 +87,11 @@ const statusClass = (status: string) => ({
+   failed: 'border-rose-200 bg-rose-50 text-rose-700',
+ }[status] || 'border-slate-200 bg-slate-50 text-slate-600');
+ 
+-const templatePalID = (filename: string) => filename
+-  .replace(/\.json$/i, '')
+-  .replace(/^(?:battle|starter|gift|pal)[_-]+/i, '')
+-  .replace(/^[_-]+/, '')
+-  .trim();
++const templateDisplayName = (template: PalTemplateInfo) =>
++  template.pal_name?.trim() || template.pal_id?.trim() || '未知帕鲁';
+ 
+-const templateDisplayName = (filename: string) => templatePalID(filename).replace(/[_-]+/g, ' ') || filename;
++const templateSearchText = (template: PalTemplateInfo) =>
++  `${template.pal_name || ''} ${template.pal_id || ''} ${template.nickname || ''} ${template.name}`.toLowerCase();
+ 
+ const ItemIcon: React.FC<{ item: StarterGiftCatalogItem; className?: string }> = ({ item, className = '' }) => {
+   const source = item.icon ? `/assets/items/${encodeURIComponent(item.icon)}.webp` : '';
+@@ -146,7 +145,6 @@ export const StarterGift: React.FC = () => {
+ 
+   useEffect(() => { void load(); }, []);
+ 
+-  const itemByID = useMemo(() => new Map((snapshot?.item_catalog || []).map((item) => [item.id, item])), [snapshot]);
+   const selectedItemIDs = useMemo(() => new Set(config.items.map((item) => item.item_id)), [config.items]);
+   const categoryCounts = useMemo(() => {
+     const counts = new Map<ItemCategory, number>([['all', snapshot?.item_catalog.length || 0]]);
+@@ -165,17 +163,20 @@ export const StarterGift: React.FC = () => {
+       .sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'));
+   }, [snapshot, itemCategory, itemSearch, onlySelectedItems, selectedItemIDs]);
+ 
+-  const templateNames = useMemo(() => (snapshot?.templates || []).map((item) => item.name).filter(Boolean), [snapshot]);
++  const templates = useMemo(() => (snapshot?.templates || []).filter((item) => item.name), [snapshot]);
+   const selectedTemplates = useMemo(() => new Set(config.pal_templates), [config.pal_templates]);
+   const visibleTemplates = useMemo(() => {
+     const query = templateSearch.trim().toLowerCase();
+-    return templateNames
+-      .filter((name) => {
+-        if (onlySelectedTemplates && !selectedTemplates.has(name)) return false;
+-        return !query || `${name} ${templateDisplayName(name)}`.toLowerCase().includes(query);
++    return templates
++      .filter((template) => {
++        if (onlySelectedTemplates && !selectedTemplates.has(template.name)) return false;
++        return !query || templateSearchText(template).includes(query);
+       })
+-      .sort((left, right) => templateDisplayName(left).localeCompare(templateDisplayName(right), 'zh-CN'));
+-  }, [templateNames, templateSearch, onlySelectedTemplates, selectedTemplates]);
++      .sort((left, right) => {
++        const byPal = templateDisplayName(left).localeCompare(templateDisplayName(right), 'zh-CN');
++        return byPal || left.name.localeCompare(right.name, 'zh-CN');
++      });
++  }, [templates, templateSearch, onlySelectedTemplates, selectedTemplates]);
+ 
+   const grantCounts = useMemo(() => {
+     const grants = snapshot?.grants || [];
+@@ -216,9 +217,10 @@ export const StarterGift: React.FC = () => {
+   };
+ 
+   const setVisibleTemplatesSelected = (selected: boolean) => {
+-    const visible = new Set(visibleTemplates);
++    const visibleNames = visibleTemplates.map((template) => template.name);
++    const visible = new Set(visibleNames);
+     setConfig((current) => selected
+-      ? { ...current, pal_templates: Array.from(new Set([...current.pal_templates, ...visibleTemplates])) }
++      ? { ...current, pal_templates: Array.from(new Set([...current.pal_templates, ...visibleNames])) }
+       : { ...current, pal_templates: current.pal_templates.filter((name) => !visible.has(name)) });
+   };
+ 
+@@ -361,14 +363,22 @@ export const StarterGift: React.FC = () => {
+             </div>
+           </div>
+           <div className="mt-4 grid max-h-[42rem] gap-2 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50/50 p-2 md:grid-cols-2 2xl:grid-cols-3" role="listbox" aria-label="帕鲁模板" aria-multiselectable="true">
+-            {visibleTemplates.map((name) => {
+-              const checked = selectedTemplates.has(name);
+-              const palID = templatePalID(name);
+-              const displayName = templateDisplayName(name);
+-              return <button type="button" role="option" aria-selected={checked} key={name} className={`flex min-w-0 items-center gap-3 rounded-2xl border p-3 text-left ${checked ? 'border-violet-300 bg-violet-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`} onClick={() => setConfig((current) => ({ ...current, pal_templates: checked ? current.pal_templates.filter((item) => item !== name) : [...current.pal_templates, name] }))}>
++            {visibleTemplates.map((template) => {
++              const checked = selectedTemplates.has(template.name);
++              const displayName = templateDisplayName(template);
++              return <button type="button" role="option" aria-selected={checked} key={template.name} className={`flex min-w-0 items-center gap-3 rounded-2xl border p-3 text-left ${checked ? 'border-violet-300 bg-violet-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`} onClick={() => setConfig((current) => ({ ...current, pal_templates: checked ? current.pal_templates.filter((item) => item !== template.name) : [...current.pal_templates, template.name] }))}>
+                 {checked ? <CheckSquare className="shrink-0 text-violet-600" size={18} /> : <Square className="shrink-0 text-slate-400" size={18} />}
+-                <PalIcon characterID={palID} name={displayName} className="h-14 w-14 rounded-xl border border-slate-200" />
+-                <span className="min-w-0"><strong className="block truncate text-sm font-black text-slate-800">{displayName}</strong><span className="mt-1 block truncate font-mono text-[10px] text-slate-400">{name}</span><span className="mt-1 inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-700">PalDefender 模板</span></span>
++                <PalIcon characterID={template.pal_id || ''} name={displayName} className="h-14 w-14 rounded-xl border border-slate-200" />
++                <span className="min-w-0">
++                  <strong className="block truncate text-sm font-black text-slate-800">{displayName}</strong>
++                  <span className="mt-1 block truncate font-mono text-[10px] text-slate-400">{template.pal_id || 'PalID 未读取'} · {template.name}</span>
++                  <span className="mt-1 flex flex-wrap gap-1.5">
++                    <span className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-700">PalDefender 模板</span>
++                    {template.level != null && template.level > 0 && <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">Lv.{template.level}</span>}
++                    {template.nickname && <span className="inline-flex max-w-36 truncate rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">{template.nickname}</span>}
++                    {template.parse_error && <span className="inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700" title={template.parse_error}>模板解析失败</span>}
++                  </span>
++                </span>
+               </button>;
+             })}
+             {visibleTemplates.length === 0 && <div className="col-span-full flex min-h-56 flex-col items-center justify-center gap-2 p-8 text-center text-slate-400"><Sparkles size={30} /><strong className="text-sm text-slate-600">没有匹配模板</strong><span className="text-xs">检查 PalDefender 模板目录或调整搜索条件</span></div>}
+diff --git a/docs/openapi.yaml b/docs/openapi.yaml
+--- a/docs/openapi.yaml
++++ b/docs/openapi.yaml
+@@ -1650,7 +1650,12 @@ components:
+       additionalProperties: true
+       properties:
+         name: {type: string}
++        pal_id: {type: string}
++        pal_name: {type: string}
++        nickname: {type: string}
++        level: {type: integer, minimum: 1}
+         modified_at: {type: string, format: date-time}
+         size: {type: integer, format: int64, minimum: 0}
++        parse_error: {type: string}
+     StarterGiftSnapshot:
+       type: object
