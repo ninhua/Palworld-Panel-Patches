@@ -1,0 +1,173 @@
+diff --git a/backend/internal/api/base_workers.go b/backend/internal/api/base_workers.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..2472d14e6527e02f8248ecb2ac3d6db14b862ba5
+--- /dev/null
++++ b/backend/internal/api/base_workers.go
+@@ -0,0 +1,113 @@
++package api
++
++import (
++	"net/http"
++	"strings"
++
++	"github.com/gin-gonic/gin"
++
++	"palpanel/internal/pallocalize"
++	"palpanel/internal/saveindex"
++)
++
++func (s Server) getSaveBaseWorkers(c *gin.Context) {
++	index, status, err := s.currentSaveIndex(c)
++	if err != nil && !status.Stale && status.State != "disabled" {
++		fail(c, http.StatusServiceUnavailable, "save_index_unavailable", err.Error())
++		return
++	}
++	customNames, sourceID, namesErr := s.activeBaseCustomNames(c)
++	if namesErr != nil {
++		fail(c, http.StatusInternalServerError, "base_custom_names_read_failed", namesErr.Error())
++		return
++	}
++
++	id := c.Param("id")
++	for _, base := range index.Bases {
++		customName := customNames[base.ID]
++		if !matchesID(id, base.ID, base.Name, pallocalize.BaseName(base.Name), customName) {
++			continue
++		}
++		workers := baseWorkerViews(base, index.Pals)
++		ok(c, gin.H{
++			"base":      flattenBaseWithCustomName(base, customName),
++			"workers":   workers,
++			"summary":   baseWorkerSummary(workers),
++			"status":    status,
++			"source_id": sourceID,
++		})
++		return
++	}
++	fail(c, http.StatusNotFound, "base_not_found", "base not found")
++}
++
++func baseWorkerViews(base saveindex.Base, pals []saveindex.Pal) []gin.H {
++	palByInstance := make(map[string]saveindex.Pal, len(pals))
++	for _, pal := range pals {
++		palByInstance[normalizeQuery(pal.InstanceID)] = pal
++	}
++
++	out := make([]gin.H, 0, len(base.Workers))
++	for _, worker := range base.Workers {
++		pal := palByInstance[normalizeQuery(worker.InstanceID)]
++		characterID := firstNonEmpty(worker.CharacterID, pal.CharacterID)
++		speciesName := pallocalize.PalName(characterID)
++		level := worker.Level
++		if level == 0 {
++			level = pal.Level
++		}
++		nickname := firstNonEmpty(worker.Nickname, pal.Nickname)
++		out = append(out, gin.H{
++			"instance_id":   worker.InstanceID,
++			"character_id":  characterID,
++			"species_name":  speciesName,
++			"name":          firstNonEmpty(nickname, speciesName, characterID, worker.InstanceID),
++			"nickname":      nickname,
++			"level":         level,
++			"gender":        pal.Gender,
++			"rank":          pal.Rank,
++			"status":        firstNonEmpty(pal.Status, "Unknown"),
++			"location_type": pal.LocationType,
++			"passives":      localizeStrings(pal.Passives, pallocalize.PassiveName),
++			"raw_passives":  append([]string(nil), pal.Passives...),
++			"on_expedition": pal.OnExpedition,
++		})
++	}
++	return out
++}
++
++func baseWorkerSummary(workers []gin.H) gin.H {
++	maxLevel := 0
++	totalLevel := 0
++	namedCount := 0
++	species := make(map[string]struct{})
++	for _, worker := range workers {
++		level, _ := worker["level"].(int)
++		totalLevel += level
++		if level > maxLevel {
++			maxLevel = level
++		}
++		if strings.TrimSpace(asString(worker["nickname"])) != "" {
++			namedCount++
++		}
++		if characterID := strings.TrimSpace(asString(worker["character_id"])); characterID != "" {
++			species[normalizeQuery(characterID)] = struct{}{}
++		}
++	}
++	averageLevel := 0.0
++	if len(workers) > 0 {
++		averageLevel = float64(totalLevel) / float64(len(workers))
++	}
++	return gin.H{
++		"total":         len(workers),
++		"average_level": averageLevel,
++		"max_level":     maxLevel,
++		"named_count":   namedCount,
++		"species_count": len(species),
++	}
++}
++
++func asString(value any) string {
++	text, _ := value.(string)
++	return text
++}
+diff --git a/backend/internal/api/base_workers_test.go b/backend/internal/api/base_workers_test.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..305a3c1ae1e48c2019af028ea6a4f0119acfcb34
+--- /dev/null
++++ b/backend/internal/api/base_workers_test.go
+@@ -0,0 +1,48 @@
++package api
++
++import (
++	"testing"
++
++	"github.com/gin-gonic/gin"
++
++	"palpanel/internal/saveindex"
++)
++
++func TestBaseWorkerViewsMergeIndexedPalDetails(t *testing.T) {
++	base := saveindex.Base{Workers: []saveindex.Worker{
++		{InstanceID: "worker-1", CharacterID: "Anubis", Nickname: "矿工", Level: 0},
++		{InstanceID: "worker-2", CharacterID: "PinkCat", Level: 12},
++	}}
++	pals := []saveindex.Pal{
++		{InstanceID: "worker-1", CharacterID: "Anubis", Level: 50, Gender: "male", Rank: 4, Passives: []string{"Workaholic"}, Status: "Working"},
++		{InstanceID: "other", CharacterID: "Ganesha", Level: 30},
++	}
++
++	views := baseWorkerViews(base, pals)
++	if len(views) != 2 {
++		t.Fatalf("workers = %d, want 2", len(views))
++	}
++	if views[0]["level"] != 50 || views[0]["gender"] != "male" || views[0]["rank"] != 4 {
++		t.Fatalf("indexed details were not merged: %#v", views[0])
++	}
++	if views[0]["name"] != "矿工" || views[0]["status"] != "Working" {
++		t.Fatalf("unexpected localized worker view: %#v", views[0])
++	}
++	if views[1]["level"] != 12 || views[1]["status"] != "Unknown" {
++		t.Fatalf("worker fallback changed: %#v", views[1])
++	}
++}
++
++func TestBaseWorkerSummary(t *testing.T) {
++	summary := baseWorkerSummary([]gin.H{
++		{"level": 50, "nickname": "矿工", "character_id": "Anubis"},
++		{"level": 10, "nickname": "", "character_id": "Anubis"},
++		{"level": 30, "nickname": "伐木", "character_id": "PinkCat"},
++	})
++	if summary["total"] != 3 || summary["max_level"] != 50 || summary["named_count"] != 2 || summary["species_count"] != 2 {
++		t.Fatalf("unexpected summary: %#v", summary)
++	}
++	if summary["average_level"] != 30.0 {
++		t.Fatalf("average_level = %#v, want 30", summary["average_level"])
++	}
++}
