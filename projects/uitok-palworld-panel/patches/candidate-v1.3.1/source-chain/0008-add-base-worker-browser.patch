@@ -1,0 +1,626 @@
+diff --git a/backend/internal/api/patch_info.go b/backend/internal/api/patch_info.go
+index d2f15d2..f2c2edc 100644
+--- a/backend/internal/api/patch_info.go
++++ b/backend/internal/api/patch_info.go
+@@ -10,11 +10,11 @@ const (
+ 	patchSourceRepository = "uitok/palworld-panel"
+ 	patchSourceRef        = "dev"
+ 	patchTargetVersion    = "v1.2.2"
+-	patchVersion          = "0.5.0-dev.1"
++	patchVersion          = "0.6.0-dev.1"
+ 	patchRepository       = "ninhua/Palworld-Panel-Patches"
+ )
+ 
+-var patchFeatures = []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser"}
++var patchFeatures = []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser"}
+ 
+ func (s Server) patchInfo(c *gin.Context) {
+ 	info := buildinfo.Current()
+diff --git a/backend/internal/api/patch_info_test.go b/backend/internal/api/patch_info_test.go
+index 83a55aa..a86f5d7 100644
+--- a/backend/internal/api/patch_info_test.go
++++ b/backend/internal/api/patch_info_test.go
+@@ -77,7 +77,7 @@ func TestPatchInfo(t *testing.T) {
+ 	for _, feature := range response.Data.Patch.Features {
+ 		features[feature] = true
+ 	}
+-	for _, expected := range []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser"} {
++	for _, expected := range []string{"patch-info-api", "base-custom-names", "base-storage-browser", "player-notes", "guild-detail-browser", "base-worker-browser"} {
+ 		if !features[expected] {
+ 			t.Fatalf("missing feature %q in %#v", expected, response.Data.Patch.Features)
+ 		}
+diff --git a/backend/internal/api/router_contract_test.go b/backend/internal/api/router_contract_test.go
+index 8e806f2..a6ca2c6 100644
+--- a/backend/internal/api/router_contract_test.go
++++ b/backend/internal/api/router_contract_test.go
+@@ -164,6 +164,7 @@ func TestNewContractRoutes(t *testing.T) {
+ 		"GET /api/bases",
+ 		"GET /api/bases/:id",
+ 		"GET /api/bases/:id/storage",
++		"GET /api/bases/:id/workers",
+ 		"GET /api/pals",
+ 		"GET /api/pals/:id",
+ 		"GET /api/map/entities",
+diff --git a/backend/internal/api/routes.go b/backend/internal/api/routes.go
+index ef85b96..a232958 100644
+--- a/backend/internal/api/routes.go
++++ b/backend/internal/api/routes.go
+@@ -241,6 +241,7 @@ func (s Server) registerWorldRoutes(api *gin.RouterGroup) {
+ 	api.PUT("/bases/:id/name", Require(PermServerControl), s.putBaseCustomName)
+ 	api.DELETE("/bases/:id/name", Require(PermServerControl), s.deleteBaseCustomName)
+ 	api.GET("/bases/:id/storage", s.getSaveBaseStorage)
++	api.GET("/bases/:id/workers", s.getSaveBaseWorkers)
+ 	api.GET("/pals", s.listSavePals)
+ 	api.GET("/pals/:id", s.getSavePal)
+ 	api.GET("/map/entities", s.listMapEntities)
+diff --git a/docs/openapi.yaml b/docs/openapi.yaml
+index cd14f17..550d630 100644
+--- a/docs/openapi.yaml
++++ b/docs/openapi.yaml
+@@ -1165,6 +1165,9 @@ paths:
+   /bases/{id}/storage:
+     parameters: [*idParameter]
+     get: {operationId: getBaseStorage, tags: [world], x-palpanel-permission: read, responses: *readResponses}
++  /bases/{id}/workers:
++    parameters: [*idParameter]
++    get: {operationId: getBaseWorkers, tags: [world], x-palpanel-permission: read, responses: *readResponses}
+   /pals:
+     get: {operationId: listPals, tags: [world], x-palpanel-permission: read, responses: *readResponses}
+   /pals/{id}:
+@@ -1293,6 +1296,61 @@ components:
+         container_type: {type: string}
+         container_name: {type: string}
+         slots: {type: array, items: {$ref: '#/components/schemas/SaveInventorySlot'}}
++    BaseWorkerBase:
++      type: object
++      required: [id, name, raw_name, custom_name, has_custom_name, guild_id, guild_name, x, y, z]
++      properties:
++        id: {type: string}
++        name: {type: string}
++        raw_name: {type: string}
++        custom_name: {type: string}
++        has_custom_name: {type: boolean}
++        guild_id: {type: string}
++        guild_name: {type: string}
++        x: {type: number}
++        y: {type: number}
++        z: {type: number}
++    BaseWorkerDetail:
++      type: object
++      required: [instance_id, character_id, species_name, name, nickname, level, gender, rank, status, location_type, passives, raw_passives, on_expedition]
++      properties:
++        instance_id: {type: string}
++        character_id: {type: string}
++        species_name: {type: string}
++        name: {type: string}
++        nickname: {type: string}
++        level: {type: integer, minimum: 0}
++        gender: {type: string}
++        rank: {type: integer, minimum: 0}
++        status: {type: string}
++        location_type: {type: string}
++        passives: {type: array, items: {type: string}}
++        raw_passives: {type: array, items: {type: string}}
++        on_expedition: {type: boolean}
++    BaseWorkerSummary:
++      type: object
++      required: [total, average_level, max_level, named_count, species_count]
++      properties:
++        total: {type: integer, minimum: 0}
++        average_level: {type: number, minimum: 0}
++        max_level: {type: integer, minimum: 0}
++        named_count: {type: integer, minimum: 0}
++        species_count: {type: integer, minimum: 0}
++    BaseWorkersResult:
++      type: object
++      required: [base, workers, summary, status, source_id]
++      properties:
++        base: {$ref: '#/components/schemas/BaseWorkerBase'}
++        workers: {type: array, items: {$ref: '#/components/schemas/BaseWorkerDetail'}}
++        summary: {$ref: '#/components/schemas/BaseWorkerSummary'}
++        status: {$ref: '#/components/schemas/SaveIndexStatus'}
++        source_id: {type: string}
++    BaseWorkersEnvelope:
++      type: object
++      required: [ok, data]
++      properties:
++        ok: {type: boolean, const: true}
++        data: {$ref: '#/components/schemas/BaseWorkersResult'}
+     GuildMemberSummary:
+       type: object
+       required: [player_uid, nickname]
+diff --git a/frontend/src/api/bases.test.ts b/frontend/src/api/bases.test.ts
+index 68e05f9..25bd4b1 100644
+--- a/frontend/src/api/bases.test.ts
++++ b/frontend/src/api/bases.test.ts
+@@ -107,4 +107,42 @@ describe('base feature api', () => {
+     });
+     expect(storage.status.state).toBe('ready');
+   });
++  it('loads and maps base workers with indexed pal details', async () => {
++    const get = vi.spyOn(apiClient, 'get').mockResolvedValue({
++      data: {
++        ok: true,
++        data: {
++          base: { id: 'base-1', name: '北境制造中心', guild_name: 'Guild' },
++          workers: [
++            {
++              instance_id: 'pal-1',
++              character_id: 'Anubis',
++              species_name: '阿努比斯',
++              name: '矿工',
++              nickname: '矿工',
++              level: 50,
++              gender: 'male',
++              rank: 4,
++              status: 'Working',
++              location_type: 'base',
++              passives: ['工作狂'],
++              raw_passives: ['Workaholic'],
++              on_expedition: false,
++            },
++          ],
++          summary: { total: 1, average_level: 50, max_level: 50, named_count: 1, species_count: 1 },
++          status: { enabled: true, state: 'ready', stale: false, source_path: '/save', updated_at: '', duration_ms: 1, warnings: [], counts: { players: 1, guilds: 1, bases: 1, pals: 1, containers: 0, map_entities: 0 } },
++          source_id: 'server',
++        },
++      },
++    });
++
++    const result = await basesApi.getWorkers('base-1');
++
++    expect(get).toHaveBeenCalledWith('/bases/base-1/workers');
++    expect(result.base.name).toBe('北境制造中心');
++    expect(result.workers[0]).toMatchObject({ name: '矿工', species_name: '阿努比斯', level: 50, rank: 4 });
++    expect(result.summary).toMatchObject({ total: 1, average_level: 50, species_count: 1 });
++  });
++
+ });
+diff --git a/frontend/src/api/bases.ts b/frontend/src/api/bases.ts
+index 31266a1..2cc2a3e 100644
+--- a/frontend/src/api/bases.ts
++++ b/frontend/src/api/bases.ts
+@@ -5,6 +5,8 @@ import type {
+   Base,
+   BaseStorageContainer,
+   BaseStorageResponse,
++  BaseWorker,
++  BaseWorkersResponse,
+   EntityListParams,
+   EntityListResponse,
+   UnsupportedActionResult,
+@@ -67,6 +69,26 @@ const mapBaseStorageContainers = (raw: unknown): BaseStorageContainer[] => {
+   });
+ };
+ 
++
++const mapBaseWorker = (raw: unknown): BaseWorker => {
++  const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
++  return {
++    instance_id: String(data.instance_id || ''),
++    character_id: String(data.character_id || ''),
++    species_name: String(data.species_name || data.character_id || '未知帕鲁'),
++    name: String(data.name || data.nickname || data.species_name || data.character_id || '未知帕鲁'),
++    nickname: String(data.nickname || ''),
++    level: Number(data.level || 0),
++    gender: String(data.gender || ''),
++    rank: Number(data.rank || 0),
++    status: String(data.status || 'Unknown'),
++    location_type: String(data.location_type || ''),
++    passives: Array.isArray(data.passives) ? data.passives.map(String) : [],
++    raw_passives: Array.isArray(data.raw_passives) ? data.raw_passives.map(String) : [],
++    on_expedition: Boolean(data.on_expedition),
++  };
++};
++
+ const mapBases = (raw: unknown): Base[] => {
+   const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+   const list = Array.isArray(raw) ? raw : Array.isArray(data.bases) ? data.bases : [];
+@@ -103,6 +125,39 @@ export const basesApi = {
+       quiet: true,
+     }),
+ 
++  getWorkers: (baseId: string) =>
++    handleRequest<unknown, BaseWorkersResponse>(
++      () => apiClient.get(`/bases/${encodeURIComponent(baseId)}/workers`),
++      {
++        base: mapBase({}),
++        workers: [],
++        summary: { total: 0, average_level: 0, max_level: 0, named_count: 0, species_count: 0 },
++        status: emptySaveIndexStatus,
++        source_id: '',
++      },
++      {
++        map: (raw) => {
++          const data = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
++          const summary = (data.summary && typeof data.summary === 'object' ? data.summary : {}) as Record<string, unknown>;
++          return {
++            base: mapBase(data.base),
++            workers: Array.isArray(data.workers) ? data.workers.map(mapBaseWorker) : [],
++            summary: {
++              total: Number(summary.total || 0),
++              average_level: Number(summary.average_level || 0),
++              max_level: Number(summary.max_level || 0),
++              named_count: Number(summary.named_count || 0),
++              species_count: Number(summary.species_count || 0),
++            },
++            status: data.status ? mapSaveIndexStatus(data.status) : emptySaveIndexStatus,
++            source_id: String(data.source_id || ''),
++          };
++        },
++        quiet: true,
++        fallbackOnError: false,
++      },
++    ),
++
+   getStorage: (baseId: string) =>
+     handleRequest<unknown, BaseStorageResponse>(
+       () => apiClient.get(`/bases/${encodeURIComponent(baseId)}/storage`),
+diff --git a/frontend/src/api/generated/contracts.ts b/frontend/src/api/generated/contracts.ts
+index eca727f..6ed3f56 100644
+--- a/frontend/src/api/generated/contracts.ts
++++ b/frontend/src/api/generated/contracts.ts
+@@ -90,6 +90,51 @@ export interface components {
+       "data": components["schemas"]["AuthStatus"];
+       "ok": true;
+     };
++    "BaseWorkerBase": {
++      "custom_name": string;
++      "guild_id": string;
++      "guild_name": string;
++      "has_custom_name": boolean;
++      "id": string;
++      "name": string;
++      "raw_name": string;
++      "x": number;
++      "y": number;
++      "z": number;
++    };
++    "BaseWorkerDetail": {
++      "character_id": string;
++      "gender": string;
++      "instance_id": string;
++      "level": number;
++      "location_type": string;
++      "name": string;
++      "nickname": string;
++      "on_expedition": boolean;
++      "passives": Array<string>;
++      "rank": number;
++      "raw_passives": Array<string>;
++      "species_name": string;
++      "status": string;
++    };
++    "BaseWorkerSummary": {
++      "average_level": number;
++      "max_level": number;
++      "named_count": number;
++      "species_count": number;
++      "total": number;
++    };
++    "BaseWorkersEnvelope": {
++      "data": components["schemas"]["BaseWorkersResult"];
++      "ok": true;
++    };
++    "BaseWorkersResult": {
++      "base": components["schemas"]["BaseWorkerBase"];
++      "source_id": string;
++      "status": components["schemas"]["SaveIndexStatus"];
++      "summary": components["schemas"]["BaseWorkerSummary"];
++      "workers": Array<components["schemas"]["BaseWorkerDetail"]>;
++    };
+     "BreedingStatus": {
+       "available": boolean;
+       "checked_at"?: string;
+diff --git a/frontend/src/pages/Bases.tsx b/frontend/src/pages/Bases.tsx
+index 07163e5..e383ecb 100644
+--- a/frontend/src/pages/Bases.tsx
++++ b/frontend/src/pages/Bases.tsx
+@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
+ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+ import {
+   AlertCircle,
++  Cat,
+   Copy,
+   MapPin,
+   Package,
+@@ -19,12 +20,13 @@ import { getErrorMessage } from '../api/client';
+ import { basesApi } from '../api/bases';
+ import { saveIndexApi } from '../api/saveIndex';
+ import { useServerStore } from '../store/useServerStore';
+-import type { Base, BaseStorageResponse } from '../types';
++import type { Base, BaseStorageResponse, BaseWorkersResponse } from '../types';
+ import { DataTable } from '../components/ui/DataTable';
+ import { StatusBadge } from '../components/ui/StatusBadge';
+ import { SaveIndexStatusBar } from '../components/ui/SaveIndexStatusBar';
+ import { SaveDataTabs } from '../components/ui/SaveDataTabs';
+ import { useDebouncedValue } from '../hooks/useDebouncedValue';
++import { PalIcon } from '../components/gm/PalIcon';
+ 
+ const pageSize = 50;
+ 
+@@ -37,6 +39,8 @@ export const Bases: React.FC = () => {
+   const [actionError, setActionError] = useState<string | null>(null);
+   const [storageBase, setStorageBase] = useState<Base | null>(null);
+   const [storageSearch, setStorageSearch] = useState('');
++  const [workersBase, setWorkersBase] = useState<Base | null>(null);
++  const [workerSearch, setWorkerSearch] = useState('');
+   const debouncedSearch = useDebouncedValue(searchText, 250);
+ 
+   useEffect(() => {
+@@ -60,10 +64,20 @@ export const Bases: React.FC = () => {
+     enabled: Boolean(storageBase?.id),
+   });
+ 
++  const workersQuery = useQuery({
++    queryKey: ['base-workers', workersBase?.id],
++    queryFn: () => basesApi.getWorkers(workersBase!.id),
++    enabled: Boolean(workersBase?.id),
++  });
++
+   useEffect(() => {
+     setStorageSearch('');
+   }, [storageBase?.id]);
+ 
++  useEffect(() => {
++    setWorkerSearch('');
++  }, [workersBase?.id]);
++
+   const rebuildMutation = useMutation({
+     mutationFn: saveIndexApi.rebuild,
+     onSuccess: () => {
+@@ -200,6 +214,7 @@ export const Bases: React.FC = () => {
+                 onRename={() => editBaseName(base)}
+                 onResetName={() => clearBaseName(base)}
+                 onStorage={() => setStorageBase(base)}
++                onWorkers={() => setWorkersBase(base)}
+                 onClean={() => unsupported(basesApi.cleanStructures(base.id))}
+                 onBackup={() => unsupported(basesApi.backupBase(base.id))}
+               />
+@@ -252,6 +267,9 @@ export const Bases: React.FC = () => {
+                     <button type="button" onClick={() => setStorageBase(base)} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50" aria-label="查看基地仓库">
+                       <PackageOpen size={14} />
+                     </button>
++                    <button type="button" onClick={() => setWorkersBase(base)} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50" aria-label="查看基地工作帕鲁">
++                      <Cat size={14} />
++                    </button>
+                     <button type="button" onClick={() => unsupported(basesApi.cleanStructures(base.id))} className="rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-bold text-slate-500 hover:bg-slate-50">
+                       清理
+                     </button>
+@@ -262,6 +280,18 @@ export const Bases: React.FC = () => {
+           />
+         )}
+       </section>
++      {workersBase && (
++        <BaseWorkerDrawer
++          base={workersBase}
++          data={workersQuery.data}
++          loading={workersQuery.isLoading || workersQuery.isFetching}
++          error={workersQuery.error ? getErrorMessage(workersQuery.error) : null}
++          searchText={workerSearch}
++          onSearchChange={setWorkerSearch}
++          onRetry={() => void workersQuery.refetch()}
++          onClose={() => setWorkersBase(null)}
++        />
++      )}
+       {storageBase && (
+         <BaseStorageDrawer
+           base={storageBase}
+@@ -301,9 +331,10 @@ const BaseCard: React.FC<{
+   onRename: () => void;
+   onResetName: () => void;
+   onStorage: () => void;
++  onWorkers: () => void;
+   onClean: () => void;
+   onBackup: () => void;
+-}> = ({ base, onCopy, onRename, onResetName, onStorage, onClean, onBackup }) => (
++}> = ({ base, onCopy, onRename, onResetName, onStorage, onWorkers, onClean, onBackup }) => (
+   <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+     <div className="flex items-start justify-between gap-3">
+       <div className="min-w-0">
+@@ -339,6 +370,9 @@ const BaseCard: React.FC<{
+       <button type="button" onClick={onStorage} className="rounded-xl border border-sky-200 bg-sky-50 py-2 text-xs font-bold text-sky-700">
+         查看仓库
+       </button>
++      <button type="button" onClick={onWorkers} className="rounded-xl border border-sky-200 bg-sky-50 py-2 text-xs font-bold text-sky-700">
++        工作帕鲁
++      </button>
+       <button type="button" onClick={onClean} className="rounded-xl border border-slate-200 py-2 text-xs font-bold text-slate-600">
+         清理
+       </button>
+@@ -349,6 +383,152 @@ const BaseCard: React.FC<{
+   </div>
+ );
+ 
++const BaseWorkerDrawer: React.FC<{
++  base: Base;
++  data?: BaseWorkersResponse;
++  loading: boolean;
++  error: string | null;
++  searchText: string;
++  onSearchChange: (value: string) => void;
++  onRetry: () => void;
++  onClose: () => void;
++}> = ({ base, data, loading, error, searchText, onSearchChange, onRetry, onClose }) => {
++  const workers = data?.workers ?? [];
++  const summary = data?.summary ?? { total: 0, average_level: 0, max_level: 0, named_count: 0, species_count: 0 };
++  const query = searchText.trim().toLocaleLowerCase();
++  const visibleWorkers = workers.filter((worker) => {
++    if (!query) return true;
++    return [worker.name, worker.nickname, worker.species_name, worker.character_id, worker.instance_id, ...worker.passives]
++      .some((value) => value.toLocaleLowerCase().includes(query));
++  });
++
++  return (
++    <div className="fixed inset-0 z-40 flex justify-end bg-slate-900/20 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-6">
++      <aside className="flex h-full w-full max-w-2xl flex-col rounded-2xl border border-slate-100 bg-white shadow-2xl">
++        <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
++          <div className="min-w-0">
++            <p className="truncate text-sm font-bold text-slate-800">{data?.base.name || base.name} · 工作帕鲁</p>
++            <p className="mt-1 truncate font-mono text-[10px] text-slate-400">{base.id}</p>
++          </div>
++          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50" aria-label="关闭工作帕鲁列表">
++            <X size={14} />
++          </button>
++        </div>
++
++        <div className="border-b border-slate-100 px-5 py-4">
++          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
++            <WorkerSummary label="总数" value={summary.total} />
++            <WorkerSummary label="平均等级" value={Math.round(summary.average_level * 10) / 10} />
++            <WorkerSummary label="最高等级" value={summary.max_level} />
++            <WorkerSummary label="种类" value={summary.species_count} />
++          </div>
++          <label className="relative mt-4 block">
++            <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
++            <input
++              type="search"
++              value={searchText}
++              onChange={(event) => onSearchChange(event.target.value)}
++              placeholder="搜索昵称、种类、内部 ID 或被动词条"
++              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-xs font-semibold text-slate-700 outline-none focus:border-sky-300 focus:bg-white"
++            />
++          </label>
++        </div>
++
++        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
++          {data?.status.stale ? (
++            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800">
++              当前显示的是缓存存档索引，工作帕鲁列表可能稍有延迟。
++            </div>
++          ) : null}
++          {error ? (
++            <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-4 text-xs font-semibold text-rose-700">
++              <p>{error}</p>
++              <button type="button" onClick={onRetry} className="mt-3 inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-white px-3 py-2 text-[11px] font-bold">
++                <RefreshCw size={13} />
++                重试
++              </button>
++            </div>
++          ) : loading && !data ? (
++            <div className="py-16 text-center text-xs font-semibold text-slate-400">
++              <RefreshCw size={15} className="mr-2 inline animate-spin text-sky-500" />
++              正在读取基地工作帕鲁...
++            </div>
++          ) : visibleWorkers.length === 0 ? (
++            <div className="py-16 text-center text-xs font-semibold text-slate-400">
++              <Cat size={20} className="mx-auto mb-3 text-slate-300" />
++              {query ? '没有匹配的工作帕鲁' : '该基地没有可读取的工作帕鲁'}
++            </div>
++          ) : (
++            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
++              {visibleWorkers.map((worker) => (
++                <article key={worker.instance_id} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
++                  <div className="flex items-start gap-3">
++                    <PalIcon characterID={worker.character_id} name={worker.name} className="h-12 w-12 rounded-xl border border-slate-100" />
++                    <div className="min-w-0 flex-1">
++                      <div className="flex items-start justify-between gap-2">
++                        <div className="min-w-0">
++                          <p className="truncate text-xs font-bold text-slate-800">{worker.name}</p>
++                          {worker.nickname && worker.nickname !== worker.species_name ? (
++                            <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-400">种类：{worker.species_name}</p>
++                          ) : null}
++                        </div>
++                        <span className="shrink-0 rounded-lg border border-sky-100 bg-sky-50 px-2 py-1 text-[10px] font-black text-sky-700">Lv.{worker.level}</span>
++                      </div>
++                      <p className="mt-1 truncate font-mono text-[9px] text-slate-400" title={worker.character_id}>{worker.character_id}</p>
++                    </div>
++                  </div>
++                  <div className="mt-3 flex flex-wrap gap-1.5 text-[9px] font-bold">
++                    {worker.gender ? <span className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-slate-500">{formatWorkerGender(worker.gender)}</span> : null}
++                    <span className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-slate-500">Rank {worker.rank}</span>
++                    <span className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-slate-500">{formatWorkerStatus(worker.status)}</span>
++                    {worker.on_expedition ? <span className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700">远征中</span> : null}
++                  </div>
++                  {worker.passives.length > 0 ? (
++                    <div className="mt-3 flex flex-wrap gap-1.5">
++                      {worker.passives.slice(0, 6).map((passive, index) => (
++                        <span key={`${worker.instance_id}:${worker.raw_passives[index] || passive}`} className="rounded-lg border border-violet-100 bg-violet-50 px-2 py-1 text-[9px] font-bold text-violet-700">{passive}</span>
++                      ))}
++                    </div>
++                  ) : (
++                    <p className="mt-3 text-[9px] font-semibold text-slate-400">索引中没有被动词条</p>
++                  )}
++                  <p className="mt-3 truncate font-mono text-[8px] text-slate-300" title={worker.instance_id}>{worker.instance_id}</p>
++                </article>
++              ))}
++            </div>
++          )}
++        </div>
++      </aside>
++    </div>
++  );
++};
++
++const formatWorkerGender = (gender: string) => {
++  const normalized = gender.trim().toLocaleLowerCase();
++  if (normalized === 'male' || normalized === 'm') return '雄性';
++  if (normalized === 'female' || normalized === 'f') return '雌性';
++  return gender;
++};
++
++const formatWorkerStatus = (status: string) => {
++  const labels: Record<string, string> = {
++    healthy: '健康',
++    working: '工作中',
++    injured: '受伤',
++    battling: '战斗中',
++    dead: '死亡',
++    unknown: '状态未知',
++  };
++  return labels[status.trim().toLocaleLowerCase()] || status || '状态未知';
++};
++
++const WorkerSummary: React.FC<{ label: string; value: number }> = ({ label, value }) => (
++  <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5 text-center">
++    <p className="text-[10px] font-semibold text-slate-400">{label}</p>
++    <p className="mt-1 text-lg font-black text-slate-700">{value}</p>
++  </div>
++);
++
+ const BaseStorageDrawer: React.FC<{
+   base: Base;
+   data?: BaseStorageResponse;
+diff --git a/frontend/src/types/index.ts b/frontend/src/types/index.ts
+index 034f28d..744ac4c 100644
+--- a/frontend/src/types/index.ts
++++ b/frontend/src/types/index.ts
+@@ -968,6 +968,38 @@ export interface BaseStorageResponse {
+   status: SaveIndexStatus;
+ }
+ 
++export interface BaseWorker {
++  instance_id: string;
++  character_id: string;
++  species_name: string;
++  name: string;
++  nickname: string;
++  level: number;
++  gender: string;
++  rank: number;
++  status: string;
++  location_type: string;
++  passives: string[];
++  raw_passives: string[];
++  on_expedition: boolean;
++}
++
++export interface BaseWorkerSummary {
++  total: number;
++  average_level: number;
++  max_level: number;
++  named_count: number;
++  species_count: number;
++}
++
++export interface BaseWorkersResponse {
++  base: Base;
++  workers: BaseWorker[];
++  summary: BaseWorkerSummary;
++  status: SaveIndexStatus;
++  source_id: string;
++}
++
+ export interface Base {
+   id: string;
+   name: string;

@@ -1,0 +1,268 @@
+diff --git a/backend/internal/api/patch_info.go b/backend/internal/api/patch_info.go
+new file mode 100644
+index 0000000..a0642c0
+--- /dev/null
++++ b/backend/internal/api/patch_info.go
+@@ -0,0 +1,38 @@
++package api
++
++import (
++	"github.com/gin-gonic/gin"
++
++	"palpanel/internal/buildinfo"
++)
++
++const (
++	patchSourceRepository = "uitok/palworld-panel"
++	patchSourceRef        = "dev"
++	patchTargetVersion    = "v1.2.2"
++	patchVersion          = "0.1.0-dev.1"
++	patchRepository       = "ninhua/Palworld-Panel-Patches"
++)
++
++var patchFeatures = []string{"patch-info-api"}
++
++func (s Server) patchInfo(c *gin.Context) {
++	info := buildinfo.Current()
++	ok(c, gin.H{
++		"upstream": gin.H{
++			"repository": patchSourceRepository,
++			"ref":        patchSourceRef,
++			"commit":     info.Commit,
++		},
++		"compatibility": gin.H{
++			"target_version": patchTargetVersion,
++			"verified":       false,
++		},
++		"patch": gin.H{
++			"version":    patchVersion,
++			"repository": patchRepository,
++			"features":   patchFeatures,
++		},
++		"build": info,
++	})
++}
+diff --git a/backend/internal/api/patch_info_test.go b/backend/internal/api/patch_info_test.go
+new file mode 100644
+index 0000000..e95578c
+--- /dev/null
++++ b/backend/internal/api/patch_info_test.go
+@@ -0,0 +1,82 @@
++package api
++
++import (
++	"encoding/json"
++	"net/http"
++	"net/http/httptest"
++	"testing"
++
++	"github.com/gin-gonic/gin"
++
++	"palpanel/internal/buildinfo"
++)
++
++func TestPatchInfo(t *testing.T) {
++	previous := buildinfo.Current()
++	buildinfo.Version = "v1.2.2-test"
++	buildinfo.Commit = "5e3c0bce9d33091b3261f82b3e4da062fc35a8a1"
++	buildinfo.BuildTime = "2026-07-23T17:13:44+08:00"
++	t.Cleanup(func() {
++		buildinfo.Version = previous.Version
++		buildinfo.Commit = previous.Commit
++		buildinfo.BuildTime = previous.BuildTime
++	})
++
++	gin.SetMode(gin.TestMode)
++	router := gin.New()
++	server := Server{}
++	router.GET("/api/patch/info", server.patchInfo)
++
++	request := httptest.NewRequest(http.MethodGet, "/api/patch/info", nil)
++	recorder := httptest.NewRecorder()
++	router.ServeHTTP(recorder, request)
++
++	if recorder.Code != http.StatusOK {
++		t.Fatalf("GET /api/patch/info returned %d: %s", recorder.Code, recorder.Body.String())
++	}
++
++	var response struct {
++		OK   bool `json:"ok"`
++		Data struct {
++			Upstream struct {
++				Repository string `json:"repository"`
++				Ref        string `json:"ref"`
++				Commit     string `json:"commit"`
++			} `json:"upstream"`
++			Compatibility struct {
++				TargetVersion string `json:"target_version"`
++				Verified      bool   `json:"verified"`
++			} `json:"compatibility"`
++			Patch struct {
++				Version    string   `json:"version"`
++				Repository string   `json:"repository"`
++				Features   []string `json:"features"`
++			} `json:"patch"`
++			Build buildinfo.Info `json:"build"`
++		} `json:"data"`
++	}
++	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
++		t.Fatalf("decode response: %v", err)
++	}
++	if !response.OK {
++		t.Fatal("expected ok response")
++	}
++	if response.Data.Upstream.Repository != patchSourceRepository || response.Data.Upstream.Ref != patchSourceRef {
++		t.Fatalf("unexpected upstream: %+v", response.Data.Upstream)
++	}
++	if response.Data.Upstream.Commit != buildinfo.Commit {
++		t.Fatalf("upstream commit = %q, want %q", response.Data.Upstream.Commit, buildinfo.Commit)
++	}
++	if response.Data.Compatibility.TargetVersion != patchTargetVersion || response.Data.Compatibility.Verified {
++		t.Fatalf("unexpected compatibility: %+v", response.Data.Compatibility)
++	}
++	if response.Data.Patch.Version != patchVersion || response.Data.Patch.Repository != patchRepository {
++		t.Fatalf("unexpected patch metadata: %+v", response.Data.Patch)
++	}
++	if len(response.Data.Patch.Features) != 1 || response.Data.Patch.Features[0] != "patch-info-api" {
++		t.Fatalf("unexpected features: %#v", response.Data.Patch.Features)
++	}
++	if response.Data.Build.Version != buildinfo.Version || response.Data.Build.BuildTime != buildinfo.BuildTime {
++		t.Fatalf("unexpected build metadata: %+v", response.Data.Build)
++	}
++}
+diff --git a/backend/internal/api/router_contract_test.go b/backend/internal/api/router_contract_test.go
+index 35d49f8..9794f8a 100644
+--- a/backend/internal/api/router_contract_test.go
++++ b/backend/internal/api/router_contract_test.go
+@@ -82,6 +82,14 @@ func TestNewContractRoutes(t *testing.T) {
+ 	if readyRecorder.Code != http.StatusOK || !strings.Contains(readyRecorder.Body.String(), `"status":"ready"`) {
+ 		t.Fatalf("unexpected readiness response: %d %s", readyRecorder.Code, readyRecorder.Body.String())
+ 	}
++	patchInfoRequest := httptest.NewRequest(http.MethodGet, "/api/patch/info", nil)
++	patchInfoRecorder := httptest.NewRecorder()
++	router.ServeHTTP(patchInfoRecorder, patchInfoRequest)
++	if patchInfoRecorder.Code != http.StatusOK ||
++		!strings.Contains(patchInfoRecorder.Body.String(), `"repository":"ninhua/Palworld-Panel-Patches"`) ||
++		!strings.Contains(patchInfoRecorder.Body.String(), `"target_version":"v1.2.2"`) {
++		t.Fatalf("unexpected patch info response: %d %s", patchInfoRecorder.Code, patchInfoRecorder.Body.String())
++	}
+ 
+ 	for _, path := range []string{
+ 		"/api/server/startup",
+diff --git a/backend/internal/api/routes.go b/backend/internal/api/routes.go
+index f190b5c..e24020f 100644
+--- a/backend/internal/api/routes.go
++++ b/backend/internal/api/routes.go
+@@ -13,6 +13,7 @@ import (
+ func (s Server) registerRoutes(router *gin.Engine) {
+ 	router.GET("/api/health", s.health)
+ 	router.GET("/api/ready", s.ready)
++	router.GET("/api/patch/info", s.patchInfo)
+ 	authPublic := router.Group("/api/auth")
+ 	authPublic.Use(SameOriginWrite())
+ 	authPublic.GET("/status", s.authStatus)
+diff --git a/docs/openapi.yaml b/docs/openapi.yaml
+index 5e78dd1..3ca7536 100644
+--- a/docs/openapi.yaml
++++ b/docs/openapi.yaml
+@@ -235,6 +235,18 @@ paths:
+     get: {operationId: getHealth, tags: [system], security: [], x-palpanel-permission: public, responses: {'200': *success}}
+   /ready:
+     get: {operationId: getReadiness, tags: [system], security: [], x-palpanel-permission: public, responses: {'200': *success, '503': *error}}
++  /patch/info:
++    get:
++      operationId: getPatchInfo
++      tags: [system]
++      security: []
++      x-palpanel-permission: public
++      responses:
++        '200':
++          description: Patch provenance, compatibility target, feature list, and build metadata.
++          content:
++            application/json:
++              schema: {$ref: '#/components/schemas/PatchInfoEnvelope'}
+   /auth/status:
+     get:
+       operationId: getAuthenticationStatus
+@@ -2471,6 +2483,45 @@ components:
+     JsonObject:
+       type: object
+       additionalProperties: true
++    PatchInfo:
++      type: object
++      required: [upstream, compatibility, patch, build]
++      properties:
++        upstream:
++          type: object
++          required: [repository, ref, commit]
++          properties:
++            repository: {type: string, const: uitok/palworld-panel}
++            ref: {type: string, const: dev}
++            commit: {type: string}
++        compatibility:
++          type: object
++          required: [target_version, verified]
++          properties:
++            target_version: {type: string, const: v1.2.2}
++            verified: {type: boolean, const: false}
++        patch:
++          type: object
++          required: [version, repository, features]
++          properties:
++            version: {type: string, const: 0.1.0-dev.1}
++            repository: {type: string, const: ninhua/Palworld-Panel-Patches}
++            features:
++              type: array
++              items: {type: string}
++        build:
++          type: object
++          required: [version, commit, build_time]
++          properties:
++            version: {type: string}
++            commit: {type: string}
++            build_time: {type: string}
++    PatchInfoEnvelope:
++      type: object
++      required: [ok, data]
++      properties:
++        ok: {type: boolean, const: true}
++        data: {$ref: '#/components/schemas/PatchInfo'}
+     SuccessEnvelope:
+       type: object
+       required: [ok, data]
+diff --git a/frontend/src/api/generated/contracts.ts b/frontend/src/api/generated/contracts.ts
+index b22a948..740a3e7 100644
+--- a/frontend/src/api/generated/contracts.ts
++++ b/frontend/src/api/generated/contracts.ts
+@@ -759,6 +759,31 @@ export interface components {
+       "current_password": string;
+       "new_password": string;
+     };
++    "PatchInfo": {
++      "build": {
++        "build_time": string;
++        "commit": string;
++        "version": string;
++      };
++      "compatibility": {
++        "target_version": "v1.2.2";
++        "verified": false;
++      };
++      "patch": {
++        "features": Array<string>;
++        "repository": "ninhua/Palworld-Panel-Patches";
++        "version": "0.1.0-dev.1";
++      };
++      "upstream": {
++        "commit": string;
++        "ref": "dev";
++        "repository": "uitok/palworld-panel";
++      };
++    };
++    "PatchInfoEnvelope": {
++      "data": components["schemas"]["PatchInfo"];
++      "ok": true;
++    };
+     "Player": {
+       "gm_user_id"?: string;
+       "guild_id": string;
