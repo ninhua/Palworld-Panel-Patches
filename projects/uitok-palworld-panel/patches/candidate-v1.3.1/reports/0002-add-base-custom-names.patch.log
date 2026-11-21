@@ -1,0 +1,10 @@
+$ /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/projects/uitok-palworld-panel/automation/apply-source-patch.sh /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/output/work/migration-active /home/runner/work/Palworld-Panel-Patches/Palworld-Panel-Patches/.work/source-track/source/0002-add-base-custom-names.patch
+error: patch failed: backend/internal/api/routes.go:238
+error: backend/internal/api/routes.go: patch does not apply
+error: frontend/src/api/bases.test.ts: already exists in working directory
+error: patch failed: frontend/src/api/bases.ts:59
+error: frontend/src/api/bases.ts: patch does not apply
+error: patch failed: frontend/src/pages/Bases.tsx:137
+error: frontend/src/pages/Bases.tsx: patch does not apply
+错误：补丁无法直接应用，且未匹配任何已登记的精确重定位规则。
+[exit=1]
